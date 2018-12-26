@@ -1,4 +1,4 @@
-# auth - authentication via oauth2
+# auth - authentication via oauth2 [![Build Status](https://travis-ci.org/go-pkgz/auth.svg?branch=master)](https://travis-ci.org/go-pkgz/auth)
 
 This library provides "social login" with Github, Google, Facebook and Yandex.  
 
@@ -24,30 +24,30 @@ Example with chi router:
 
 ```go
 func main() {
-	// define options
+	/// define options
 	options := auth.Opts{
 		SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 		TokenDuration:  time.Hour,
 		CookieDuration: time.Hour * 24,
-		Issuer:      "my-test-app",
-		URL:         "http://127.0.0.1:8080",
-		AvatarStore: avatar.NewLocalFS("/tmp", 120),
-    }
+		Issuer:         "my-test-app",
+		URL:            "http://127.0.0.1:8080",
+		AvatarStore:    avatar.NewLocalFS("/tmp", 120),
+	}
 
-    // create auth service
+	// create auth service
 	service, err := auth.NewService(options)
 	if err != nil {
 		log.Fatal(err)
 	}
-	service.AddProvider("github", <Client ID>, <Client Secret>) // add provider
-    service.AddProvider("facebook", <Client ID>, <Client Secret>) // add provider
-    
-    // retrieve auth middleware
-    m := service.Middleware()
+	service.AddProvider("github", "<Client ID>", "<Client Secret>")   // add github provider
+	service.AddProvider("facebook", "<Client ID>", "<Client Secret>") // add facebook provider
+
+	// retrieve auth middleware
+	m := service.Middleware()
 
 	// setup http server
 	router := chi.NewRouter()
-    router.Get("/open", openRouteHandler) // open api
+	router.Get("/open", openRouteHandler)                            // open api
 	router.With(m.Auth(true)).Get("/private", protectedRouteHandler) // protected api
 
 	// setup auth routes
@@ -56,7 +56,7 @@ func main() {
 	router.Mount("/avatar", avaRoutes) // add avatar handler
 
 	log.Fatal(http.ListenAndServe(":8080", router))
-}    
+}
 ```
 
 

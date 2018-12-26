@@ -1,5 +1,8 @@
 language: go
 
+services:
+  - mongodb
+
 go:
   - "1.11.x"
 
@@ -9,7 +12,8 @@ before_install:
   - export TZ=America/Chicago
   - curl -L https://git.io/vp6lP | sh 
   - go get github.com/mattn/goveralls
-
+  - export MONGO_TEST=mongodb://127.0.0.1:27017
+  
 script:
   - GO111MODULE=on go get ./...
   - GO111MODULE=on go mod vendor
