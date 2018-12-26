@@ -6,6 +6,7 @@ go:
 install: true
 
 before_install:
+  - export TZ=America/Chicago
   - curl -L https://git.io/vp6lP | sh 
   - go get github.com/mattn/goveralls
 
