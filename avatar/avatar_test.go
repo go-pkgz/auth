@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-pkgz/auth/token"
-	"github.com/umputun/remark/backend/app/store/avatar"
 )
 
 func TestAvatar_Put(t *testing.T) {
@@ -31,7 +30,7 @@ func TestAvatar_Put(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: avatar.NewLocalFS("/tmp/avatars.test", 300)}
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test", 300)}
 	os.MkdirAll("/tmp/avatars.test", 0700)
 	defer os.RemoveAll("/tmp/avatars.test")
 
@@ -60,7 +59,7 @@ func TestAvatar_PutFailed(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", Store: avatar.NewLocalFS("/tmp/avatars.test", 300)}
+	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test", 300)}
 
 	u := token.User{ID: "user1", Name: "user1 name"}
 	_, err := p.Put(u)
@@ -90,7 +89,7 @@ func TestAvatar_Routes(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", Store: avatar.NewLocalFS("/tmp/avatars.test", 300)}
+	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test", 300)}
 	os.MkdirAll("/tmp/avatars.test", 0700)
 	defer os.RemoveAll("/tmp/avatars.test")
 
