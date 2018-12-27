@@ -59,7 +59,7 @@ func TestLogin(t *testing.T) {
 
 	claims, err := jwtSvc.Parse(tk)
 	require.NoError(t, err)
-	assert.Equal(t, "go-pkgz/token", claims.Issuer)
+	assert.Equal(t, "go-pkgz/auth", claims.Issuer)
 	assert.Equal(t, "remark", claims.Audience)
 
 	// check admin user
