@@ -103,6 +103,28 @@ func TestIntegrationProtected(t *testing.T) {
 	defer resp.Body.Close()
 }
 
+func TestIntegrationBasicAuth(t *testing.T) {
+
+	teardown := prepService(t)
+	defer teardown()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequest("GET", "http://127.0.0.1:8080/private", nil)
+	require.Nil(t, err)
+	resp, err := client.Do(req)
+	require.Nil(t, err)
+	assert.Equal(t, 401, resp.StatusCode)
+	defer resp.Body.Close()
+
+	req, err = http.NewRequest("GET", "http://127.0.0.1:8080/private", nil)
+	require.Nil(t, err)
+	req.SetBasicAuth("dev", "password")
+	resp, err = client.Do(req)
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	defer resp.Body.Close()
+}
+
 func TestIntegrationAvatar(t *testing.T) {
 
 	teardown := prepService(t)
@@ -193,6 +215,7 @@ func prepService(t *testing.T) (teardown func()) {
 		}),
 		AvatarStore: avatar.NewLocalFS("/tmp/auth-pkgz"),
 		ResizeLimit: 120,
+		DevPasswd:   "password",
 	}
 
 	svc := NewService(options)
