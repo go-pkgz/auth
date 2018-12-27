@@ -56,7 +56,7 @@ func TestAvatarStoreFS_Put(t *testing.T) {
 
 	p = NewLocalFS("/dev/null", 300)
 	_, err = p.Put("user1", strings.NewReader("some picture bin data"))
-	assert.EqualError(t, err, "can't create file /dev/null/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image: open /dev/null/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image: not a directory")
+	assert.EqualError(t, err, "failed to mkdir avatar location /dev/null/30: mkdir /dev/null: not a directory")
 }
 
 func TestAvatarStoreFS_Get(t *testing.T) {
