@@ -34,10 +34,8 @@ func (fs *LocalFS) Put(userID string, reader io.Reader) (avatar string, err erro
 	id := encodeID(userID)
 	location := fs.location(id) // location adds partition to path
 
-	if _, err = os.Stat(location); os.IsNotExist(err) {
-		if e := os.Mkdir(location, 0700); e != nil {
-			return "", errors.Wrapf(e, "failed to mkdir avatar location %s", location)
-		}
+	if e := os.MkdirAll(location, 0755); e != nil {
+		return "", errors.Wrapf(e, "failed to mkdir avatar location %s", location)
 	}
 
 	avFile := path.Join(location, id+imgSfx)
@@ -59,6 +57,7 @@ func (fs *LocalFS) Put(userID string, reader io.Reader) (avatar string, err erro
 	if _, err = io.Copy(fh, reader); err != nil {
 		return "", errors.Wrapf(err, "can't save file %s", avFile)
 	}
+	log.Printf("[DEBUG] put avatar for %s to %s completed", userID, fh.Name())
 	return id + imgSfx, nil
 }
 

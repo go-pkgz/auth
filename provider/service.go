@@ -222,7 +222,7 @@ func (p Service) setAvatar(u token.User) token.User {
 		if avatarURL, e := p.AvatarProxy.Put(u); e == nil {
 			u.Picture = avatarURL
 		} else {
-			log.Printf("[WARN] failed to proxy avatar, %s", e)
+			log.Printf("[WARN] failed to set avatar for %+v, %+v", u, e)
 		}
 	}
 	return u
