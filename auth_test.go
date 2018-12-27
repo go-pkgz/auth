@@ -28,7 +28,7 @@ func TestNewService(t *testing.T) {
 		CookieDuration: time.Hour * 24,
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
-		AvatarStore:    avatar.NewLocalFS("/tmp", 120),
+		AvatarStore:    avatar.NewLocalFS("/tmp"),
 	}
 
 	_, err := NewService(options)
@@ -193,7 +193,8 @@ func prepService(t *testing.T) (teardown func()) {
 		Validator: middleware.ValidatorFunc(func(_ string, claims token.Claims) bool {
 			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_") // allow only dev_ names
 		}),
-		AvatarStore: avatar.NewLocalFS("/tmp/auth-pkgz", 120),
+		AvatarStore: avatar.NewLocalFS("/tmp/auth-pkgz"),
+		ResizeLimit: 120,
 	}
 
 	svc, err := NewService(options)

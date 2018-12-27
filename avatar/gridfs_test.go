@@ -94,5 +94,5 @@ func prepGFStore(t *testing.T) (Store, bool) {
 	_ = conn.WithCustomCollection("fs.files", func(coll *mgo.Collection) error {
 		return coll.DropCollection()
 	})
-	return NewGridFS(conn, 0), false
+	return NewGridFS(conn), false
 }

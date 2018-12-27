@@ -47,6 +47,7 @@ type Opts struct {
 	DevPasswd string               // if presented, allows basic auth with user dev and given password
 
 	AvatarStore avatar.Store // store to save/load avatars
+	ResizeLimit int          // resize avatar's limit
 }
 
 // NewService initializes everything
@@ -87,9 +88,10 @@ func NewService(opts Opts) (*Service, error) {
 
 	if opts.AvatarStore != nil {
 		res.avatarProxy = &avatar.Proxy{
-			Store:     opts.AvatarStore,
-			URL:       opts.URL,
-			RoutePath: "/avatar",
+			Store:       opts.AvatarStore,
+			URL:         opts.URL,
+			RoutePath:   "/avatar",
+			ResizeLimit: opts.ResizeLimit,
 		}
 	}
 

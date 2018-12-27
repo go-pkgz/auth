@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/coreos/bbolt"
+	bolt "github.com/coreos/bbolt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -93,7 +93,7 @@ func TestBoltDB_List(t *testing.T) {
 // makes new boltdb, put two records
 func prepBoltStore(t *testing.T) *BoltDB {
 	os.Remove(testDb)
-	boltStore, err := NewBoltDB(testDb, bolt.Options{}, 0)
+	boltStore, err := NewBoltDB(testDb, bolt.Options{})
 	require.Nil(t, err)
 	return boltStore
 }

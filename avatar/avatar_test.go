@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"image"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +33,7 @@ func TestAvatar_Put(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test", 300)}
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test")}
 	os.MkdirAll("/tmp/avatars.test", 0700)
 	defer os.RemoveAll("/tmp/avatars.test")
 
@@ -59,7 +62,7 @@ func TestAvatar_PutFailed(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test", 300)}
+	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test")}
 
 	u := token.User{ID: "user1", Name: "user1 name"}
 	_, err := p.Put(u)
@@ -89,7 +92,7 @@ func TestAvatar_Routes(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test", 300)}
+	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test")}
 	os.MkdirAll("/tmp/avatars.test", 0700)
 	defer os.RemoveAll("/tmp/avatars.test")
 
@@ -145,6 +148,59 @@ func TestAvatar_Routes(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotModified, rr.Code)
 	assert.Equal(t, []string{`"a008de0a2ccb3308b5d99ffff66436e15538f701"`}, rr.HeaderMap["Etag"])
+}
+
+func TestAvatar_resize(t *testing.T) {
+	checkC := func(t *testing.T, r io.Reader, cExp []byte) {
+		content, err := ioutil.ReadAll(r)
+		require.NoError(t, err)
+		assert.Equal(t, cExp, content)
+	}
+
+	p := Proxy{}
+	// Reader is nil.
+	resizedR := p.resize(nil, 100)
+	// assert.EqualError(t, err, "limit should be greater than 0")
+	assert.Nil(t, resizedR)
+
+	// Negative limit error.
+	resizedR = p.resize(strings.NewReader("some picture bin data"), -1)
+	require.NotNil(t, resizedR)
+	checkC(t, resizedR, []byte("some picture bin data"))
+
+	// Decode error.
+	resizedR = p.resize(strings.NewReader("invalid image content"), 100)
+	assert.NotNil(t, resizedR)
+	checkC(t, resizedR, []byte("invalid image content"))
+
+	cases := []struct {
+		file   string
+		wr, hr int
+	}{
+		{"testdata/circles.png", 400, 300}, // full size: 800x600 px
+		{"testdata/circles.jpg", 300, 400}, // full size: 600x800 px
+	}
+
+	for _, c := range cases {
+		img, err := ioutil.ReadFile(c.file)
+		require.Nil(t, err, "can't open test file %s", c.file)
+
+		// No need for resize, avatar dimensions are smaller than resize limit.
+		resizedR = p.resize(bytes.NewReader(img), 800)
+		assert.NotNil(t, resizedR, "file %s", c.file)
+		checkC(t, resizedR, img)
+
+		// Resizing to half of width. Check resizedR avatar format PNG.
+		resizedR = p.resize(bytes.NewReader(img), 400)
+		assert.NotNil(t, resizedR, "file %s", c.file)
+
+		imgRz, format, err := image.Decode(resizedR)
+		assert.Nil(t, err, "file %s", c.file)
+		assert.Equal(t, "png", format, "file %s", c.file)
+		bounds := imgRz.Bounds()
+		assert.Equal(t, c.wr, bounds.Dx(), "file %s", c.file)
+		assert.Equal(t, c.hr, bounds.Dy(), "file %s", c.file)
+	}
 }
 
 func TestAvatar_Retry(t *testing.T) {

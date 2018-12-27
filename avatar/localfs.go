@@ -17,20 +17,22 @@ import (
 
 // LocalFS implements Store for local file system
 type LocalFS struct {
-	storePath   string
-	resizeLimit int
-	ctcTable    *crc64.Table
-	once        sync.Once
+	storePath string
+	ctcTable  *crc64.Table
+	once      sync.Once
 }
 
 // NewLocalFS makes file-system avatar store
-func NewLocalFS(storePath string, resizeLimit int) *LocalFS {
-	return &LocalFS{storePath: storePath, resizeLimit: resizeLimit}
+func NewLocalFS(storePath string) *LocalFS {
+	return &LocalFS{storePath: storePath}
 }
 
 // Put avatar for userID to file and return avatar's file name (base), like 12345678.image
 // userID can be avatarID as well, in this case encoding just strip .image prefix
 func (fs *LocalFS) Put(userID string, reader io.Reader) (avatar string, err error) {
+	if reader == nil {
+		return "", errors.New("empty reader")
+	}
 	id := encodeID(userID)
 	location := fs.location(id) // location adds partition to path
 
@@ -48,11 +50,6 @@ func (fs *LocalFS) Put(userID string, reader io.Reader) (avatar string, err erro
 			log.Printf("[WARN] can't close avatar file %s, %s", avFile, e)
 		}
 	}()
-
-	// Trying to resize avatar.
-	if reader = resize(reader, fs.resizeLimit); reader == nil {
-		return "", errors.New("avatar resize reader is nil")
-	}
 
 	if _, err = io.Copy(fh, reader); err != nil {
 		return "", errors.Wrapf(err, "can't save file %s", avFile)

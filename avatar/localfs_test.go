@@ -13,14 +13,14 @@ import (
 )
 
 func TestAvatarStoreFS_Put(t *testing.T) {
-	p := NewLocalFS("/tmp/avatars.test", 300)
+	p := NewLocalFS("/tmp/avatars.test")
 	err := os.MkdirAll("/tmp/avatars.test", 0700)
 	require.NoError(t, err)
 	defer os.RemoveAll("/tmp/avatars.test")
 
 	avatar, err := p.Put("user1", nil)
 	assert.Equal(t, "", avatar)
-	assert.EqualError(t, err, "avatar resize reader is nil")
+	assert.EqualError(t, err, "empty reader")
 
 	avatar, err = p.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
@@ -52,15 +52,15 @@ func TestAvatarStoreFS_Put(t *testing.T) {
 	assert.Equal(t, "0b7f849446d3383546d15a480966084442cd2193.image", avatar)
 	fi, err = os.Stat("/tmp/avatars.test/60/0b7f849446d3383546d15a480966084442cd2193.image")
 	assert.NoError(t, err)
-	assert.Equal(t, int64(6986), fi.Size())
+	assert.Equal(t, int64(11392), fi.Size())
 
-	p = NewLocalFS("/dev/null", 300)
+	p = NewLocalFS("/dev/null")
 	_, err = p.Put("user1", strings.NewReader("some picture bin data"))
 	assert.EqualError(t, err, "failed to mkdir avatar location /dev/null/30: mkdir /dev/null: not a directory")
 }
 
 func TestAvatarStoreFS_Get(t *testing.T) {
-	p := NewLocalFS("/tmp/avatars.test", 300)
+	p := NewLocalFS("/tmp/avatars.test")
 	err := os.MkdirAll("/tmp/avatars.test/30", 0700)
 	require.NoError(t, err)
 	defer os.RemoveAll("/tmp/avatars.test")
@@ -84,7 +84,7 @@ func TestAvatarStoreFS_Get(t *testing.T) {
 }
 
 func TestAvatarStoreFS_Location(t *testing.T) {
-	p := NewLocalFS("/tmp/avatars.test", 300)
+	p := NewLocalFS("/tmp/avatars.test")
 
 	tbl := []struct {
 		id  string
@@ -102,7 +102,7 @@ func TestAvatarStoreFS_Location(t *testing.T) {
 }
 
 func TestAvatarStoreFS_ID(t *testing.T) {
-	p := NewLocalFS("/tmp/avatars.test", 300)
+	p := NewLocalFS("/tmp/avatars.test")
 	err := os.MkdirAll("/tmp/avatars.test/30", 0700)
 	require.NoError(t, err)
 	defer os.RemoveAll("/tmp/avatars.test")
@@ -121,7 +121,7 @@ func TestAvatarStoreFS_ID(t *testing.T) {
 }
 
 func TestAvatarStoreFS_Remove(t *testing.T) {
-	p := NewLocalFS("/tmp/avatars.test", 300)
+	p := NewLocalFS("/tmp/avatars.test")
 	err := os.MkdirAll("/tmp/avatars.test/30", 0700)
 	require.NoError(t, err)
 	defer os.RemoveAll("/tmp/avatars.test")
@@ -137,7 +137,7 @@ func TestAvatarStoreFS_Remove(t *testing.T) {
 }
 
 func TestAvatarStoreFS_List(t *testing.T) {
-	p := NewLocalFS("/tmp/avatars.test", 300)
+	p := NewLocalFS("/tmp/avatars.test")
 	err := os.MkdirAll("/tmp/avatars.test", 0700)
 	require.NoError(t, err)
 	defer os.RemoveAll("/tmp/avatars.test")
@@ -165,7 +165,7 @@ func TestAvatarStoreFS_List(t *testing.T) {
 }
 
 func BenchmarkAvatarStoreFS_ID(b *testing.B) {
-	p := NewLocalFS("/tmp/avatars.test", 300)
+	p := NewLocalFS("/tmp/avatars.test")
 	os.MkdirAll("/tmp/avatars.test/30", 0700)
 	defer os.RemoveAll("/tmp/avatars.test")
 	err := ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666)
