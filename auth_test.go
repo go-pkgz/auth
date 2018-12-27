@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -139,8 +140,48 @@ func TestIntegrationList(t *testing.T) {
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, `["dev","github"]`+"\n", string(b))
-
 }
+
+func TestLogout(t *testing.T) {
+	teardown := prepService(t)
+	defer teardown()
+
+	// login
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// logout
+	resp, err = client.Get("http://127.0.0.1:8080/auth/logout")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	defer resp.Body.Close()
+
+	resp, err = client.Get("http://127.0.0.1:8080/private")
+	require.Nil(t, err)
+	assert.Equal(t, 401, resp.StatusCode)
+	defer resp.Body.Close()
+}
+
+func TestBadRequests(t *testing.T) {
+	teardown := prepService(t)
+	defer teardown()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:8080/auth/bad/login")
+	require.Nil(t, err)
+	assert.Equal(t, 400, resp.StatusCode)
+	defer resp.Body.Close()
+
+	resp, err = client.Get("http://127.0.0.1:8080/auth")
+	require.Nil(t, err)
+	assert.Equal(t, 400, resp.StatusCode)
+	defer resp.Body.Close()
+}
+
 func prepService(t *testing.T) (teardown func()) {
 	options := Opts{
 		SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
@@ -196,5 +237,6 @@ func prepService(t *testing.T) (teardown func()) {
 	return func() {
 		ts.Close()
 		devAuthServer.Shutdown()
+		os.RemoveAll("/tmp/auth-pkgz")
 	}
 }

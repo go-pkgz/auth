@@ -230,7 +230,6 @@ func (p Service) setAvatar(u token.User) token.User {
 
 // LogoutHandler - GET /logout
 func (p Service) LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	log.Print("!!! logout")
 	p.JwtService.Reset(w)
 	log.Printf("[DEBUG] logout")
 }
