@@ -13,11 +13,11 @@ before_install:
   - curl -L https://git.io/vp6lP | sh 
   - go get github.com/mattn/goveralls
   - export MONGO_TEST=mongodb://127.0.0.1:27017
+  - export PATH=$(pwd)/bin:$PATH
 
 script:
   - GO111MODULE=on go get ./...
   - GO111MODULE=on go mod vendor
   - GO111MODULE=on go test  -v -mod=vendor ./...
-  - export PATH=$(pwd)/bin:$PATH
-  - ./bin/gometalinter --exclude=test --exclude=mock --exclude=vendor --disable-all --enable=errcheck --enable=vet --enable=vetshadow ./...
-  - $GOPATH/bin/goveralls -show -v -service=travis-ci
+  - ./bin/gometalinter --deadline=60s --exclude=test --exclude=mock --exclude=vendor --disable-all --enable=errcheck --enable=vet --enable=vetshadow --enable=megacheck --enable=ineffassign --enable=varcheck --enable=unconvert --enable=deadcode --enable=goimports --enable=interfacer --enable=gotype ./...
+  - $GOPATH/bin/goveralls -show -service=travis-ci
