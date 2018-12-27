@@ -35,7 +35,9 @@ const (
 	jwtHeaderKey   = "X-JWT"
 	xsrfCookieName = "XSRF-TOKEN"
 	xsrfHeaderKey  = "X-XSRF-TOKEN"
-	issuer         = "go-pkgz/token"
+	issuer         = "go-pkgz/auth"
+	tokenDuration  = time.Minute * 15
+	cookieDuration = time.Hour * 24 * 31
 )
 
 // Opts holds constructor params
@@ -72,6 +74,14 @@ func NewService(opts Opts) *Service {
 	setDefault(&res.XSRFHeaderKey, xsrfHeaderKey)
 	setDefault(&res.Issuer, issuer)
 
+	if opts.TokenDuration == 0 {
+		res.TokenDuration = tokenDuration
+	}
+
+	if opts.CookieDuration == 0 {
+		res.CookieDuration = cookieDuration
+	}
+
 	return &res
 }
 
@@ -101,7 +111,7 @@ func (j *Service) Token(claims Claims) (string, error) {
 func (j *Service) Parse(tokenString string) (Claims, error) {
 	parser := jwt.Parser{SkipClaimsValidation: true} // allow parsing of expired tokens
 
-	getAud := func() (aud string, err error) { // parse token without signature check to get siteID
+	getAud := func() (aud string, err error) { // parse token without signature check to get id (aud)
 		preToken, _, err := parser.ParseUnverified(tokenString, &Claims{})
 		if err != nil {
 			return "", errors.Wrap(err, "can't pre-parse token")
@@ -142,7 +152,8 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 }
 
 // Set creates token cookie with xsrf cookie and put it to ResponseWriter
-// accepts claims and sets expiration if none defined. permanent flag means long-living cookie, false makes it session only.
+// accepts claims and sets expiration if none defined. permanent flag means long-living cookie,
+// false makes it session only.
 func (j *Service) Set(w http.ResponseWriter, claims Claims, sessionOnly bool) error {
 	if claims.ExpiresAt == 0 {
 		claims.ExpiresAt = time.Now().Add(j.TokenDuration).Unix()
