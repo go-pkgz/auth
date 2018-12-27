@@ -89,7 +89,7 @@ func (p Service) Handler(w http.ResponseWriter, r *http.Request) {
 		p.LogoutHandler(w, r)
 		return
 	}
-	w.WriteHeader(http.StatusBadRequest)
+	w.WriteHeader(http.StatusNotFound)
 }
 
 // loginHandler - GET /login?from=redirect-back-url&site=siteID&session=1

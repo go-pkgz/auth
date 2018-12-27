@@ -149,6 +149,23 @@ func TestInitProvider(t *testing.T) {
 	assert.Equal(t, "test", res.Name)
 }
 
+func TestInvalidHandler(t *testing.T) {
+	ts, ots := mockProvider(t, 8691, 8692)
+	defer func() {
+		ts.Close()
+		ots.Close()
+	}()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:8691/login_bad")
+	require.Nil(t, err)
+	assert.Equal(t, 404, resp.StatusCode)
+
+	resp, err = client.Post("http://localhost:8691/login", "", nil)
+	require.Nil(t, err)
+	assert.Equal(t, 405, resp.StatusCode)
+}
+
 func mockProvider(t *testing.T, loginPort, authPort int) (*http.Server, *http.Server) {
 
 	provider := Service{
