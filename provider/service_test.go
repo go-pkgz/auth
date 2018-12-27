@@ -140,13 +140,14 @@ func TestLogout(t *testing.T) {
 }
 
 func TestInitProvider(t *testing.T) {
-	params := Params{URL: "url", Cid: "cid", Csecret: "csecret"}
+	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", Issuer: "app-test"}
 	provider := Service{Name: "test", RedirectURL: "redir"}
 	res := initService(params, provider)
 	assert.Equal(t, "cid", res.conf.ClientID)
 	assert.Equal(t, "csecret", res.conf.ClientSecret)
 	assert.Equal(t, "redir", res.RedirectURL)
 	assert.Equal(t, "test", res.Name)
+	assert.Equal(t, "app-test", res.Issuer)
 }
 
 func TestInvalidHandler(t *testing.T) {
