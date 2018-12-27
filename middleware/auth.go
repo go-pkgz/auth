@@ -31,7 +31,7 @@ type Validator interface {
 // with the appropriate signature, ValidatorFunc(f) is a Validator that calls f.
 type ValidatorFunc func(token string, claims token.Claims) bool
 
-// Update calls f(id)
+// Validate calls f(id)
 func (f ValidatorFunc) Validate(token string, claims token.Claims) bool {
 	return f(token, claims)
 }
