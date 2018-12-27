@@ -266,6 +266,27 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	assert.True(t, j.IsExpired(r))
 }
 
+func TestJWT_Reset(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31,
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/valid" {
+			j.Reset(w)
+			w.WriteHeader(200)
+		}
+	}))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/valid")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	assert.Equal(t, "JWT=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0", resp.Header.Get("Set-Cookie"))
+	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
+}
+
 var testClaims = Claims{
 	StandardClaims: jwt.StandardClaims{
 		Id:        "random id",
