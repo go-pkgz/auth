@@ -9,8 +9,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/auth/provider"
+	"github.com/go-pkgz/auth/token"
 )
 
 // Authenticator is top level token object providing middlewares
@@ -53,7 +53,16 @@ var adminUser = token.User{
 }
 
 // Auth middleware adds token from session and populates user info
-func (a *Authenticator) Auth(reqAuth bool) func(http.Handler) http.Handler {
+func (a *Authenticator) Auth(next http.Handler) http.Handler {
+	return a.auth(true)(next)
+}
+
+// Trace middleware doesn't require valid user but if user info presented populates info
+func (a *Authenticator) Trace(next http.Handler) http.Handler {
+	return a.auth(false)(next)
+}
+
+func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 	onError := func(h http.Handler, w http.ResponseWriter, r *http.Request, err error) {
 		if err == nil {

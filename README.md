@@ -4,7 +4,7 @@ This library provides "social login" with Github, Google, Facebook and Yandex.
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
-- JWT with secure cookie and XSRF headers
+- JWT stored in a secure cookie and with XSRF protection. Cookies can be session-only
 - Minimal scopes with user name, id and picture (avatar) only
 - Integrated avatar proxy with FS, boltdb or gridfs storage
 - Support of user-defined storages
@@ -14,11 +14,11 @@ This library provides "social login" with Github, Google, Facebook and Yandex.
 - Ability to store extra information to token and retrieve on login
 - Middleware for easy integration into http routers
 
-## install
+## Install
 
 `go install github.com/go-pkgz/auth`
 
-## usage
+## Usage
 
 Example with chi router:
 
@@ -48,7 +48,7 @@ func main() {
 	// setup http server
 	router := chi.NewRouter()
 	router.Get("/open", openRouteHandler)                            // open api
-	router.With(m.Auth(true)).Get("/private", protectedRouteHandler) // protected api
+	router.With(m.Auth).Get("/private", protectedRouteHandler) // protected api
 
 	// setup auth routes
 	authRoutes, avaRoutes := service.Handlers()
@@ -59,5 +59,11 @@ func main() {
 }
 ```
 
+## Middleware
 
+`github.com/go-pkgz/auth/middleware` provides ready-to-use middleware.
 
+- `middleware.Auth` - requires authenticated user
+- `middleware.Admin` - requires authenticated and admin user
+- `middleware.Trace` - doesn't require authenticated user, but adds user info to request
+  

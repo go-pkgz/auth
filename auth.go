@@ -26,26 +26,26 @@ type Service struct {
 
 // Opts is a full set of all parameters to initialize Service
 type Opts struct {
-	SecretReader   token.Secret
-	ClaimsUpd      token.ClaimsUpdater
-	SecureCookies  bool
-	TokenDuration  time.Duration
-	CookieDuration time.Duration
-	DisableXSRF    bool
+	SecretReader   token.Secret        // reader returns secret for given site id (aud)
+	ClaimsUpd      token.ClaimsUpdater // updater for jwt to add/modify values stored in the token
+	SecureCookies  bool                // makes jwt cookie secure
+	TokenDuration  time.Duration       // token's TTL, refreshed automatically
+	CookieDuration time.Duration       // cookie's TTL. This cookie stores JWT token
+	DisableXSRF    bool                // disable XSRF protection, useful for testing/debugging
 
 	// optional (custom) names for cookies and headers
-	JWTCookieName  string
-	JWTHeaderKey   string
-	XSRFCookieName string
-	XSRFHeaderKey  string
+	JWTCookieName  string // default "JWT"
+	JWTHeaderKey   string // default "X-JWT"
+	XSRFCookieName string // default "XSRF-TOKEN"
+	XSRFHeaderKey  string // default "X-XSRF-TOKEN"
 
-	Issuer string // optional value for iss claim, usually application name
+	Issuer string // optional value for iss claim, usually the application name, default "go-pkgz/auth"
 
-	URL       string
-	Validator middleware.Validator
-	DevPasswd string
+	URL       string               // root url for the rest service, i.e. http://blah.example.com
+	Validator middleware.Validator // validator allows to reject some valid tokens with user-defined logic
+	DevPasswd string               // if presented, allows basic auth with user dev and given password
 
-	AvatarStore avatar.Store
+	AvatarStore avatar.Store // store to save/load avatars
 }
 
 // NewService initializes everything

@@ -32,7 +32,7 @@ func TestJWT_NewDefault(t *testing.T) {
 	assert.Equal(t, "X-JWT", j.JWTHeaderKey)
 	assert.Equal(t, "XSRF-TOKEN", j.XSRFCookieName)
 	assert.Equal(t, "X-XSRF-TOKEN", j.XSRFHeaderKey)
-	assert.Equal(t, "go-pkgz/token", j.Issuer)
+	assert.Equal(t, "go-pkgz/auth", j.Issuer)
 }
 
 func TestJWT_NewNotDefault(t *testing.T) {

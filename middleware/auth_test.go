@@ -25,14 +25,13 @@ func TestAuthJWTCookie(t *testing.T) {
 	a := makeTestAuth(t)
 
 	mux := http.NewServeMux()
-	authMiddleware := a.Auth(true)
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		u, err := GetUserInfo(r)
 		assert.NoError(t, err)
 		assert.Equal(t, token.User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1", Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, u)
 		w.WriteHeader(201)
 	}
-	mux.Handle("/token", authMiddleware(http.HandlerFunc(handler)))
+	mux.Handle("/token", a.Auth(http.HandlerFunc(handler)))
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -177,11 +176,10 @@ func TestAuthNotRequired(t *testing.T) {
 func TestAdminRequired(t *testing.T) {
 	a := makeTestAuth(t)
 	mux := http.NewServeMux()
-	authMiddleware := a.Auth(true)
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(201)
 	}
-	mux.Handle("/token", authMiddleware(a.AdminOnly(http.HandlerFunc(handler))))
+	mux.Handle("/token", a.Auth(a.AdminOnly(http.HandlerFunc(handler))))
 
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -232,7 +230,10 @@ func TestAuthWithSecret(t *testing.T) {
 
 func makeTestMux(t *testing.T, a Authenticator, required bool) http.Handler {
 	mux := http.NewServeMux()
-	authMiddleware := a.Auth(required)
+	authMiddleware := a.Auth
+	if !required {
+		authMiddleware = a.Trace
+	}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(201)
 	}
