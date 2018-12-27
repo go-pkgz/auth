@@ -238,13 +238,3 @@ func mockProvider(t *testing.T, loginPort, authPort int) (*http.Server, *http.Se
 }
 
 func mockKeyStore(aud string) (string, error) { return "12345", nil }
-
-// type mockUserPermissions struct {
-// 	admin    string
-// 	verified string
-// 	blocked  string
-// }
-
-// func (m *mockUserPermissions) IsAdmin(siteID, userID string) bool    { return userID == m.admin }
-// func (m *mockUserPermissions) IsVerified(siteID, userID string) bool { return userID == m.verified }
-// func (m *mockUserPermissions) IsBlocked(siteID, userID string) bool  { return userID == m.blocked }

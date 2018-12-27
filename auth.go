@@ -22,6 +22,7 @@ type Service struct {
 	providers      []provider.Service
 	authMiddleware middleware.Authenticator
 	avatarProxy    *avatar.Proxy
+	issuer         string
 }
 
 // Opts is a full set of all parameters to initialize Service
@@ -78,6 +79,10 @@ func NewService(opts Opts) (*Service, error) {
 			Validator:  opts.Validator,
 			DevPasswd:  opts.DevPasswd,
 		},
+	}
+
+	if opts.Issuer == "" {
+		res.issuer = "go-pkgz/auth"
 	}
 
 	if opts.AvatarStore != nil {
@@ -141,7 +146,7 @@ func (s *Service) AddProvider(name string, cid string, csecret string) {
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
-		Issuer:      s.opts.Issuer,
+		Issuer:      s.issuer,
 		AvatarProxy: s.avatarProxy,
 		Cid:         cid,
 		Csecret:     csecret,

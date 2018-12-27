@@ -25,10 +25,11 @@ const devAuthPort = 8084
 // can run in interactive and non-interactive mode. In interactive mode login attempts will show login form to select
 // desired user name, this is the mode used for development. Non-interactive mode for tests only.
 type DevAuthServer struct {
-	Provider Service
+	Provider  Service
+	Automatic bool
 
-	username   string // unsafe, but fine for dev
-	automatic  bool
+	username string // unsafe, but fine for dev
+
 	iconGen    *identicon.Generator
 	httpServer *http.Server
 	lock       sync.Mutex
@@ -53,14 +54,14 @@ func (d *DevAuthServer) Run() {
 			case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
 
 				// first time it will be called without username and will ask for one
-				if !d.automatic && (r.ParseForm() != nil || r.Form.Get("username") == "") {
+				if !d.Automatic && (r.ParseForm() != nil || r.Form.Get("username") == "") {
 					if _, err = w.Write([]byte(fmt.Sprintf(devUserForm, r.URL.RawQuery))); err != nil {
 						log.Printf("[WARN] can't write, %s", err)
 					}
 					return
 				}
 
-				if !d.automatic {
+				if !d.Automatic {
 					d.username = r.Form.Get("username")
 				}
 

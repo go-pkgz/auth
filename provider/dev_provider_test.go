@@ -22,7 +22,7 @@ func TestDevProvider(t *testing.T) {
 			CookieDuration: time.Hour * 24 * 31,
 		}),
 	}
-	srv := DevAuthServer{Provider: NewDev(params), automatic: true, username: "dev_user"}
+	srv := DevAuthServer{Provider: NewDev(params), Automatic: true, username: "dev_user"}
 
 	router := http.NewServeMux()
 	router.Handle("/auth/dev/", http.HandlerFunc(srv.Provider.Handler))
