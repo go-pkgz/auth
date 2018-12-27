@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-errors/errors"
 	"github.com/go-pkgz/rest"
+	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/middleware"
@@ -51,12 +51,9 @@ type Opts struct {
 }
 
 // NewService initializes everything
-func NewService(opts Opts) (*Service, error) {
+func NewService(opts Opts) *Service {
 
 	// check mandatory options
-	if opts.SecretReader == nil {
-		return nil, errors.New("SecretReader not defined")
-	}
 
 	jwtService := token.NewService(token.Opts{
 		SecretReader:   opts.SecretReader,
@@ -71,6 +68,12 @@ func NewService(opts Opts) (*Service, error) {
 		XSRFHeaderKey:  opts.XSRFHeaderKey,
 		Issuer:         opts.Issuer,
 	})
+
+	if opts.SecretReader == nil {
+		jwtService.SecretReader = token.SecretFunc(func(id string) (string, error) {
+			return "", errors.New("secrets reader not avalibale")
+		})
+	}
 
 	res := Service{
 		opts:       opts,
@@ -95,7 +98,7 @@ func NewService(opts Opts) (*Service, error) {
 		}
 	}
 
-	return &res, nil
+	return &res
 }
 
 // Handlers gets http.Handler for all providers and avatars
@@ -180,4 +183,14 @@ func (s *Service) Provider(name string) (provider.Service, error) {
 		}
 	}
 	return provider.Service{}, errors.Errorf("provider %s not found", name)
+}
+
+// Providers gets all registered providers
+func (s *Service) Providers() []provider.Service {
+	return s.providers
+}
+
+// TokenService returns token.Service
+func (s *Service) TokenService() *token.Service {
+	return s.jwtService
 }

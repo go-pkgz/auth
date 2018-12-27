@@ -31,13 +31,8 @@ func TestNewService(t *testing.T) {
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
 	}
 
-	_, err := NewService(options)
-	assert.NoError(t, err)
-}
-
-func TestNewServiceFailed(t *testing.T) {
-	_, err := NewService(Opts{})
-	assert.NotNil(t, err)
+	svc := NewService(options)
+	assert.NotNil(t, svc)
 }
 
 func TestProvider(t *testing.T) {
@@ -45,10 +40,9 @@ func TestProvider(t *testing.T) {
 		SecretReader: token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 		URL:          "http://127.0.0.1:8080",
 	}
-	svc, err := NewService(options)
-	assert.NoError(t, err)
+	svc := NewService(options)
 
-	_, err = svc.Provider("some provider")
+	_, err := svc.Provider("some provider")
 	assert.EqualError(t, err, "provider some provider not found")
 
 	svc.AddProvider("dev", "cid", "csecret")
@@ -56,6 +50,7 @@ func TestProvider(t *testing.T) {
 	svc.AddProvider("google", "cid", "csecret")
 	svc.AddProvider("facebook", "cid", "csecret")
 	svc.AddProvider("yandex", "cid", "csecret")
+	svc.AddProvider("bad", "cid", "csecret")
 
 	p, err := svc.Provider("dev")
 	assert.NoError(t, err)
@@ -67,6 +62,9 @@ func TestProvider(t *testing.T) {
 	p, err = svc.Provider("github")
 	assert.NoError(t, err)
 	assert.Equal(t, "github", p.Name)
+
+	pp := svc.Providers()
+	assert.Equal(t, 5, len(pp))
 }
 
 func TestIntegrationProtected(t *testing.T) {
@@ -197,8 +195,7 @@ func prepService(t *testing.T) (teardown func()) {
 		ResizeLimit: 120,
 	}
 
-	svc, err := NewService(options)
-	require.NoError(t, err)
+	svc := NewService(options)
 	svc.AddProvider("dev", "", "")           // add dev provider
 	svc.AddProvider("github", "cid", "csec") // add github provider
 
