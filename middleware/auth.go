@@ -81,19 +81,19 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 			// if secret key matches for given site (from request) return admin user
 			if a.checkSecretKey(r) {
-				r = SetUserInfo(r, adminUser)
+				r = token.SetUserInfo(r, adminUser)
 				h.ServeHTTP(w, r)
 				return
 			}
 
 			// use dev user basic token if enabled
 			if a.basicDevUser(r) {
-				r = SetUserInfo(r, devUser)
+				r = token.SetUserInfo(r, devUser)
 				h.ServeHTTP(w, r)
 				return
 			}
 
-			claims, token, err := a.JWTService.Get(r)
+			claims, tkn, err := a.JWTService.Get(r)
 			if err != nil {
 				onError(h, w, r, errors.Wrap(err, "can't get token"))
 				return
@@ -111,7 +111,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 			if claims.User != nil { // if uinfo in token populate it to context
 				// validator passed by client and performs check on token or/and claims
-				if a.Validator != nil && !a.Validator.Validate(token, claims) {
+				if a.Validator != nil && !a.Validator.Validate(tkn, claims) {
 					onError(h, w, r, errors.Errorf("user %s/%s blocked", claims.User.Name, claims.User.ID))
 					a.JWTService.Reset(w)
 					return
@@ -125,7 +125,8 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 					}
 					log.Printf("[DEBUG] token refreshed for %+v", claims.User)
 				}
-				r = SetUserInfo(r, *claims.User) // populate user info to request context
+
+				r = token.SetUserInfo(r, *claims.User) // populate user info to request context
 			}
 
 			h.ServeHTTP(w, r)
@@ -167,7 +168,7 @@ func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.
 func (a *Authenticator) AdminOnly(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 
-		user, err := GetUserInfo(r)
+		user, err := token.GetUserInfo(r)
 		if err != nil {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
