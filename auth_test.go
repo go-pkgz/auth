@@ -120,12 +120,30 @@ func TestIntegration(t *testing.T) {
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 
+	resp, err := client.Get("http://127.0.0.1:8080/private")
+	require.Nil(t, err)
+	assert.Equal(t, 401, resp.StatusCode)
+	defer resp.Body.Close()
+
 	// check non-admin, permanent
-	resp, err := client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
+	resp, err = client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
+	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
+	assert.Equal(t, 2, len(resp.Cookies()))
+	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
+	assert.Equal(t, 86400, resp.Cookies()[0].MaxAge)
+	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
+	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
+
+	resp, err = client.Get("http://127.0.0.1:8080/private")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	defer resp.Body.Close()
+
 }

@@ -37,6 +37,7 @@ type DevAuthServer struct {
 
 // Run oauth2 dev server on port devAuthPort
 func (d *DevAuthServer) Run() {
+	d.username = "dev_user"
 	log.Printf("[INFO] run local oauth2 dev server on %d, redir url=%s", devAuthPort, d.Provider.RedirectURL)
 	d.lock.Lock()
 	var err error
