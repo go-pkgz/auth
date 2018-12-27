@@ -138,7 +138,7 @@ func TestIntegrationList(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, `["dev","github"]`, string(b))
+	assert.Equal(t, `["dev","github"]`+"\n", string(b))
 
 }
 func prepService(t *testing.T) (teardown func()) {
