@@ -80,13 +80,16 @@ func TestIntegrationProtected(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	assert.Equal(t, "Unauthorized\n", string(body))
 
 	// check non-admin, permanent
 	resp, err = client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err = ioutil.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
@@ -138,7 +141,7 @@ func TestIntegrationAvatar(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	resp, err = http.Get("http://127.0.0.1:8080/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image")
+	resp, err = http.Get("http://127.0.0.1:8080/api/v1/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
@@ -213,9 +216,10 @@ func prepService(t *testing.T) (teardown func()) {
 		Validator: middleware.ValidatorFunc(func(_ string, claims token.Claims) bool {
 			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_") // allow only dev_ names
 		}),
-		AvatarStore: avatar.NewLocalFS("/tmp/auth-pkgz"),
-		ResizeLimit: 120,
-		DevPasswd:   "password",
+		AvatarStore:       avatar.NewLocalFS("/tmp/auth-pkgz"),
+		AvatarResizeLimit: 120,
+		AvatarRoutePath:   "/api/v1/avatar",
+		DevPasswd:         "password",
 	}
 
 	svc := NewService(options)
@@ -245,8 +249,8 @@ func prepService(t *testing.T) (teardown func()) {
 
 	// setup auth routes
 	authRoute, avaRoutes := svc.Handlers()
-	mux.Handle("/auth/", authRoute)                                // add token handlers
-	mux.Handle("/avatar/", http.StripPrefix("/avatar", avaRoutes)) // add avatar handler
+	mux.Handle("/auth/", authRoute)                                              // add token handlers
+	mux.Handle("/api/v1/avatar/", http.StripPrefix("/api/v1/avatar", avaRoutes)) // add avatar handler
 
 	l, err := net.Listen("tcp", "127.0.0.1:8080")
 	require.Nil(t, err)

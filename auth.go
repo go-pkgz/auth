@@ -44,10 +44,12 @@ type Opts struct {
 
 	URL       string               // root url for the rest service, i.e. http://blah.example.com
 	Validator middleware.Validator // validator allows to reject some valid tokens with user-defined logic
-	DevPasswd string               // if presented, allows basic auth with user dev and given password
 
-	AvatarStore avatar.Store // store to save/load avatars
-	ResizeLimit int          // resize avatar's limit
+	AvatarStore       avatar.Store // store to save/load avatars
+	AvatarResizeLimit int          // resize avatar's limit in pixels
+	AvatarRoutePath   string       // avatar routing prefix, i.e. "/api/v1/avatar"
+
+	DevPasswd string // if presented, allows basic auth with user dev and given password
 }
 
 // NewService initializes everything
@@ -93,8 +95,8 @@ func NewService(opts Opts) *Service {
 		res.avatarProxy = &avatar.Proxy{
 			Store:       opts.AvatarStore,
 			URL:         opts.URL,
-			RoutePath:   "/avatar",
-			ResizeLimit: opts.ResizeLimit,
+			RoutePath:   opts.AvatarRoutePath,
+			ResizeLimit: opts.AvatarResizeLimit,
 		}
 	}
 
