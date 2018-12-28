@@ -57,7 +57,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 			h.ServeHTTP(w, r)
 			return
 		}
-		log.Printf("[DEBUG] failed token, %s", err)
+		log.Printf("[DEBUG] auth failed, %s", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 	}
 
@@ -181,18 +181,18 @@ func (a *Authenticator) basicDevUser(r *http.Request) bool {
 
 	b, err := base64.StdEncoding.DecodeString(s[1])
 	if err != nil {
-		log.Printf("[WARN] dev user token failed, failed to decode %s, %s", s[1], err)
+		log.Printf("[WARN] dev user auth failed, can't to decode %s, %s", s[1], err)
 		return false
 	}
 
 	pair := strings.SplitN(string(b), ":", 2)
 	if len(pair) != 2 {
-		log.Printf("[WARN] dev user token failed, failed to split %s", string(b))
+		log.Printf("[WARN] dev user auth failed, can't split basic auth %s", string(b))
 		return false
 	}
 
 	if pair[0] != "dev" || pair[1] != a.DevPasswd {
-		log.Printf("[WARN] dev user token failed, user/passwd mismatch %+v", pair)
+		log.Printf("[WARN] dev user auth failed, user/passwd mismatch %+v", pair)
 		return false
 	}
 
