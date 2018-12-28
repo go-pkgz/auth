@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -162,6 +163,33 @@ func TestIntegrationList(t *testing.T) {
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, `["dev","github"]`+"\n", string(b))
+}
+
+func TestIntegrationUserInfo(t *testing.T) {
+	teardown := prepService(t)
+	defer teardown()
+
+	resp, err := http.Get("http://127.0.0.1:8080/auth/user")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 400, resp.StatusCode)
+
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	// login
+	resp, err = client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	defer resp.Body.Close()
+
+	u := token.User{}
+	err = json.NewDecoder(resp.Body).Decode(&u)
+	require.NoError(t, err)
+
+	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user",
+		Picture: "http://127.0.0.1:8080/api/v1/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image"}, u)
 }
 
 func TestLogout(t *testing.T) {

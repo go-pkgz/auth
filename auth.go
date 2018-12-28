@@ -107,7 +107,7 @@ func NewService(opts Opts) *Service {
 // Handlers gets http.Handler for all providers and avatars
 func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handler) {
 
-	providerHandler := func(w http.ResponseWriter, r *http.Request) {
+	ah := func(w http.ResponseWriter, r *http.Request) {
 		elems := strings.Split(r.URL.Path, "/")
 		if len(elems) < 2 {
 			w.WriteHeader(http.StatusBadRequest)
@@ -130,6 +130,17 @@ func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handl
 			return
 		}
 
+		// show user info
+		if elems[len(elems)-1] == "user" {
+			u, err := token.GetUserInfo(r)
+			if err != nil {
+				rest.SendErrorJSON(w, r, 400, err, "can't get user info")
+			}
+			rest.RenderJSON(w, r, u)
+			return
+		}
+
+		// regular auth handlers
 		provName := elems[len(elems)-2]
 		p, err := s.Provider(provName)
 		if err != nil {
@@ -140,7 +151,7 @@ func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handl
 		p.Handler(w, r)
 	}
 
-	return http.HandlerFunc(providerHandler), http.HandlerFunc(s.avatarProxy.Handler)
+	return http.HandlerFunc(ah), http.HandlerFunc(s.avatarProxy.Handler)
 }
 
 // Middleware returns token middleware
