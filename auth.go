@@ -42,8 +42,8 @@ type Opts struct {
 
 	Issuer string // optional value for iss claim, usually the application name, default "go-pkgz/auth"
 
-	URL       string               // root url for the rest service, i.e. http://blah.example.com
-	Validator middleware.Validator // validator allows to reject some valid tokens with user-defined logic
+	URL       string          // root url for the rest service, i.e. http://blah.example.com
+	Validator token.Validator // validator allows to reject some valid tokens with user-defined logic
 
 	AvatarStore       avatar.Store // store to save/load avatars
 	AvatarResizeLimit int          // resize avatar's limit in pixels
@@ -54,8 +54,6 @@ type Opts struct {
 
 // NewService initializes everything
 func NewService(opts Opts) *Service {
-
-	// check mandatory options
 
 	jwtService := token.NewService(token.Opts{
 		SecretReader:   opts.SecretReader,
@@ -195,4 +193,9 @@ func (s *Service) Providers() []provider.Service {
 // TokenService returns token.Service
 func (s *Service) TokenService() *token.Service {
 	return s.jwtService
+}
+
+// AvatarProxy returns stored in service
+func (s *Service) AvatarProxy() *avatar.Proxy {
+	return s.avatarProxy
 }

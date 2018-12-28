@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-pkgz/auth/avatar"
-	"github.com/go-pkgz/auth/middleware"
 	"github.com/go-pkgz/auth/provider"
 	"github.com/go-pkgz/auth/token"
 )
@@ -213,7 +212,7 @@ func prepService(t *testing.T) (teardown func()) {
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		DisableXSRF:    true,
-		Validator: middleware.ValidatorFunc(func(_ string, claims token.Claims) bool {
+		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
 			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_") // allow only dev_ names
 		}),
 		AvatarStore:       avatar.NewLocalFS("/tmp/auth-pkgz"),

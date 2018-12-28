@@ -94,7 +94,7 @@ func TestAuthJWTHeader(t *testing.T) {
 
 func TestAuthJWtBlocked(t *testing.T) {
 	a := makeTestAuth(t)
-	a.Validator = ValidatorFunc(func(token string, claims token.Claims) bool { return false })
+	a.Validator = token.ValidatorFunc(func(token string, claims token.Claims) bool { return false })
 	server := httptest.NewServer(makeTestMux(t, a, true))
 	defer server.Close()
 
@@ -257,6 +257,6 @@ func makeTestAuth(t *testing.T) Authenticator {
 	return Authenticator{
 		DevPasswd:  "123456",
 		JWTService: j,
-		Validator:  ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
+		Validator:  token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
 	}
 }
