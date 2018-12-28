@@ -1,4 +1,6 @@
-# auth - authentication via oauth2 [![Build Status](https://travis-ci.org/go-pkgz/auth.svg?branch=master)](https://travis-ci.org/go-pkgz/auth) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master)
+# auth - authentication via oauth2 [![Build Status](https://travis-ci.org/go-pkgz/auth.svg?branch=master)](https://travis-ci.org/go-pkgz/auth) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth?status.svg)](https://godoc.org/github.com/go-pkgz/auth)
+
+
 
 This library provides "social login" with Github, Google, Facebook and Yandex.  
 
@@ -83,7 +85,7 @@ Generally, adding support of `auth` includes a few relatively simple steps:
 1. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/auth.go#L144) and [http handlers](https://github.com/go-pkgz/auth/blob/master/auth.go#L105) from `auth.Service`
 1. Wire auth and avatar handlers into http router as sub–routes.
 
-For the example above authentication handlers wired as `/auth` and provide:
+For the example above authentication handlers wired as `/auth` and provides:
 
 - `/auth/<provider>/login?id=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login.
 - `/avatar/<avatar_id>` - returns the avatar (image). Links to those pictures added into user info automatically, for details see "Avatar proxy"
@@ -94,12 +96,12 @@ For the example above authentication handlers wired as `/auth` and provide:
 
 Middleware populates `token.User` to request's context. It can be loaded with `token.GetUserInfo(r *http.Request) (user User, err error)` or `token.MustGetUserInfo(r *http.Request) User` functions.
 
-`token.User` object includes all fileds retrieved from oauth2 provider:
+`token.User` object includes all fields retrieved from oauth2 provider:
 - `Name` - user name
 - `ID` - hash of user id
 - `Picture` - full link to proxied avatar (see "Avatar proxy")
 
-It also has placeholders for fileds application can populate with custom `token.ClaimsUpdater` (see "Customization")
+It also has placeholders for fields application can populate with custom `token.ClaimsUpdater` (see "Customization")
 
 - `IP`  - hash of user's IP address
 - `Email` - user's email
@@ -116,7 +118,7 @@ Direct links to avatars won't survive any real-life usage if they linked from a 
 - User can leverage one of provided stores:
     - `avatar.LocalFS` - file system, each avatar in a separate file
     - `avatar.BoltDB`  - a single [boltdb](https://github.com/coreos/bbolt) file (embedded KV store).
-    - `avatart.GridFS` - external [GridFS](https://docs.mongodb.com/manual/core/gridfs/) (mongo db).
+    - `avatar.GridFS` - external [GridFS](https://docs.mongodb.com/manual/core/gridfs/) (mongo db).
 - In case of need a custom implementation of other stores can be passed in and used by `auth` library. Each store has to implement `avatar.Store` [interface](https://github.com/go-pkgz/auth/blob/master/avatar/store.go#L25).
 - All avatar-related setup done as a part of `auth.Opts` and needs:
     - `AvatarStore` - avatar store to use, i.e. `avatar.NewLocalFS("/tmp/avatars")`
