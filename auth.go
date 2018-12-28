@@ -27,7 +27,7 @@ type Service struct {
 
 // Opts is a full set of all parameters to initialize Service
 type Opts struct {
-	SecretReader   token.Secret        // reader returns secret for given site id (aud)
+	SecretReader   token.Secret        // reader returns secret for given site id (aud), required
 	ClaimsUpd      token.ClaimsUpdater // updater for jwt to add/modify values stored in the token
 	SecureCookies  bool                // makes jwt cookie secure
 	TokenDuration  time.Duration       // token's TTL, refreshed automatically
@@ -42,12 +42,12 @@ type Opts struct {
 
 	Issuer string // optional value for iss claim, usually the application name, default "go-pkgz/auth"
 
-	URL       string          // root url for the rest service, i.e. http://blah.example.com
+	URL       string          // root url for the rest service, i.e. http://blah.example.com, required
 	Validator token.Validator // validator allows to reject some valid tokens with user-defined logic
 
-	AvatarStore       avatar.Store // store to save/load avatars
+	AvatarStore       avatar.Store // store to save/load avatars, required
 	AvatarResizeLimit int          // resize avatar's limit in pixels
-	AvatarRoutePath   string       // avatar routing prefix, i.e. "/api/v1/avatar"
+	AvatarRoutePath   string       // avatar routing prefix, i.e. "/api/v1/avatar", default `/avatar`
 
 	DevPasswd string // if presented, allows basic auth with user dev and given password
 }
@@ -71,7 +71,7 @@ func NewService(opts Opts) *Service {
 
 	if opts.SecretReader == nil {
 		jwtService.SecretReader = token.SecretFunc(func(id string) (string, error) {
-			return "", errors.New("secrets reader not avalibale")
+			return "", errors.New("secrets reader not available")
 		})
 	}
 
@@ -96,6 +96,10 @@ func NewService(opts Opts) *Service {
 			RoutePath:   opts.AvatarRoutePath,
 			ResizeLimit: opts.AvatarResizeLimit,
 		}
+	}
+
+	if opts.AvatarRoutePath == "" {
+		res.avatarProxy.RoutePath = "/avatar"
 	}
 
 	return &res
