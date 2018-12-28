@@ -123,7 +123,7 @@ Direct links to avatars won't survive any real-life usage if they linked from a 
     - `AvatarRoutePath` - route prefix for direct links to proxied avatar. For example `/api/v1/avatars` will make full links links this - `http://example.com/api/v1/avatars/1234567890123.image`. The url will be stored in user's token and retrieved by middleware (see "User Info")
     - `AvatarResizeLimit` - size (in pixel) used to resize avatar. Pls note - resize happens once as a part of `Put` call, i.e. on login. 0 size (default) disables resizing.      
 
-## Customization
+### Customization
 
 There are multiple ways to adjust functionality of the library:
 
