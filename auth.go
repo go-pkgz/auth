@@ -96,10 +96,9 @@ func NewService(opts Opts) *Service {
 			RoutePath:   opts.AvatarRoutePath,
 			ResizeLimit: opts.AvatarResizeLimit,
 		}
-	}
-
-	if opts.AvatarRoutePath == "" {
-		res.avatarProxy.RoutePath = "/avatar"
+		if res.avatarProxy.RoutePath == "" {
+			res.avatarProxy.RoutePath = "/avatar"
+		}
 	}
 
 	return &res

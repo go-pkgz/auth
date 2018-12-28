@@ -92,7 +92,7 @@ func TestIntegrationProtected(t *testing.T) {
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
-	assert.Equal(t, 2, len(resp.Cookies()))
+	require.Equal(t, 2, len(resp.Cookies()))
 	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
 	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
 	assert.Equal(t, 86400, resp.Cookies()[0].MaxAge)
@@ -143,7 +143,7 @@ func TestIntegrationAvatar(t *testing.T) {
 	resp, err = http.Get("http://127.0.0.1:8080/api/v1/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image")
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, 200, resp.StatusCode)
 
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
