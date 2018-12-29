@@ -33,6 +33,12 @@ a {
 	letter-spacing: normal;
 }
 
+@media screen and (max-width: 34em) {
+	.pretitle {
+		display: block;
+	}
+}
+
 .title {
 	font-size: 3rem;
 	letter-spacing: 0.05em;
