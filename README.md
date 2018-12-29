@@ -6,9 +6,9 @@ This library provides "social login" with Github, Google, Facebook and Yandex.
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
-- JWT stored in a secure cookie and with XSRF protection. Cookies can be session-only
+- JWT stored in a secure cookie with XSRF protection. Cookies can be session-only
 - Minimal scopes with user name, id and picture (avatar) only
-- Integrated avatar proxy with FS, boltdb or gridfs storage
+- Integrated avatar proxy with FS, boltdb and gridfs storages
 - Support of user-defined storages for avatars
 - Black list with user-defined validator
 - Multiple aud (audience) supported
@@ -79,10 +79,10 @@ func main() {
 Generally, adding support of `auth` includes a few relatively simple steps:
 
 1. Setup `auth.Opts` structure with all parameters. Each of them [documented](https://github.com/go-pkgz/auth/blob/master/auth.go#L29) and most of parameters are optional and have sane defaults.
-1. [Create](https://github.com/go-pkgz/auth/blob/master/auth.go#L56) the new `auth.Service` with provided options.
-1. [Add all](https://github.com/go-pkgz/auth/blob/master/auth.go#L149) desirable authentication providers. Currently supported Github, Google, Facebook and Yandex 
-1. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/auth.go#L144) and [http handlers](https://github.com/go-pkgz/auth/blob/master/auth.go#L105) from `auth.Service`
-1. Wire auth and avatar handlers into http router as sub–routes.
+2. [Create](https://github.com/go-pkgz/auth/blob/master/auth.go#L56) the new `auth.Service` with provided options.
+3. [Add all](https://github.com/go-pkgz/auth/blob/master/auth.go#L149) desirable authentication providers. Currently supported Github, Google, Facebook and Yandex 
+4. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/auth.go#L144) and [http handlers](https://github.com/go-pkgz/auth/blob/master/auth.go#L105) from `auth.Service`
+5. Wire auth and avatar handlers into http router as sub–routes.
 
 ### API
 
@@ -129,14 +129,26 @@ Direct links to avatars won't survive any real-life usage if they linked from a 
 
 ### Customization
 
-There are multiple ways to adjust functionality of the library:
+There are several ways to adjust functionality of the library:
 
 1. `SecretReader` - interface with a single method `Get(aud string) string` to return secret used to sign/verify JWT
-1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter the token at login time
-and add any attributes, set ip/email and so on.
-1. `Validator` - interface with `Validate(token string, claims Claims) bool`. This is post-token hook, and will be called on each request wrapped with `Auth` middleware. Here some special logic can be handled to reject some token and/or users.
+1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter the token at login time and add any attributes, set ip/email and so on.
+2. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on each request wrapped with `Auth` middleware. This will be the place for some special logic to reject some token and/or users.
 
-All of those interfaces have corresponding Func wrappers (adapters) - `SecretFunc`, `ClaimsUpdFunc` and `ValidatorFunc`
+All of those interfaces have corresponding Func wrappers (adapters) - `SecretFunc`, `ClaimsUpdFunc` and `ValidatorFunc`.
+
+### Implementing black list logic or some other filters
+
+Restricting some users or some tokens is two step process:
+
+- `ClaimsUpdater` sets some attributes, like `blocked` (or `allowed`)
+- `Validator` checks those attributes and returns true/false 
+
+_This technic used in [example](https://github.com/go-pkgz/auth/blob/master/_example/backend/main.go#L27) code_
+
+The process can be simplified by doing all checks directly in `Validator`, but depends on particular case such solution
+can be too expensive because `Validator` runs on each request as a part of auth middleware. In contrast, `ClaimsUpdater` called on token creation/refresh only.
+
 
 ### Dev provider
 
@@ -164,11 +176,11 @@ Authentication handled by external providers. You should setup oauth2 for all (o
 #### Google Auth Provider
 
 1.  Create a new project: https://console.developers.google.com/project
-1.  Choose the new project from the top right project dropdown (only if another project is selected)
-1.  In the project Dashboard center pane, choose **"API Manager"**
-1.  In the left Nav pane, choose **"Credentials"**
-1.  In the center pane, choose **"OAuth consent screen"** tab. Fill in **"Product name shown to users"** and hit save.
-1.  In the center pane, choose **"Credentials"** tab.
+2.  Choose the new project from the top right project dropdown (only if another project is selected)
+3.  In the project Dashboard center pane, choose **"API Manager"**
+4.  In the left Nav pane, choose **"Credentials"**
+5.  In the center pane, choose **"OAuth consent screen"** tab. Fill in **"Product name shown to users"** and hit save.
+6.  In the center pane, choose **"Credentials"** tab.
     * Open the **"New credentials"** drop down
     * Choose **"OAuth client ID"**
     * Choose **"Web application"**
@@ -176,7 +188,7 @@ Authentication handled by external providers. You should setup oauth2 for all (o
     * Authorized origins is your domain ex: `https://example.mysite.com`
     * Authorized redirect URIs is the location of oauth2/callback constructed as domain + `/auth/google/callback`, ex: `https://example.mysite.com/auth/google/callback`
     * Choose **"Create"**
-2.  Take note of the **Client ID** and **Client Secret**
+7.  Take note of the **Client ID** and **Client Secret**
 
 _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://github.com/bitly/oauth2_proxy)_
 
