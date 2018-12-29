@@ -2,10 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -76,6 +77,11 @@ func main() {
 		r.Get("/private_data", protectedDataHandler) // protected api
 	})
 
+	// static files under ~/web
+	workDir, _ := os.Getwd()
+	filesDir := filepath.Join(workDir, "web")
+	fileServer(router, "/web", http.Dir(filesDir))
+
 	// setup auth routes
 	authRoutes, avaRoutes := service.Handlers()
 	router.Mount("/auth", authRoutes)  // add auth handlers
@@ -84,20 +90,53 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
 
-// GET /open
+// FileServer conveniently sets up a http.FileServer handler to serve static files from a http.FileSystem.
+// Borrowed from https://github.com/go-chi/chi/blob/master/_examples/fileserver/main.go
+func fileServer(r chi.Router, path string, root http.FileSystem) {
+	if strings.ContainsAny(path, "{}*") {
+		panic("FileServer does not permit URL parameters.")
+	}
+
+	log.Printf("[INFO] serving static files from %v", root)
+	fs := http.StripPrefix(path, http.FileServer(root))
+
+	if path != "/" && path[len(path)-1] != '/' {
+		r.Get(path, http.RedirectHandler(path+"/", 301).ServeHTTP)
+		path += "/"
+	}
+	path += "*"
+
+	r.Get(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fs.ServeHTTP(w, r)
+	}))
+}
+
+// GET /open returns a page available without authorization
 func openRouteHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("this is an open route, no token needed\n"))
 }
 
-// GET /private returns complete page for authenticated users only
+// GET /private returns a complete generated (from template) page for authenticated users only
 func protectedPageHandler(w http.ResponseWriter, r *http.Request) {
 	u := token.MustGetUserInfo(r)
+	t, err := template.New("page").Parse(pageTmpl)
+	if err != nil {
+		rest.SendErrorJSON(w, r, 500, err, "can't parse template")
+		return
+	}
+
 	b, err := json.MarshalIndent(u, "", "    ")
 	if err != nil {
-		rest.SendErrorJSON(w, r, 500, err, "can't parse user info")
+		rest.SendErrorJSON(w, r, 500, err, "can't format user info")
+		return
 	}
-	p := fmt.Sprintf(page, string(b), u.Picture)
-	_, _ = w.Write([]byte(p))
+
+	user := struct {
+		UserInfo string
+		Picture  string
+	}{UserInfo: string(b), Picture: u.Picture}
+
+	t.Execute(w, user)
 }
 
 // GET /private_data returns json with user info and ts
@@ -122,7 +161,7 @@ func protectedDataHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, r, res)
 }
 
-var page = `
+var pageTmpl = `
 <html lang="en">
 
 <head>
@@ -147,13 +186,16 @@ var page = `
 		article {
 			display: block;
 			text-align: left;
-			max-width: 640px;
+			max-width: 800px;
 			margin: 0 auto;
 		}
+
 		pre {
 			font-size: 0.8em;
 			margin: 5px;
+			padding: 10px;
 			color: #833;
+			background-color: #EEE;
 		}
 		h1 {
 			font-size: 50px;
@@ -173,6 +215,10 @@ var page = `
 			color: rgb(94, 167, 177);
 			text-decoration: underline;
 		}
+		img {
+			  padding: 5px;
+			  background-color: #888;
+		}
 		</style>
 </head>
 
@@ -180,10 +226,11 @@ var page = `
   <article>
     <h1>protected page</h1>
     <div>
-      <p>This page available to authorized users only!</p>
-	  
-	  <p>user details: <pre>%+v</pre></p>
-	  <p><img src="%s"/></p>
+	  <p>This page available to authorized users only! </p>
+	  <div>
+	      <img src="{{.Picture}}"/>
+		  <p>user details: <pre>{{.UserInfo}} </pre></p>
+	  </div>	  
 	  <p><a href="https://github.com/go-pkgz/auth">source on github</a></p>
       <p>&mdash; Umputun</p>
     </div>
