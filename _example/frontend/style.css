@@ -9,6 +9,11 @@ a {
 	text-decoration-color: hsla(200, 60%, 50%, 0.5);
 }
 
+hr {
+	border: none;
+	border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
 .minititle {
 	/* font-weight: bold; */
 	opacity: 0.6;
@@ -111,4 +116,9 @@ td:nth-child(3) {
 	.info__image-wide {
 		display: none;
 	}
+}
+
+.footer {
+	margin-top: 4rem;
+	color: rgba(0, 0, 0, 0.6);
 }
