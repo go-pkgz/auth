@@ -137,7 +137,25 @@ and add any attributes, set ip/email and so on.
 1. `Validator` - interface with `Validate(token string, claims Claims) bool`. This is post-token hook, and will be called on each request wrapped with `Auth` middleware. Here some special logic can be handled to reject some token and/or users.
 
 All of those interfaces have corresponding Func wrappers (adapters) - `SecretFunc`, `ClaimsUpdFunc` and `ValidatorFunc`
-    
+
+### Dev provider
+
+Working with oauth2 providers can be a pain, especially during development phase. A special, development-only provider `dev` can make it less painful. This one can be registered directly, i.e. `service.AddProvider("dev", "", "")` and should be activated like this:
+
+```go
+	// runs dev oauth2 server on :8084
+	go func() {
+		p, err := service.Provider("dev")
+		if err != nil {
+			log.Fatal(err)
+		}
+		devAuthServer := provider.DevAuthServer{Provider: p}
+		devAuthServer.Run()
+	}()
+```
+
+It will run fake aouth2 "server" on port :8084 and you could login with any user name. See [example](https://github.com/go-pkgz/auth/blob/master/_example/backend/main.go) for more details. 
+
     
 ## Register oauth2 providers
 
