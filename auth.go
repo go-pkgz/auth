@@ -134,7 +134,7 @@ func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handl
 		if elems[len(elems)-1] == "user" {
 			u, err := token.GetUserInfo(r)
 			if err != nil {
-				rest.SendErrorJSON(w, r, 400, err, "can't get user info")
+				rest.SendErrorJSON(w, r, http.StatusUnauthorized, err, "not authorized")
 				return
 			}
 			rest.RenderJSON(w, r, u)
