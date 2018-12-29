@@ -131,18 +131,18 @@ Direct links to avatars won't survive any real-life usage if they linked from a 
 
 There are several ways to adjust functionality of the library:
 
-1. `SecretReader` - interface with a single method `Get(aud string) string` to return secret used to sign/verify JWT
-1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter the token at login time and add any attributes, set ip/email and so on.
-2. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on each request wrapped with `Auth` middleware. This will be the place for some special logic to reject some token and/or users.
+1. `SecretReader` - interface with a single method `Get(aud string) string` to return secret used for JWT signing and verification
+1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status and so on.
+2. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on **each request** wrapped with `Auth` middleware. This will be the place for special logic to reject some tokens or users.
 
-All of those interfaces have corresponding Func wrappers (adapters) - `SecretFunc`, `ClaimsUpdFunc` and `ValidatorFunc`.
+All of interfaces have corresponding Func wrappers (adapters) - `SecretFunc`, `ClaimsUpdFunc` and `ValidatorFunc`.
 
 ### Implementing black list logic or some other filters
 
 Restricting some users or some tokens is two step process:
 
-- `ClaimsUpdater` sets some attributes, like `blocked` (or `allowed`)
-- `Validator` checks those attributes and returns true/false 
+- `ClaimsUpdater` sets an attribute, like `blocked` (or `allowed`)
+- `Validator` checks the attribute and returns true/false 
 
 _This technic used in the [example](https://github.com/go-pkgz/auth/blob/master/_example/backend/main.go#L27) code_
 
