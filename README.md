@@ -226,4 +226,6 @@ For more details refer to [Yandex OAuth](https://tech.yandex.com/oauth/doc/dg/co
 
 ## Status 
 
-The library extracted from [remark42](https://github.com/umputun/remark) project. The code in production use on multiple sites and seems to work fine.
+The library extracted from [remark42](https://github.com/umputun/remark) project. The original code in production use on multiple sites and seems to work fine. 
+
+`go-pkgz/auth` library still in beta and until version 1 released some breaking changes still possible.
