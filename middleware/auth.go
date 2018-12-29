@@ -85,7 +85,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 			}
 
 			if claims.Handshake != nil { // handshake in token indicate special use cases, not for login
-				onError(h, w, r, errors.Errorf("invalid kind of token for %s/%s", claims.User.Name, claims.User.ID))
+				onError(h, w, r, errors.New("invalid kind of token"))
 				return
 			}
 
