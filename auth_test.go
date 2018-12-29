@@ -184,10 +184,9 @@ func TestIntegrationUserInfo(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
 
+	//get user info
 	req, err := http.NewRequest("GET", "http://127.0.0.1:8080/auth/user", nil)
 	require.NoError(t, err)
-	req.AddCookie(resp.Cookies()[0])
-	req.AddCookie(resp.Cookies()[1])
 	t.Log(resp.Cookies())
 	resp, err = client.Do(req)
 	require.NoError(t, err)
