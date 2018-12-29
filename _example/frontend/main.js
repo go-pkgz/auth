@@ -1,9 +1,3 @@
-const XSRFIDENTIFIER = "go-pkgz-auth/xsrf-token";
-
-function getXSRFToken() {
-	return localStorage.getItem("go-pkgz-auth/xsrf-token");
-}
-
 function getCookies() {
 	return document.cookie.split("; ").reduce((c, x) => {
 		const splitted = x.split("=");
@@ -156,7 +150,11 @@ function getUserInfoFragment(user) {
 		keytd.textContent = key;
 
 		let valtd = document.createElement("td");
-		valtd.textContent = user[key];
+		if (typeof user[key] === "object") {
+			valtd.textContent = JSON.stringify(user[key]);
+		} else {
+			valtd.textContent = user[key];
+		}
 		tr.appendChild(keytd);
 		tr.appendChild(valtd);
 		table.appendChild(tr);
@@ -165,6 +163,10 @@ function getUserInfoFragment(user) {
 }
 
 function main() {
+	if (window.location.search.indexOf("?close=true") !== -1) {
+		document.body.textContent = "Logged in!";
+		return;
+	}
 	return getUser().then(user => {
 		const loginContainer = document.querySelector(".login");
 		const statusElement = document.querySelector(".status__label");
