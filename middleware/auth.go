@@ -142,7 +142,8 @@ func (a *Authenticator) checkSecretKey(r *http.Request) bool {
 
 // refreshExpiredToken makes new token with passed claims, but only if permission allowed
 func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.Claims) (token.Claims, error) {
-	// refresh token
+
+	claims.ExpiresAt = 0 // this will cause now+duration for refreshed token
 	if err := a.JWTService.Set(w, claims, false); err != nil {
 		return token.Claims{}, err
 	}

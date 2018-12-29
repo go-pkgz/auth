@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -90,6 +91,34 @@ func TestAuthJWTHeader(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
+}
+
+func TestAuthJWTRefresh(t *testing.T) {
+	a := makeTestAuth(t)
+	server := httptest.NewServer(makeTestMux(t, a, true))
+	defer server.Close()
+
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	req, err := http.NewRequest("GET", server.URL+"/token", nil)
+	require.NoError(t, err)
+	req.Header.Add("X-JWT", testJwtExpired)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
+
+	cookies := resp.Cookies()
+	assert.Equal(t, 2, len(cookies))
+	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+	t.Log(resp.Cookies()[0].Value)
+	assert.True(t, resp.Cookies()[0].Value != testJwtExpired, "jwt token changed")
+
+	claims, err := a.JWTService.Parse(resp.Cookies()[0].Value)
+	assert.NoError(t, err)
+	ts := time.Unix(claims.ExpiresAt, 0)
+	assert.True(t, ts.After(time.Now()), "expiration in the future")
+	log.Print(time.Unix(claims.ExpiresAt, 0))
 }
 
 func TestAuthJWtBlocked(t *testing.T) {
