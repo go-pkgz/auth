@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"errors"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -162,7 +161,7 @@ func TestAuthWithBasic(t *testing.T) {
 	client := &http.Client{Timeout: 1 * time.Second}
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
-	req.SetBasicAuth("dev", "123456")
+	req.SetBasicAuth("admin", "123456")
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "valid token user")
@@ -216,45 +215,18 @@ func TestAdminRequired(t *testing.T) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
-	req.SetBasicAuth("dev", "123456")
+	req.SetBasicAuth("admin", "123456")
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "valid token user, admin")
 
-	devUser.SetAdmin(false)
+	adminUser.SetAdmin(false)
 	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
-	req.SetBasicAuth("dev", "123456")
+	req.SetBasicAuth("admin", "123456")
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode, "valid token user, not admin")
-}
-
-func TestAuthWithSecret(t *testing.T) {
-
-	jwtService := token.NewService(token.Opts{
-		SecretReader: token.SecretFunc(func(aud string) (string, error) {
-			if aud != "test" {
-				return "", errors.New("err")
-			}
-			return "secretkey", nil
-		})})
-
-	a := Authenticator{DevPasswd: "123456", JWTService: jwtService}
-	server := httptest.NewServer(makeTestMux(t, a, true))
-	defer server.Close()
-
-	resp, err := http.Get(server.URL + "/auth?secret=secretkey&aud=test")
-	require.NoError(t, err)
-	assert.Equal(t, 201, resp.StatusCode, "valid token user with secret, admin")
-
-	resp, err = http.Get(server.URL + "/auth?secret=secretkey&aud=bad")
-	require.NoError(t, err)
-	assert.Equal(t, 401, resp.StatusCode, "invalid aud for secret")
-
-	resp, err = http.Get(server.URL + "/auth?secret=badsecret&aud=test")
-	require.NoError(t, err)
-	assert.Equal(t, 401, resp.StatusCode, "invalid token with bad secret")
 }
 
 func makeTestMux(t *testing.T, a Authenticator, required bool) http.Handler {
@@ -284,8 +256,8 @@ func makeTestAuth(t *testing.T) Authenticator {
 	})
 
 	return Authenticator{
-		DevPasswd:  "123456",
-		JWTService: j,
-		Validator:  token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
+		AdminPasswd: "123456",
+		JWTService:  j,
+		Validator:   token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
 	}
 }

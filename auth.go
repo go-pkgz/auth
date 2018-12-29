@@ -50,7 +50,7 @@ type Opts struct {
 	AvatarResizeLimit int          // resize avatar's limit in pixels
 	AvatarRoutePath   string       // avatar routing prefix, i.e. "/api/v1/avatar", default `/avatar`
 
-	DevPasswd string // if presented, allows basic auth with user dev and given password
+	AdminPasswd string // if presented, allows basic auth with user admin and given password
 }
 
 // NewService initializes everything
@@ -80,9 +80,9 @@ func NewService(opts Opts) *Service {
 		opts:       opts,
 		jwtService: jwtService,
 		authMiddleware: middleware.Authenticator{
-			JWTService: jwtService,
-			Validator:  opts.Validator,
-			DevPasswd:  opts.DevPasswd,
+			JWTService:  jwtService,
+			Validator:   opts.Validator,
+			AdminPasswd: opts.AdminPasswd,
 		},
 	}
 
