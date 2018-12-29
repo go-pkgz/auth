@@ -172,7 +172,7 @@ func TestIntegrationUserInfo(t *testing.T) {
 	resp, err := http.Get("http://127.0.0.1:8080/auth/user")
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, 400, resp.StatusCode)
+	assert.Equal(t, 401, resp.StatusCode)
 
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
@@ -183,6 +183,16 @@ func TestIntegrationUserInfo(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
+
+	req, err := http.NewRequest("GET", "http://127.0.0.1:8080/auth/user", nil)
+	require.NoError(t, err)
+	req.AddCookie(resp.Cookies()[0])
+	req.AddCookie(resp.Cookies()[1])
+	t.Log(resp.Cookies())
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, 200, resp.StatusCode)
 
 	u := token.User{}
 	err = json.NewDecoder(resp.Body).Decode(&u)
