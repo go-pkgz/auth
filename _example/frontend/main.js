@@ -13,7 +13,6 @@ function req(endpoint, data = {}) {
 
 	if (cloneData.hasOwnProperty("headers")) {
 		const headersClone = new Headers(cloneData.headers);
-		headersClone.append;
 		cloneData.headers = headersClone;
 	} else {
 		cloneData.headers = new Headers();
