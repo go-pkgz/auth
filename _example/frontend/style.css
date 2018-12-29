@@ -50,8 +50,9 @@ hr {
 }
 
 .title {
+	text-shadow: none;
 	font-size: 3rem;
-	letter-spacing: 0.05em;
+	letter-spacing: 0.02em;
 	margin-top: 0;
 	margin-bottom: 0;
 }
