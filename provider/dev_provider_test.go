@@ -72,3 +72,40 @@ func TestDevProvider(t *testing.T) {
 	assert.Equal(t, 985, len(body))
 	t.Logf("headers: %+v", resp.Header)
 }
+
+func TestDevProviderForm(t *testing.T) {
+	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080",
+		JwtService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+	}
+	srv := DevAuthServer{Provider: NewDev(params), Automatic: false, username: "dev_user"}
+
+	router := http.NewServeMux()
+	router.Handle("/auth/dev/", http.HandlerFunc(srv.Provider.Handler))
+
+	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router}
+	go srv.Run()
+	go ts.ListenAndServe()
+	defer func() {
+		srv.Shutdown()
+		_ = ts.Shutdown(context.TODO())
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	t.Logf("resp %s", string(body))
+
+	// check form contains proper form action
+	bodyString := string(body)
+	require.Contains(t, bodyString, "form action=\"/login/oauth/authorize?client_id=cid&redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fauth%2Fdev%2Fcallback&response_type=code&scope=user%3Aemail")
+}
