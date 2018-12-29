@@ -85,12 +85,15 @@ Generally, adding support of `auth` includes a few relatively simple steps:
 1. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/auth.go#L144) and [http handlers](https://github.com/go-pkgz/auth/blob/master/auth.go#L105) from `auth.Service`
 1. Wire auth and avatar handlers into http router as sub–routes.
 
+### API
+
 For the example above authentication handlers wired as `/auth` and provides:
 
 - `/auth/<provider>/login?id=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login.
 - `/avatar/<avatar_id>` - returns the avatar (image). Links to those pictures added into user info automatically, for details see "Avatar proxy"
 - `/auth/<provider>/logout` and `/auth/logout` - invalidate "session" by removing JWT cookie
 - `/auth/list` - gives a json list of active providers 
+- `/auth/user` - returns `token.User` (json)
 
 ### User info
 
