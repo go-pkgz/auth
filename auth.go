@@ -135,6 +135,7 @@ func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handl
 			u, err := token.GetUserInfo(r)
 			if err != nil {
 				rest.SendErrorJSON(w, r, 400, err, "can't get user info")
+				return
 			}
 			rest.RenderJSON(w, r, u)
 			return
