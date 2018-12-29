@@ -53,9 +53,9 @@ func (u userData) value(key string) string {
 	return ""
 }
 
-// initService makes token service for given provider
+// initService makes oauth2 service for given provider
 func initService(p Params, service Service) Service {
-	log.Printf("[INFO] init token service %s", service.Name)
+	log.Printf("[INFO] init oauth2 service %s", service.Name)
 	service.Params = p
 	service.conf = oauth2.Config{
 		ClientID:     service.Cid,
@@ -65,7 +65,7 @@ func initService(p Params, service Service) Service {
 		Endpoint:     service.Endpoint,
 	}
 
-	log.Printf("[DEBUG] created %s token, id=%s, redir=%s, endpoint=%s",
+	log.Printf("[DEBUG] created %s oauth2, id=%s, redir=%s, endpoint=%s",
 		service.Name, service.Cid, service.Endpoint, service.RedirectURL)
 	return service
 }

@@ -157,7 +157,7 @@ func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handl
 	return http.HandlerFunc(ah), http.HandlerFunc(s.avatarProxy.Handler)
 }
 
-// Middleware returns token middleware
+// Middleware returns auth middleware
 func (s *Service) Middleware() middleware.Authenticator {
 	return s.authMiddleware
 }

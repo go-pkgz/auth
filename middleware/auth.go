@@ -13,7 +13,7 @@ import (
 	"github.com/go-pkgz/auth/token"
 )
 
-// Authenticator is top level token object providing middlewares
+// Authenticator is top level auth object providing middlewares
 type Authenticator struct {
 	JWTService *token.Service
 	Providers  []provider.Service
@@ -37,7 +37,7 @@ var adminUser = token.User{
 	},
 }
 
-// Auth middleware adds token from session and populates user info
+// Auth middleware adds auth from session and populates user info
 func (a *Authenticator) Auth(next http.Handler) http.Handler {
 	return a.auth(true)(next)
 }
@@ -71,7 +71,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 				return
 			}
 
-			// use dev user basic token if enabled
+			// use dev user basic auth if enabled
 			if a.basicDevUser(r) {
 				r = token.SetUserInfo(r, devUser)
 				h.ServeHTTP(w, r)
@@ -90,7 +90,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 			}
 
 			if claims.User == nil {
-				onError(h, w, r, errors.New("failed token, no user info presented in the claim"))
+				onError(h, w, r, errors.New("failed auth, no user info presented in the claim"))
 				return
 			}
 
@@ -140,7 +140,7 @@ func (a *Authenticator) checkSecretKey(r *http.Request) bool {
 	return true
 }
 
-// refreshExpiredToken makes new token with passed claims, but only if permission allowed
+// refreshExpiredToken makes a new token with passed claims
 func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.Claims) (token.Claims, error) {
 
 	claims.ExpiresAt = 0 // this will cause now+duration for refreshed token

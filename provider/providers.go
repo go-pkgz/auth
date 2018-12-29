@@ -19,7 +19,7 @@ func NewGoogle(p Params) Service {
 		Name:        "google",
 		Endpoint:    google.Endpoint,
 		RedirectURL: p.URL + "/auth/google/callback",
-		Scopes:      []string{"https://www.googleapis.com/token/userinfo.profile"},
+		Scopes:      []string{"https://www.googleapis.com/auth/userinfo.profile"},
 		InfoURL:     "https://www.googleapis.com/oauth2/v3/userinfo",
 		MapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
