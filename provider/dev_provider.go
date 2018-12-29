@@ -56,7 +56,7 @@ func (d *DevAuthServer) Run() {
 
 				// first time it will be called without username and will ask for one
 				if !d.Automatic && (r.ParseForm() != nil || r.Form.Get("username") == "") {
-					if _, err = w.Write([]byte(fmt.Sprintf(devUserForm, r.URL.RawQuery))); err != nil {
+					if _, err = w.Write([]byte(strings.Replace(devUserForm, "{urlparams}", r.URL.RawQuery, -1))); err != nil {
 						log.Printf("[WARN] can't write, %s", err)
 					}
 					return
@@ -268,7 +268,7 @@ var devUserForm = `
 		</style>
 	</head>
 	<body>
-		<form action="/login/oauth/authorize?%s" method="post">
+		<form action="/login/oauth/authorize?{urlparams}" method="post">
 			<header class="form-header">
 				<h1><a href="https://github.com/go-pkgz/auth">GO-PKGZ/AUTH</a></h1>
 				<p>Dev Provider</p>
