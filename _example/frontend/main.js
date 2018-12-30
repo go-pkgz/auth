@@ -82,7 +82,7 @@ function getLoginLinks() {
 				e.preventDefault();
 				login(prov)
 					.then(() => {
-						window.location.reload();
+						window.location.replace(window.location.href);
 					})
 					.catch(e => {
 						const status = document.querySelector(".status__label");
@@ -103,7 +103,7 @@ function getLogoutLink() {
 		e.preventDefault();
 		req("/auth/logout")
 			.then(() => {
-				window.location.reload();
+				window.location.replace(window.location.href);
 			})
 			.catch(e => console.error(e));
 	});
