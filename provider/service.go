@@ -17,7 +17,6 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 
-	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -37,10 +36,15 @@ type Service struct {
 type Params struct {
 	URL         string
 	JwtService  *token.Service
-	AvatarProxy *avatar.Proxy
+	AvatarProxy AvatarSaver
 	Cid         string
 	Csecret     string
 	Issuer      string
+}
+
+// AvatarSaver defines minimal interface to save avatar
+type AvatarSaver interface {
+	Put(u token.User) (avatarURL string, err error)
 }
 
 type userData map[string]interface{}

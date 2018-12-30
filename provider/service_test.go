@@ -22,11 +22,8 @@ var days31 = time.Hour * 24 * 31
 
 func TestLogin(t *testing.T) {
 
-	ts, ots := mockProvider(t, 8981, 8982)
-	defer func() {
-		ts.Close()
-		ots.Close()
-	}()
+	teardown := mockProvider(t, 8981, 8982)
+	defer teardown()
 
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
@@ -51,7 +48,7 @@ func TestLogin(t *testing.T) {
 	u := token.User{}
 	err = json.Unmarshal(body, &u)
 	assert.Nil(t, err)
-	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser1", Picture: "http://exmple.com/pic1.png", IP: ""}, u)
+	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser1", Picture: "http://example.com/ava12345.png", IP: ""}, u)
 
 	tk := resp.Cookies()[0].Value
 	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
@@ -71,17 +68,14 @@ func TestLogin(t *testing.T) {
 	u = token.User{}
 	err = json.Unmarshal(body, &u)
 	assert.Nil(t, err)
-	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://exmple.com/pic1.png",
+	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://example.com/ava12345.png",
 		Attributes: map[string]interface{}{"admin": true}}, u)
 }
 
 func TestLoginSessionOnly(t *testing.T) {
 
-	ts, ots := mockProvider(t, 8981, 8982)
-	defer func() {
-		ts.Close()
-		ots.Close()
-	}()
+	teardown := mockProvider(t, 8981, 8982)
+	defer teardown()
 
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
@@ -114,11 +108,8 @@ func TestLoginSessionOnly(t *testing.T) {
 
 func TestLogout(t *testing.T) {
 
-	ts, ots := mockProvider(t, 8691, 8692)
-	defer func() {
-		ts.Close()
-		ots.Close()
-	}()
+	teardown := mockProvider(t, 8691, 8692)
+	defer teardown()
 
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
@@ -151,11 +142,8 @@ func TestInitProvider(t *testing.T) {
 }
 
 func TestInvalidHandler(t *testing.T) {
-	ts, ots := mockProvider(t, 8691, 8692)
-	defer func() {
-		ts.Close()
-		ots.Close()
-	}()
+	teardown := mockProvider(t, 8691, 8692)
+	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get("http://localhost:8691/login_bad")
@@ -167,7 +155,7 @@ func TestInvalidHandler(t *testing.T) {
 	assert.Equal(t, 405, resp.StatusCode)
 }
 
-func mockProvider(t *testing.T, loginPort, authPort int) (*http.Server, *http.Server) {
+func mockProvider(t *testing.T, loginPort, authPort int) func() {
 
 	provider := Service{
 		Name: "mock",
@@ -197,9 +185,8 @@ func mockProvider(t *testing.T, loginPort, authPort int) (*http.Server, *http.Se
 			return claims
 		}),
 	})
-	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService, Issuer: "remark42"}
-	// AvatarProxy:  &proxy.Avatar{Store: &mockAvatarStore, RoutePath: "/v1/avatar"},
-	// PermissionChecker: &mockUserPermissions{admin: "mock_myuser2", verified: "mock_myuser2", blocked: "mock_myuser1"},
+	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+		Issuer: "remark42", AvatarProxy: &mockAvatarSaver{}}
 
 	provider = initService(params, provider)
 
@@ -252,7 +239,17 @@ func mockProvider(t *testing.T, loginPort, authPort int) (*http.Server, *http.Se
 	go func() { _ = ts.ListenAndServe() }()
 
 	time.Sleep(time.Millisecond * 100) // let them start
-	return ts, oauth
+
+	return func() {
+		ts.Close()
+		oauth.Close()
+	}
 }
 
 func mockKeyStore(aud string) (string, error) { return "12345", nil }
+
+type mockAvatarSaver struct{}
+
+func (m *mockAvatarSaver) Put(u token.User) (avatarURL string, err error) {
+	return "http://example.com/ava12345.png", nil
+}
