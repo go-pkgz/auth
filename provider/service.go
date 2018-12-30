@@ -144,6 +144,11 @@ func (p Service) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if oauthClaims.Handshake == nil {
+		rest.SendErrorJSON(w, r, http.StatusForbidden, err, "invalid handshake token")
+		return
+	}
+
 	retrievedState := oauthClaims.Handshake.State
 	if retrievedState == "" || retrievedState != r.URL.Query().Get("state") {
 		http.Error(w, fmt.Sprintf("unexpected state %v", retrievedState), http.StatusUnauthorized)
