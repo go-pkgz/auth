@@ -161,7 +161,7 @@ func (a *Authenticator) basicAdminUser(r *http.Request) bool {
 	}
 
 	if pair[0] != "admin" || pair[1] != a.AdminPasswd {
-		log.Printf("[WARN] dev user auth failed, user/passwd mismatch %+v", pair)
+		log.Printf("[WARN] admin basic auth failed, user/passwd mismatch %+v", pair)
 		return false
 	}
 

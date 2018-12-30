@@ -170,6 +170,12 @@ It will run fake aouth2 "server" on port :8084 and user could login with any use
 
 _Warning: this is not the real oauth2 server but just a small fake thing for development and testing only. Don't use `dev` provider with any production code._
 
+### Other ways to authenticate
+
+In addition to the primary method (i.e. JWT cookie with XSRF header) there are two more ways to authenticate:
+
+1. Send JWT header as `X-JWT`. This shouldn't be used for web application, however can be helpful for service-to-service authentication.
+2. [Basic access authentication](https://en.wikipedia.org/wiki/Basic_access_authentication). This mode by default disabled and will be enabled it `Opts.AdminPasswd` defined. This will allow access with basic auth admin:<Opts.AdminPasswd> with user [admin](https://github.com/go-pkgz/auth/blob/master/middleware/auth.go#L24). Such method can be used for automation scripts.
     
 ## Register oauth2 providers
 
