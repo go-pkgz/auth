@@ -144,7 +144,7 @@ Restricting some users or some tokens is two step process:
 - `ClaimsUpdater` sets an attribute, like `blocked` (or `allowed`)
 - `Validator` checks the attribute and returns true/false 
 
-_This technic used in the [example](https://github.com/go-pkgz/auth/blob/master/_example/backend/main.go#L27) code_
+_This technic used in the [example](https://github.com/go-pkgz/auth/blob/master/_example/backend/main.go#L36) code_
 
 The process can be simplified by doing all checks directly in `Validator`, but depends on particular case such solution
 can be too expensive because `Validator` runs on each request as a part of auth middleware. In contrast, `ClaimsUpdater` called on token creation/refresh only.
