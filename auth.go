@@ -168,7 +168,7 @@ func (s *Service) AddProvider(name string, cid string, csecret string) {
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
 		Issuer:      s.issuer,
-		AvatarProxy: s.avatarProxy,
+		AvatarSaver: s.avatarProxy,
 		Cid:         cid,
 		Csecret:     csecret,
 	}

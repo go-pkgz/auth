@@ -36,7 +36,7 @@ type Service struct {
 type Params struct {
 	URL         string
 	JwtService  *token.Service
-	AvatarProxy AvatarSaver
+	AvatarSaver AvatarSaver
 	Cid         string
 	Csecret     string
 	Issuer      string
@@ -149,13 +149,13 @@ func (p Service) authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if oauthClaims.Handshake == nil {
-		rest.SendErrorJSON(w, r, http.StatusForbidden, err, "invalid handshake token")
+		rest.SendErrorJSON(w, r, http.StatusForbidden, nil, "finvalid handshake token")
 		return
 	}
 
 	retrievedState := oauthClaims.Handshake.State
 	if retrievedState == "" || retrievedState != r.URL.Query().Get("state") {
-		http.Error(w, fmt.Sprintf("unexpected state %v", retrievedState), http.StatusUnauthorized)
+		rest.SendErrorJSON(w, r, http.StatusForbidden, nil, "unexpected state")
 		return
 	}
 
@@ -169,7 +169,7 @@ func (p Service) authHandler(w http.ResponseWriter, r *http.Request) {
 	client := p.conf.Client(context.Background(), tok)
 	uinfo, err := client.Get(p.InfoURL)
 	if err != nil {
-		rest.SendErrorJSON(w, r, http.StatusBadRequest, err, fmt.Sprintf("failed to get client info via %s", p.InfoURL))
+		rest.SendErrorJSON(w, r, http.StatusServiceUnavailable, err, "failed to get client info")
 		return
 	}
 
@@ -211,7 +211,7 @@ func (p Service) authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = p.JwtService.Set(w, claims); err != nil {
-		rest.SendErrorJSON(w, r, http.StatusInternalServerError, err, "failed to save user info")
+		rest.SendErrorJSON(w, r, http.StatusInternalServerError, err, "failed to set token")
 		return
 	}
 
@@ -227,8 +227,8 @@ func (p Service) authHandler(w http.ResponseWriter, r *http.Request) {
 
 // setAvatar saves avatar and puts proxied URL to u.Picture
 func (p Service) setAvatar(u token.User) token.User {
-	if p.AvatarProxy != nil {
-		if avatarURL, e := p.AvatarProxy.Put(u); e == nil {
+	if p.AvatarSaver != nil {
+		if avatarURL, e := p.AvatarSaver.Put(u); e == nil {
 			u.Picture = avatarURL
 		} else {
 			log.Printf("[WARN] failed to set avatar for %+v, %+v", u, e)
@@ -240,7 +240,6 @@ func (p Service) setAvatar(u token.User) token.User {
 // LogoutHandler - GET /logout
 func (p Service) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	p.JwtService.Reset(w)
-	log.Printf("[DEBUG] logout")
 }
 
 func (p Service) randToken() (string, error) {

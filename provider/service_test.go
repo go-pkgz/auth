@@ -186,7 +186,7 @@ func mockProvider(t *testing.T, loginPort, authPort int) func() {
 		}),
 	})
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
-		Issuer: "remark42", AvatarProxy: &mockAvatarSaver{}}
+		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}}
 
 	provider = initService(params, provider)
 
