@@ -66,7 +66,7 @@ func (d *DevAuthServer) Run() {
 
 					formData := struct{ Query string }{Query: r.URL.RawQuery}
 
-					if err := userFormTmpl.Execute(w, formData); err != nil {
+					if err = userFormTmpl.Execute(w, formData); err != nil {
 						log.Printf("[WARN] can't write, %s", err)
 					}
 					return
