@@ -25,10 +25,14 @@ github.com/go-pkgz/auth v0.0.0-20181230014619-fe7c2207ad82 h1:1np46AUx3+4clfjmw8
 github.com/go-pkgz/auth v0.0.0-20181230014619-fe7c2207ad82/go.mod h1:G+yNIy85R0Sw3Bw1yeOHW23pdBxBRuFyWORJDaeV5B4=
 github.com/go-pkgz/auth v0.0.0-20181230015932-0317f12f3fd5 h1:VKQ9y0pErwxu/TTjJTLXZrUhtqFLefGeYGr10JiPljI=
 github.com/go-pkgz/auth v0.0.0-20181230015932-0317f12f3fd5/go.mod h1:G+yNIy85R0Sw3Bw1yeOHW23pdBxBRuFyWORJDaeV5B4=
+github.com/go-pkgz/auth v0.0.0-20181230064957-0ec9c8f3b25a h1:KTmE5TQmlTtabHK2/noS8cVEhW3BvfS+GnhmzGFlWAE=
+github.com/go-pkgz/auth v0.0.0-20181230064957-0ec9c8f3b25a/go.mod h1:nlPGqCP4kx3BB+uXyN0Ja7w4EpGN0t24UzPo5thifiA=
 github.com/go-pkgz/mongo v1.0.0 h1:9jijAK7prCRMetiyTu3c1rv/2lMypzuf2DWcVpTlwzw=
 github.com/go-pkgz/mongo v1.0.0/go.mod h1:R9si/F2aJsjz4MUxhzuppIHY8yLV3YCeuCpgcI50cu4=
 github.com/go-pkgz/rest v1.1.2 h1:3MPc4WEewvW9RWfDItwwFtWq9hxpiUJUhZZVm2+Jr5Q=
 github.com/go-pkgz/rest v1.1.2/go.mod h1:DIxxm3vSt6e+IY+UQUOFsfB2YaHLmGoOfPLWN5pxQSA=
+github.com/go-pkgz/rest v1.1.5 h1:5br4mnscfLb27yxv5hJFLBVmAt09PrmIBP+meA3CfHc=
+github.com/go-pkgz/rest v1.1.5/go.mod h1:DIxxm3vSt6e+IY+UQUOFsfB2YaHLmGoOfPLWN5pxQSA=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/hashicorp/golang-lru v0.5.0/go.mod h1:/m3WP610KZHVQ1SGc6re/UDhFvYD7pJ4Ao+sR/qLZy8=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
