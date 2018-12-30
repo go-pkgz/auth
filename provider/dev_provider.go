@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/nullrocks/identicon"
@@ -46,6 +47,12 @@ func (d *DevAuthServer) Run() {
 		log.Printf("[WARN] can't create identicon, %s", err)
 	}
 
+	userFormTmpl, err := template.New("page").Parse(devUserFormTmpl)
+	if err != nil {
+		log.Printf("[WARN] can't parse user form template, %s", err)
+		return
+	}
+
 	d.httpServer = &http.Server{
 		Addr: fmt.Sprintf(":%d", devAuthPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +63,10 @@ func (d *DevAuthServer) Run() {
 
 				// first time it will be called without username and will ask for one
 				if !d.Automatic && (r.ParseForm() != nil || r.Form.Get("username") == "") {
-					if _, err = w.Write([]byte(fmt.Sprintf(devUserForm, r.URL.RawQuery))); err != nil {
+
+					formData := struct{ Query string }{Query: r.URL.RawQuery}
+
+					if err := userFormTmpl.Execute(w, formData); err != nil {
 						log.Printf("[WARN] can't write, %s", err)
 					}
 					return
@@ -176,7 +186,7 @@ func (d *DevAuthServer) genAvatar(user string) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-var devUserForm = `
+var devUserFormTmpl = `
 <html>
 	<head>
 		<title>Dev OAuth</title>
@@ -268,7 +278,7 @@ var devUserForm = `
 		</style>
 	</head>
 	<body>
-		<form action="/login/oauth/authorize?%s" method="post">
+		<form action="/login/oauth/authorize?{{.Query}}" method="post">
 			<header class="form-header">
 				<h1><a href="https://github.com/go-pkgz/auth">GO-PKGZ/AUTH</a></h1>
 				<p>Dev Provider</p>

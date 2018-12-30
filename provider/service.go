@@ -123,7 +123,7 @@ func (p Service) loginHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if err := p.JwtService.Set(w, claims, false); err != nil {
+	if err := p.JwtService.Set(w, claims); err != nil {
 		rest.SendErrorJSON(w, r, http.StatusInternalServerError, err, "failed to set token")
 		return
 	}
@@ -141,6 +141,11 @@ func (p Service) authHandler(w http.ResponseWriter, r *http.Request) {
 	oauthClaims, _, err := p.JwtService.Get(r)
 	if err != nil {
 		rest.SendErrorJSON(w, r, http.StatusInternalServerError, err, "failed to get token")
+		return
+	}
+
+	if oauthClaims.Handshake == nil {
+		rest.SendErrorJSON(w, r, http.StatusForbidden, err, "invalid handshake token")
 		return
 	}
 
@@ -201,7 +206,7 @@ func (p Service) authHandler(w http.ResponseWriter, r *http.Request) {
 		SessionOnly: oauthClaims.SessionOnly,
 	}
 
-	if err = p.JwtService.Set(w, claims, oauthClaims.SessionOnly); err != nil {
+	if err = p.JwtService.Set(w, claims); err != nil {
 		rest.SendErrorJSON(w, r, http.StatusInternalServerError, err, "failed to save user info")
 		return
 	}
