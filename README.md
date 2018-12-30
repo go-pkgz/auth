@@ -33,8 +33,8 @@ func main() {
 		SecretReader: token.SecretFunc(func(id string) (string, error) { // secret key for JWT
 			return "secret", nil
 		}),
-		TokenDuration:  time.Hour,
-		CookieDuration: time.Hour * 24,
+		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
+		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
