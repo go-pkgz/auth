@@ -43,7 +43,13 @@ func main() {
 			return claims
 		}),
 		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool { // rejects some tokens
-			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_") // allow only dev_* names
+			if claims.User != nil {
+				if strings.HasPrefix(claims.User.ID, "github_") { // allow all users with github auth
+					return true
+				}
+				return strings.HasPrefix(claims.User.Name, "dev_") // non-guthub allow only dev_* names
+			}
+			return false
 		}),
 	}
 
