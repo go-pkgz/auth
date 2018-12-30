@@ -2,7 +2,6 @@ package auth
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -135,8 +134,8 @@ func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handl
 		if elems[len(elems)-1] == "user" {
 			claims, _, err := s.jwtService.Get(r)
 			if err != nil {
-				log.Printf("%+v", err)
-				rest.SendErrorJSON(w, r, http.StatusUnauthorized, err, "not authorized")
+				w.WriteHeader(http.StatusUnauthorized)
+				rest.RenderJSON(w, r, rest.JSON{"error": err.Error()})
 				return
 			}
 			rest.RenderJSON(w, r, claims.User)
