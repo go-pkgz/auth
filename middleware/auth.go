@@ -111,7 +111,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.Claims) (token.Claims, error) {
 
 	claims.ExpiresAt = 0 // this will cause now+duration for refreshed token
-	if err := a.JWTService.Set(w, claims, false); err != nil {
+	if err := a.JWTService.Set(w, claims); err != nil {
 		return token.Claims{}, err
 	}
 	return claims, nil
