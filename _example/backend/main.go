@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -80,7 +78,6 @@ func main() {
 	router.Get("/open", openRouteHandler) // open page
 	router.Group(func(r chi.Router) {
 		r.Use(m.Auth)
-		r.Get("/private", protectedPageHandler)      // protected page
 		r.Get("/private_data", protectedDataHandler) // protected api
 	})
 
@@ -123,29 +120,6 @@ func openRouteHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("this is an open route, no token needed\n"))
 }
 
-// GET /private returns a complete generated (from template) page for authenticated users only
-func protectedPageHandler(w http.ResponseWriter, r *http.Request) {
-	u := token.MustGetUserInfo(r)
-	t, err := template.New("page").Parse(pageTmpl)
-	if err != nil {
-		rest.SendErrorJSON(w, r, 500, err, "can't parse template")
-		return
-	}
-
-	b, err := json.MarshalIndent(u, "", "    ")
-	if err != nil {
-		rest.SendErrorJSON(w, r, 500, err, "can't format user info")
-		return
-	}
-
-	user := struct {
-		UserInfo string
-		Picture  string
-	}{UserInfo: string(b), Picture: u.Picture}
-
-	t.Execute(w, user)
-}
-
 // GET /private_data returns json with user info and ts
 func protectedDataHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -167,82 +141,3 @@ func protectedDataHandler(w http.ResponseWriter, r *http.Request) {
 
 	rest.RenderJSON(w, r, res)
 }
-
-var pageTmpl = `
-<html lang="en">
-
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>go-pkgz/auth, protected page</title>
-  <style>
-		body {
-			margin: 0;
-			padding: 20px;
-			text-align: center;
-			font: 18px/24px Helvetica, Arial, sans-serif;
-			color: #333;
-		}
-
-		@media (min-width: 768px) {
-			body {
-				padding: 150px;
-			}
-		}
-
-		article {
-			display: block;
-			text-align: left;
-			max-width: 800px;
-			margin: 0 auto;
-		}
-
-		pre {
-			font-size: 0.8em;
-			margin: 5px;
-			padding: 10px;
-			color: #833;
-			background-color: #EEE;
-		}
-		h1 {
-			font-size: 50px;
-			margin-left: -0.05em;
-		}
-
-		ul {
-			color: rgb(23, 67, 78);
-		}
-
-		a {
-			color: rgb(79, 187, 214);
-			text-decoration: none;
-		}
-
-		a:hover {
-			color: rgb(94, 167, 177);
-			text-decoration: underline;
-		}
-		img {
-			  padding: 5px;
-			  background-color: #888;
-		}
-		</style>
-</head>
-
-<body>
-  <article>
-    <h1>protected page</h1>
-    <div>
-	  <p>This page available to authorized users only! </p>
-	  <div>
-	      <img src="{{.Picture}}"/>
-		  <p>user details: <pre>{{.UserInfo}} </pre></p>
-	  </div>	  
-	  <p><a href="https://github.com/go-pkgz/auth">source on github</a></p>
-      <p>&mdash; Umputun</p>
-    </div>
-  </article>
-</body>
-
-</html>
-`
