@@ -41,10 +41,6 @@ function getUser() {
 
 function login(prov) {
 	return new Promise((resolve, reject) => {
-		// try {
-		// } catch (e) {
-		// 	console.error(e);
-		// }
 		const url = window.location.href + "?close=true";
 		const eurl = encodeURIComponent(url);
 		const win = window.open(
