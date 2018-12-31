@@ -6,7 +6,7 @@ function getCookies() {
 	}, {});
 }
 
-function req(endpoint, data = {}) {
+function req(endpoint, data = {}, json = true) {
 	const cloneData = Object.assign({}, data);
 	const cookies = getCookies();
 	const token = cookies["XSRF-TOKEN"];
@@ -24,7 +24,8 @@ function req(endpoint, data = {}) {
 
 	return fetch(endpoint, cloneData).then(resp => {
 		if (resp.status >= 400) throw resp;
-		return resp.json().catch(() => null);
+		if (json) return resp.json().catch(() => null);
+		return resp.text();
 	});
 }
 
@@ -178,6 +179,15 @@ function main() {
 		const infoEl = document.querySelector(".info");
 		infoEl.textContent = "";
 		infoEl.appendChild(getUserInfoFragment(user));
+
+		req("/private_data", {}, false)
+			.then(data => {
+				const blob = new Blob([data], { type: "text/plain" });
+				const url = URL.createObjectURL(blob);
+				const iframe = document.querySelector(".protected-data__frame");
+				iframe.src = url;
+			})
+			.catch(e => console.error(e));
 	});
 }
 
