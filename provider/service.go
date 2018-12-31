@@ -16,6 +16,11 @@ type Service struct {
 	Provider
 }
 
+// NewService makes service for given provider
+func NewService(p Provider) Service {
+	return Service{Provider: p}
+}
+
 // AvatarSaver defines minimal interface to save avatar
 type AvatarSaver interface {
 	Put(u token.User) (avatarURL string, err error)

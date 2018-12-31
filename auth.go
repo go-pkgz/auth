@@ -189,15 +189,15 @@ func (s *Service) AddProvider(name string, cid string, csecret string) {
 
 	switch strings.ToLower(name) {
 	case "github":
-		s.providers = append(s.providers, provider.Service{Provider: provider.NewGithub(p)})
+		s.providers = append(s.providers, provider.NewService(provider.NewGithub(p)))
 	case "google":
-		s.providers = append(s.providers, provider.Service{Provider: provider.NewGoogle(p)})
+		s.providers = append(s.providers, provider.NewService(provider.NewGoogle(p)))
 	case "facebook":
-		s.providers = append(s.providers, provider.Service{Provider: provider.NewFacebook(p)})
+		s.providers = append(s.providers, provider.NewService(provider.NewFacebook(p)))
 	case "yandex":
-		s.providers = append(s.providers, provider.Service{Provider: provider.NewFacebook(p)})
+		s.providers = append(s.providers, provider.NewService(provider.NewFacebook(p)))
 	case "dev":
-		s.providers = append(s.providers, provider.Service{Provider: provider.NewDev(p)})
+		s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
 	default:
 		return
 	}
