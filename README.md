@@ -176,7 +176,12 @@ In addition to the primary method (i.e. JWT cookie with XSRF header) there are t
 
 1. Send JWT header as `X-JWT`. This shouldn't be used for web application, however can be helpful for service-to-service authentication.
 2. [Basic access authentication](https://en.wikipedia.org/wiki/Basic_access_authentication). This mode by default disabled and will be enabled it `Opts.AdminPasswd` defined. This will allow access with basic auth admin:<Opts.AdminPasswd> with user [admin](https://github.com/go-pkgz/auth/blob/master/middleware/auth.go#L24). Such method can be used for automation scripts.
-    
+
+### Logging
+
+By default this library doesn't print anything to stdout/stderr, however user can pass a logger implementing `logger.L` interface with a single method `Logf(format string, args ...interface{})`. Functional adapter for this interface included as `logger.Func`. There are two predefined implementations in the `logger` package - `NoOp` (prints nothing, default) and `Std` wrapping `log.Printf` from stdlib.
+
+
 ## Register oauth2 providers
 
 Authentication handled by external providers. You should setup oauth2 for all (or some) of them to allow users to authenticate. It is not mandatory to have all of them, but at least one should be correctly configured.
