@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -15,7 +16,7 @@ import (
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/auth/avatar"
-	"github.com/go-pkgz/auth/provider"
+	lg "github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -49,6 +50,7 @@ func main() {
 			}
 			return false
 		}),
+		Logger: lg.Std, // optional logger for auth library
 	}
 
 	// create auth service
@@ -58,13 +60,11 @@ func main() {
 
 	// run dev/test oauth2 server on :8084
 	go func() {
-		p, err := service.Provider("dev") // peak dev provider
+		devAuthServer, err := service.DevAuth() // peak dev oauth2 server
 		if err != nil {
 			log.Fatal(err)
 		}
-		// make and start dev auth server
-		devAuthServer := provider.DevAuthServer{Provider: p}
-		devAuthServer.Run()
+		devAuthServer.Run(context.Background())
 	}()
 
 	// retrieve auth middleware
