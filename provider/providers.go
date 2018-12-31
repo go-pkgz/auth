@@ -14,8 +14,8 @@ import (
 )
 
 // NewGoogle makes google oauth2 provider
-func NewGoogle(p Params) Service {
-	return initService(p, Service{
+func NewGoogle(p Params) Oauth2Handler {
+	return initOauth2Handler(p, Oauth2Handler{
 		Name:        "google",
 		Endpoint:    google.Endpoint,
 		RedirectURL: p.URL + "/auth/google/callback",
@@ -37,8 +37,8 @@ func NewGoogle(p Params) Service {
 }
 
 // NewGithub makes github oauth2 provider
-func NewGithub(p Params) Service {
-	return initService(p, Service{
+func NewGithub(p Params) Oauth2Handler {
+	return initOauth2Handler(p, Oauth2Handler{
 		Name:        "github",
 		Endpoint:    github.Endpoint,
 		RedirectURL: p.URL + "/auth/github/callback",
@@ -60,7 +60,7 @@ func NewGithub(p Params) Service {
 }
 
 // NewFacebook makes facebook oauth2 provider
-func NewFacebook(p Params) Service {
+func NewFacebook(p Params) Oauth2Handler {
 
 	// response format for fb /me call
 	type uinfo struct {
@@ -73,7 +73,7 @@ func NewFacebook(p Params) Service {
 		} `json:"picture"`
 	}
 
-	return initService(p, Service{
+	return initOauth2Handler(p, Oauth2Handler{
 		Name:        "facebook",
 		Endpoint:    facebook.Endpoint,
 		RedirectURL: p.URL + "/auth/facebook/callback",
@@ -98,8 +98,8 @@ func NewFacebook(p Params) Service {
 }
 
 // NewYandex makes yandex oauth2 provider
-func NewYandex(p Params) Service {
-	return initService(p, Service{
+func NewYandex(p Params) Oauth2Handler {
+	return initOauth2Handler(p, Oauth2Handler{
 		Name:        "yandex",
 		Endpoint:    yandex.Endpoint,
 		RedirectURL: p.URL + "/auth/yandex/callback",

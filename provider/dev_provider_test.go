@@ -23,16 +23,19 @@ func TestDevProvider(t *testing.T) {
 			CookieDuration: time.Hour * 24 * 31,
 		}),
 	}
-	srv := DevAuthServer{Provider: NewDev(params), Automatic: true, username: "dev_user", L: logger.Std}
+
+	devProvider := NewDev(params)
+	s := Service{Provider: devProvider}
+	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: logger.Std}
 
 	router := http.NewServeMux()
-	router.Handle("/auth/dev/", http.HandlerFunc(srv.Provider.Handler))
+	router.Handle("/auth/dev/", http.HandlerFunc(s.Handler))
 
 	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router}
-	go srv.Run(context.TODO())
+	go devOauth2Srv.Run(context.TODO())
 	go ts.ListenAndServe()
 	defer func() {
-		srv.Shutdown()
+		devOauth2Srv.Shutdown()
 		_ = ts.Shutdown(context.TODO())
 	}()
 

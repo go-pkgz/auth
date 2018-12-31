@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/auth/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -62,14 +63,16 @@ func TestProvider(t *testing.T) {
 
 	p, err := svc.Provider("dev")
 	assert.NoError(t, err)
-	assert.Equal(t, "dev", p.Name)
-	assert.Equal(t, "cid", p.Cid)
-	assert.Equal(t, "csecret", p.Csecret)
-	assert.Equal(t, "go-pkgz/auth", p.Issuer)
+	op := p.Provider.(provider.Oauth2Handler)
+	assert.Equal(t, "dev", op.Name)
+	assert.Equal(t, "cid", op.Cid)
+	assert.Equal(t, "csecret", op.Csecret)
+	assert.Equal(t, "go-pkgz/auth", op.Issuer)
 
 	p, err = svc.Provider("github")
+	op = p.Provider.(provider.Oauth2Handler)
 	assert.NoError(t, err)
-	assert.Equal(t, "github", p.Name)
+	assert.Equal(t, "github", op.Name)
 
 	pp := svc.Providers()
 	assert.Equal(t, 5, len(pp))

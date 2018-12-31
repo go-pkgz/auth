@@ -27,7 +27,7 @@ const devAuthPort = 8084
 // desired user name, this is the mode used for development. Non-interactive mode for tests only.
 type DevAuthServer struct {
 	logger.L
-	Provider  Service
+	Provider  Oauth2Handler
 	Automatic bool
 	username  string // unsafe, but fine for dev
 
@@ -150,8 +150,8 @@ func (d *DevAuthServer) Shutdown() {
 }
 
 // NewDev makes dev oauth2 provider for admin user
-func NewDev(p Params) Service {
-	return initService(p, Service{
+func NewDev(p Params) Oauth2Handler {
+	return initOauth2Handler(p, Oauth2Handler{
 		Name: "dev",
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  fmt.Sprintf("http://127.0.0.1:%d/login/oauth/authorize", devAuthPort),

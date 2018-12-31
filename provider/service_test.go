@@ -22,7 +22,7 @@ var days31 = time.Hour * 24 * 31
 
 func TestLogin(t *testing.T) {
 
-	teardown := mockProvider(t, 8981, 8982)
+	teardown := prepServiceTest(t, 8981, 8982)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -74,7 +74,7 @@ func TestLogin(t *testing.T) {
 
 func TestLoginSessionOnly(t *testing.T) {
 
-	teardown := mockProvider(t, 8981, 8982)
+	teardown := prepServiceTest(t, 8981, 8982)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -108,7 +108,7 @@ func TestLoginSessionOnly(t *testing.T) {
 
 func TestLogout(t *testing.T) {
 
-	teardown := mockProvider(t, 8691, 8692)
+	teardown := prepServiceTest(t, 8691, 8692)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -132,8 +132,8 @@ func TestLogout(t *testing.T) {
 
 func TestInitProvider(t *testing.T) {
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", Issuer: "app-test"}
-	provider := Service{Name: "test", RedirectURL: "redir"}
-	res := initService(params, provider)
+	provider := Oauth2Handler{Name: "test", RedirectURL: "redir"}
+	res := initOauth2Handler(params, provider)
 	assert.Equal(t, "cid", res.conf.ClientID)
 	assert.Equal(t, "csecret", res.conf.ClientSecret)
 	assert.Equal(t, "redir", res.RedirectURL)
@@ -142,7 +142,7 @@ func TestInitProvider(t *testing.T) {
 }
 
 func TestInvalidHandler(t *testing.T) {
-	teardown := mockProvider(t, 8691, 8692)
+	teardown := prepServiceTest(t, 8691, 8692)
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -155,9 +155,9 @@ func TestInvalidHandler(t *testing.T) {
 	assert.Equal(t, 405, resp.StatusCode)
 }
 
-func mockProvider(t *testing.T, loginPort, authPort int) func() {
+func prepServiceTest(t *testing.T, loginPort, authPort int) func() {
 
-	provider := Service{
+	provider := Oauth2Handler{
 		Name: "mock",
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  fmt.Sprintf("http://localhost:%d/login/oauth/authorize", authPort),
@@ -185,12 +185,14 @@ func mockProvider(t *testing.T, loginPort, authPort int) func() {
 			return claims
 		}),
 	})
+
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
 		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}}
 
-	provider = initService(params, provider)
+	provider = initOauth2Handler(params, provider)
+	svc := Service{Provider: provider}
 
-	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(provider.Handler)}
+	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)}
 
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
