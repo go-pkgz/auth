@@ -6,7 +6,7 @@ function getCookies() {
 	}, {});
 }
 
-function req(endpoint, data = {}, json = true) {
+function req(endpoint, data = {}) {
 	const cloneData = Object.assign({}, data);
 	const cookies = getCookies();
 	const token = cookies["XSRF-TOKEN"];
@@ -24,8 +24,7 @@ function req(endpoint, data = {}, json = true) {
 
 	return fetch(endpoint, cloneData).then(resp => {
 		if (resp.status >= 400) throw resp;
-		if (json) return resp.json().catch(() => null);
-		return resp.text();
+		return resp.json().catch(() => null);
 	});
 }
 
@@ -143,9 +142,11 @@ function getUserInfoFragment(user) {
 			imgappended = true;
 		}
 		let keytd = document.createElement("td");
+		keytd.className = "info__key-cell";
 		keytd.textContent = key;
 
 		let valtd = document.createElement("td");
+		valtd.className = "info__val-cell";
 		if (typeof user[key] === "object") {
 			valtd.textContent = JSON.stringify(user[key]);
 		} else {
@@ -180,12 +181,18 @@ function main() {
 		infoEl.textContent = "";
 		infoEl.appendChild(getUserInfoFragment(user));
 
-		req("/private_data", {}, false)
+		req("/private_data")
 			.then(data => {
-				const blob = new Blob([data], { type: "text/plain" });
-				const url = URL.createObjectURL(blob);
-				const iframe = document.querySelector(".protected-data__frame");
-				iframe.src = url;
+				data = JSON.stringify(data, null, "  ");
+				const el = document.createElement("pre");
+				el.textContent = data;
+				el.className = "protected-data__data";
+				const container = document.querySelector(".protected-data");
+				const placeholder = container.querySelector(
+					".protected-data__placeholder"
+				);
+				placeholder.remove();
+				container.appendChild(el);
 			})
 			.catch(e => console.error(e));
 	});
