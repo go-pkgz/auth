@@ -61,8 +61,8 @@ func TestDevProvider(t *testing.T) {
 	claims, err := params.JwtService.Parse(resp.Cookies()[0].Value)
 	assert.Nil(t, err)
 
-	u := *claims.User
-	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user", Picture: "http://127.0.0.1:8084/avatar?user=dev_user", IP: ""}, u)
+	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user",
+		Picture: "http://127.0.0.1:8084/avatar?user=dev_user", IP: ""}, *claims.User)
 
 	// check avatar
 	resp, err = client.Get("http://127.0.0.1:8084/avatar?user=dev_user")
