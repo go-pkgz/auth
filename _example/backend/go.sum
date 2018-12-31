@@ -12,10 +12,8 @@ github.com/globalsign/mgo v0.0.0-20181015135952-eeefdecb41b8 h1:DujepqpGd1hyOd7a
 github.com/globalsign/mgo v0.0.0-20181015135952-eeefdecb41b8/go.mod h1:xkRDCp4j0OGD1HRkm4kmhM+pmpv3AKq5SU7GMg4oO/Q=
 github.com/go-chi/chi v3.3.3+incompatible h1:KHkmBEMNkwKuK4FdQL7N2wOeB9jnIx7jR5wsuSBEFI8=
 github.com/go-chi/chi v3.3.3+incompatible/go.mod h1:eB3wogJHnLi3x/kFX2A+IbTBlXxmMeXJVKy9tTv1XzQ=
-github.com/go-pkgz/auth v0.0.0-20181230064957-0ec9c8f3b25a h1:KTmE5TQmlTtabHK2/noS8cVEhW3BvfS+GnhmzGFlWAE=
-github.com/go-pkgz/auth v0.0.0-20181230064957-0ec9c8f3b25a/go.mod h1:nlPGqCP4kx3BB+uXyN0Ja7w4EpGN0t24UzPo5thifiA=
-github.com/go-pkgz/auth v0.0.0-20181231070255-46d3a954882f h1:kM08NCZj3g5TUm4GsZvRdaU5ESdaI0aruO4a0vfrLEY=
-github.com/go-pkgz/auth v0.0.0-20181231070255-46d3a954882f/go.mod h1:nlPGqCP4kx3BB+uXyN0Ja7w4EpGN0t24UzPo5thifiA=
+github.com/go-pkgz/auth v0.1.0 h1:tGsygzWy7y/AKFe/EFXSwnxM5hy+UpmIJWp7EA2Qi3Q=
+github.com/go-pkgz/auth v0.1.0/go.mod h1:nlPGqCP4kx3BB+uXyN0Ja7w4EpGN0t24UzPo5thifiA=
 github.com/go-pkgz/mongo v1.0.0 h1:9jijAK7prCRMetiyTu3c1rv/2lMypzuf2DWcVpTlwzw=
 github.com/go-pkgz/mongo v1.0.0/go.mod h1:R9si/F2aJsjz4MUxhzuppIHY8yLV3YCeuCpgcI50cu4=
 github.com/go-pkgz/rest v1.1.5 h1:5br4mnscfLb27yxv5hJFLBVmAt09PrmIBP+meA3CfHc=

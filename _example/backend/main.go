@@ -33,7 +33,7 @@ func main() {
 		Issuer:            "my-demo-service",                           // part of token, just informational
 		URL:               "http://127.0.0.1:8080",                     // base url of the protected service
 		AvatarStore:       avatar.NewLocalFS("/tmp/demo-auth-service"), // stores avatars locally
-		AvatarResizeLimit: 200,                                         // resizes avatars to 200x20
+		AvatarResizeLimit: 200,                                         // resizes avatars to 200x200
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims { // modify issued token
 			if claims.User != nil && claims.User.Name == "dev_admin" { // set attributes for dev_admin
 				claims.User.SetAdmin(true)
