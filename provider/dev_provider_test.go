@@ -9,26 +9,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDevProvider(t *testing.T) {
-	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080",
+	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std,
 		JwtService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
 	}
-	srv := DevAuthServer{Provider: NewDev(params), Automatic: true, username: "dev_user"}
+	srv := DevAuthServer{Provider: NewDev(params), Automatic: true, username: "dev_user", L: logger.Std}
 
 	router := http.NewServeMux()
 	router.Handle("/auth/dev/", http.HandlerFunc(srv.Provider.Handler))
 
 	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router}
-	go srv.Run()
+	go srv.Run(context.TODO())
 	go ts.ListenAndServe()
 	defer func() {
 		srv.Shutdown()

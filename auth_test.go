@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -16,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-pkgz/auth/avatar"
-	"github.com/go-pkgz/auth/provider"
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -29,6 +31,9 @@ func TestNewService(t *testing.T) {
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
+		Logger: logger.Func(func(fmt string, args ...interface{}) {
+			log.Printf(fmt, args)
+		}),
 	}
 
 	svc := NewService(options)
@@ -39,6 +44,9 @@ func TestProvider(t *testing.T) {
 	options := Opts{
 		SecretReader: token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 		URL:          "http://127.0.0.1:8080",
+		Logger: logger.Func(func(fmt string, args ...interface{}) {
+			log.Printf(fmt, args)
+		}),
 	}
 	svc := NewService(options)
 
@@ -263,18 +271,13 @@ func prepService(t *testing.T) (teardown func()) {
 	svc.AddProvider("github", "cid", "csec") // add github provider
 
 	// run dev/test oauth2 server on :8084
-	var devAuthServer provider.DevAuthServer
-	go func() {
-		p, err := svc.Provider("dev")
-		if err != nil {
-			t.Fatal(err)
-		}
-		devAuthServer = provider.DevAuthServer{Provider: p, Automatic: true}
-		devAuthServer.Run()
-	}()
+	devAuth, err := svc.DevAuth()
+	require.NoError(t, err)
+	devAuth.Automatic = true // eliminate form
+	go devAuth.Run(context.TODO())
 
-	m := svc.Middleware()
 	// setup http server
+	m := svc.Middleware()
 	mux := http.NewServeMux()
 	mux.Handle("/open", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { // no token required
 		_, _ = w.Write([]byte("open route, no token needed\n"))
@@ -297,7 +300,7 @@ func prepService(t *testing.T) (teardown func()) {
 
 	return func() {
 		ts.Close()
-		devAuthServer.Shutdown()
+		devAuth.Shutdown()
 		os.RemoveAll("/tmp/auth-pkgz")
 	}
 }

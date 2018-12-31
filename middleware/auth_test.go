@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -259,5 +261,6 @@ func makeTestAuth(t *testing.T) Authenticator {
 		AdminPasswd: "123456",
 		JWTService:  j,
 		Validator:   token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
+		L:           logger.Func(func(fmt string, args ...interface{}) { log.Printf(fmt, args) }),
 	}
 }
