@@ -71,7 +71,6 @@ func TestJWT_Parse(t *testing.T) {
 	claims, err := j.Parse(testJwtValid)
 	assert.NoError(t, err)
 	assert.False(t, j.IsExpired(claims))
-	// assert.False(t, claims.Revoked)
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
 		Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
 
@@ -239,6 +238,7 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 			claims.User.SetBoolAttr("boola", true)
 			return claims
 		}),
+		Issuer: "remark42",
 	})
 
 	claims := testClaims
@@ -260,6 +260,14 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 	req.Header.Add(xsrfHeaderKey, "random id wrong")
 	_, _, err = j.Get(req)
 	assert.EqualError(t, err, "xsrf mismatch")
+
+	j.DisableXSRF = true
+	req = httptest.NewRequest("GET", "/valid", nil)
+	req.AddCookie(resp.Cookies()[0])
+	req.Header.Add(xsrfHeaderKey, "random id wrong")
+	c, _, err := j.Get(req)
+	require.Nil(t, err, "xsrf mismatch, but ignored")
+	assert.Equal(t, claims, c)
 }
 
 func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
