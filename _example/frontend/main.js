@@ -142,9 +142,11 @@ function getUserInfoFragment(user) {
 			imgappended = true;
 		}
 		let keytd = document.createElement("td");
+		keytd.className = "info__key-cell";
 		keytd.textContent = key;
 
 		let valtd = document.createElement("td");
+		valtd.className = "info__val-cell";
 		if (typeof user[key] === "object") {
 			valtd.textContent = JSON.stringify(user[key]);
 		} else {
@@ -178,6 +180,21 @@ function main() {
 		const infoEl = document.querySelector(".info");
 		infoEl.textContent = "";
 		infoEl.appendChild(getUserInfoFragment(user));
+
+		req("/private_data")
+			.then(data => {
+				data = JSON.stringify(data, null, "  ");
+				const el = document.createElement("pre");
+				el.textContent = data;
+				el.className = "protected-data__data";
+				const container = document.querySelector(".protected-data");
+				const placeholder = container.querySelector(
+					".protected-data__placeholder"
+				);
+				placeholder.remove();
+				container.appendChild(el);
+			})
+			.catch(e => console.error(e));
 	});
 }
 
