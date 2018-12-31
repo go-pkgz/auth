@@ -9,21 +9,24 @@ import (
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/rest"
 	"golang.org/x/oauth2"
+
+	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/token"
 )
 
 // Oauth2Handler implements /login, /callback and /logout handlers from aouth2 flow
 type Oauth2Handler struct {
 	Params
-	Name        string
-	RedirectURL string
-	InfoURL     string
-	Endpoint    oauth2.Endpoint
-	Scopes      []string
-	MapUser     func(userData, []byte) token.User // map info from InfoURL to User
+
+	// all of these fields specific to particular oauth2 provider
+	name        string
+	redirectURL string
+	infoURL     string
+	endpoint    oauth2.Endpoint
+	scopes      []string
+	mapUser     func(userData, []byte) token.User // map info from InfoURL to User
 	conf        oauth2.Config
 }
 
@@ -53,24 +56,25 @@ func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
 	if p.L == nil {
 		p.L = logger.Func(func(fmt string, args ...interface{}) {})
 	}
-	p.Logf("[INFO] init oauth2 service %s", service.Name)
+	p.Logf("[INFO] init oauth2 service %s", service.name)
 	service.Params = p
 	service.conf = oauth2.Config{
 		ClientID:     service.Cid,
 		ClientSecret: service.Csecret,
-		RedirectURL:  service.RedirectURL,
-		Scopes:       service.Scopes,
-		Endpoint:     service.Endpoint,
+		RedirectURL:  service.redirectURL,
+		Scopes:       service.scopes,
+		Endpoint:     service.endpoint,
 	}
 
 	p.Logf("[DEBUG] created %s oauth2, id=%s, redir=%s, endpoint=%s",
-		service.Name, service.Cid, service.Endpoint, service.RedirectURL)
+		service.name, service.Cid, service.endpoint, service.redirectURL)
 	return service
 }
 
-func (p Oauth2Handler) GetName() string { return p.Name }
+// Name returns provider name
+func (p Oauth2Handler) Name() string { return p.name }
 
-// loginHandler - GET /login?from=redirect-back-url&site=siteID&session=1
+// LoginHandler - GET /login?from=redirect-back-url&site=siteID&session=1
 func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	p.Logf("[DEBUG] login with %s", p.Name)
@@ -113,7 +117,7 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, loginURL, http.StatusFound)
 }
 
-// authHandler fills user info and redirects to "from" url. This is callback url redirected locally by browser
+// AuthHandler fills user info and redirects to "from" url. This is callback url redirected locally by browser
 // GET /callback
 func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	oauthClaims, _, err := p.JwtService.Get(r)
@@ -141,7 +145,7 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := p.conf.Client(context.Background(), tok)
-	uinfo, err := client.Get(p.InfoURL)
+	uinfo, err := client.Get(p.infoURL)
 	if err != nil {
 		rest.SendErrorJSON(w, r, http.StatusServiceUnavailable, err, "failed to get client info")
 		return
@@ -166,7 +170,7 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	p.Logf("[DEBUG] got raw user info %+v", jData)
 
-	u := p.MapUser(jData, data)
+	u := p.mapUser(jData, data)
 	u, err = setAvatar(p.AvatarSaver, u)
 	if err != nil {
 		rest.SendErrorJSON(w, r, http.StatusInternalServerError, err, "failed to save avatar to proxy")
@@ -203,7 +207,7 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, r, &u)
 }
 
-// logoutHandler - GET /logout
+// LogoutHandler - GET /logout
 func (p Oauth2Handler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	p.JwtService.Reset(w)
 }

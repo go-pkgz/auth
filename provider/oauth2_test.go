@@ -20,9 +20,9 @@ import (
 
 var days31 = time.Hour * 24 * 31
 
-func TestLogin(t *testing.T) {
+func TestOauth2Login(t *testing.T) {
 
-	teardown := prepServiceTest(t, 8981, 8982)
+	teardown := prepOauth2Test(t, 8981, 8982)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -72,9 +72,9 @@ func TestLogin(t *testing.T) {
 		Attributes: map[string]interface{}{"admin": true}}, u)
 }
 
-func TestLoginSessionOnly(t *testing.T) {
+func TestOauth2LoginSessionOnly(t *testing.T) {
 
-	teardown := prepServiceTest(t, 8981, 8982)
+	teardown := prepOauth2Test(t, 8981, 8982)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -106,9 +106,9 @@ func TestLoginSessionOnly(t *testing.T) {
 	t.Logf("%+v", res)
 }
 
-func TestLogout(t *testing.T) {
+func TestOauth2Logout(t *testing.T) {
 
-	teardown := prepServiceTest(t, 8691, 8692)
+	teardown := prepOauth2Test(t, 8691, 8692)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -130,19 +130,19 @@ func TestLogout(t *testing.T) {
 	assert.Equal(t, "", resp.Cookies()[1].Value)
 }
 
-func TestInitProvider(t *testing.T) {
+func TestOauth2InitProvider(t *testing.T) {
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", Issuer: "app-test"}
-	provider := Oauth2Handler{Name: "test", RedirectURL: "redir"}
+	provider := Oauth2Handler{name: "test", redirectURL: "redir"}
 	res := initOauth2Handler(params, provider)
 	assert.Equal(t, "cid", res.conf.ClientID)
 	assert.Equal(t, "csecret", res.conf.ClientSecret)
-	assert.Equal(t, "redir", res.RedirectURL)
-	assert.Equal(t, "test", res.Name)
+	assert.Equal(t, "redir", res.redirectURL)
+	assert.Equal(t, "test", res.name)
 	assert.Equal(t, "app-test", res.Issuer)
 }
 
-func TestInvalidHandler(t *testing.T) {
-	teardown := prepServiceTest(t, 8691, 8692)
+func TestOauth2InvalidHandler(t *testing.T) {
+	teardown := prepOauth2Test(t, 8691, 8692)
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -155,18 +155,18 @@ func TestInvalidHandler(t *testing.T) {
 	assert.Equal(t, 405, resp.StatusCode)
 }
 
-func prepServiceTest(t *testing.T, loginPort, authPort int) func() {
+func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 
 	provider := Oauth2Handler{
-		Name: "mock",
-		Endpoint: oauth2.Endpoint{
+		name: "mock",
+		endpoint: oauth2.Endpoint{
 			AuthURL:  fmt.Sprintf("http://localhost:%d/login/oauth/authorize", authPort),
 			TokenURL: fmt.Sprintf("http://localhost:%d/login/oauth/access_token", authPort),
 		},
-		RedirectURL: fmt.Sprintf("http://localhost:%d/callback", loginPort),
-		Scopes:      []string{"user:email"},
-		InfoURL:     fmt.Sprintf("http://localhost:%d/user", authPort),
-		MapUser: func(data userData, _ []byte) token.User {
+		redirectURL: fmt.Sprintf("http://localhost:%d/callback", loginPort),
+		scopes:      []string{"user:email"},
+		infoURL:     fmt.Sprintf("http://localhost:%d/user", authPort),
+		mapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
 				ID:      "mock_" + data.value("id"),
 				Name:    data.value("name"),

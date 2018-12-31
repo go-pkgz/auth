@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-pkgz/auth/token"
 	"github.com/pkg/errors"
+
+	"github.com/go-pkgz/auth/token"
 )
 
-// Service represents oauth2 provider
+// Service represents oauth2 provider. Adds Handler method multiplexing login, auth and logout requests
 type Service struct {
 	Provider
 }
@@ -34,8 +35,9 @@ type TokenService interface {
 	Reset(w http.ResponseWriter)
 }
 
+// Provider defines interface for auth handler
 type Provider interface {
-	GetName() string
+	Name() string
 	LoginHandler(w http.ResponseWriter, r *http.Request)
 	AuthHandler(w http.ResponseWriter, r *http.Request)
 	LogoutHandler(w http.ResponseWriter, r *http.Request)

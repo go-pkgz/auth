@@ -131,7 +131,7 @@ func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handl
 		if elems[len(elems)-1] == "list" {
 			list := []string{}
 			for _, p := range s.providers {
-				list = append(list, p.GetName())
+				list = append(list, p.Name())
 			}
 			rest.RenderJSON(w, r, list)
 			return
@@ -218,7 +218,7 @@ func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
 // Provider gets provider by name
 func (s *Service) Provider(name string) (provider.Service, error) {
 	for _, p := range s.providers {
-		if p.GetName() == name {
+		if p.Name() == name {
 			return p, nil
 		}
 	}

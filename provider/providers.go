@@ -16,12 +16,12 @@ import (
 // NewGoogle makes google oauth2 provider
 func NewGoogle(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
-		Name:        "google",
-		Endpoint:    google.Endpoint,
-		RedirectURL: p.URL + "/auth/google/callback",
-		Scopes:      []string{"https://www.googleapis.com/auth/userinfo.profile"},
-		InfoURL:     "https://www.googleapis.com/oauth2/v3/userinfo",
-		MapUser: func(data userData, _ []byte) token.User {
+		name:        "google",
+		endpoint:    google.Endpoint,
+		redirectURL: p.URL + "/auth/google/callback",
+		scopes:      []string{"https://www.googleapis.com/auth/userinfo.profile"},
+		infoURL:     "https://www.googleapis.com/oauth2/v3/userinfo",
+		mapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
 				// encode email with provider name to avoid collision if same id returned by other provider
 				ID:      "google_" + token.HashID(sha1.New(), data.value("sub")),
@@ -39,12 +39,12 @@ func NewGoogle(p Params) Oauth2Handler {
 // NewGithub makes github oauth2 provider
 func NewGithub(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
-		Name:        "github",
-		Endpoint:    github.Endpoint,
-		RedirectURL: p.URL + "/auth/github/callback",
-		Scopes:      []string{},
-		InfoURL:     "https://api.github.com/user",
-		MapUser: func(data userData, _ []byte) token.User {
+		name:        "github",
+		endpoint:    github.Endpoint,
+		redirectURL: p.URL + "/auth/github/callback",
+		scopes:      []string{},
+		infoURL:     "https://api.github.com/user",
+		mapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
 				ID:      "github_" + token.HashID(sha1.New(), data.value("login")),
 				Name:    data.value("name"),
@@ -74,12 +74,12 @@ func NewFacebook(p Params) Oauth2Handler {
 	}
 
 	return initOauth2Handler(p, Oauth2Handler{
-		Name:        "facebook",
-		Endpoint:    facebook.Endpoint,
-		RedirectURL: p.URL + "/auth/facebook/callback",
-		Scopes:      []string{"public_profile"},
-		InfoURL:     "https://graph.facebook.com/me?fields=id,name,picture",
-		MapUser: func(data userData, bdata []byte) token.User {
+		name:        "facebook",
+		endpoint:    facebook.Endpoint,
+		redirectURL: p.URL + "/auth/facebook/callback",
+		scopes:      []string{"public_profile"},
+		infoURL:     "https://graph.facebook.com/me?fields=id,name,picture",
+		mapUser: func(data userData, bdata []byte) token.User {
 			userInfo := token.User{
 				ID:   "facebook_" + token.HashID(sha1.New(), data.value("id")),
 				Name: data.value("name"),
@@ -100,13 +100,13 @@ func NewFacebook(p Params) Oauth2Handler {
 // NewYandex makes yandex oauth2 provider
 func NewYandex(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
-		Name:        "yandex",
-		Endpoint:    yandex.Endpoint,
-		RedirectURL: p.URL + "/auth/yandex/callback",
-		Scopes:      []string{},
+		name:        "yandex",
+		endpoint:    yandex.Endpoint,
+		redirectURL: p.URL + "/auth/yandex/callback",
+		scopes:      []string{},
 		// See https://tech.yandex.com/passport/doc/dg/reference/response-docpage/
-		InfoURL: "https://login.yandex.ru/info?format=json",
-		MapUser: func(data userData, _ []byte) token.User {
+		infoURL: "https://login.yandex.ru/info?format=json",
+		mapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
 				ID:   "yandex_" + token.HashID(sha1.New(), data.value("id")),
 				Name: data.value("display_name"), // using Display Name by default
