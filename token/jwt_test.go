@@ -169,6 +169,32 @@ func TestJWT_SetProlonged(t *testing.T) {
 	assert.True(t, cc.ExpiresAt > time.Now().Unix())
 }
 
+func TestJWT_NoIssuer(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31, Issuer: "xyz",
+		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
+			claims.User.SetStrAttr("stra", "stra-val")
+			claims.User.SetBoolAttr("boola", true)
+			return claims
+		}),
+	})
+
+	claims := testClaims
+	claims.Handshake = nil
+	claims.Issuer = ""
+
+	rr := httptest.NewRecorder()
+	err := j.Set(rr, claims)
+	assert.NoError(t, err)
+	cookies := rr.Result().Cookies()
+	t.Log(cookies)
+	assert.Equal(t, "JWT", cookies[0].Name)
+
+	cc, err := j.Parse(cookies[0].Value)
+	assert.NoError(t, err)
+	assert.Equal(t, "xyz", cc.Issuer)
+}
+
 func TestJWT_GetFromHeader(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31,
