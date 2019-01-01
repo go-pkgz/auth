@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,6 +22,31 @@ func TestUser_HashID(t *testing.T) {
 
 	for i, tt := range tbl {
 		hh := sha1.New()
+		assert.Equal(t, tt.hash, HashID(hh, tt.id), "case #%d", i)
+	}
+}
+
+type mockBadHasher struct{}
+
+func (m *mockBadHasher) Write(p []byte) (n int, err error) { return 0, errors.New("err") }
+func (m *mockBadHasher) Sum(b []byte) []byte               { return nil }
+func (m *mockBadHasher) Reset()                            {}
+func (m *mockBadHasher) Size() int                         { return 0 }
+func (m *mockBadHasher) BlockSize() int                    { return 0 }
+
+func TestUser_HashIDWithCRC(t *testing.T) {
+	tbl := []struct {
+		id   string
+		hash string
+	}{
+		{"myid", "e337514486e387ed"},
+		{"", "914cd8098b8a2128"},
+		{"blah blah", "a9d6c06bfd811649"},
+		{"a9d6c06bfd811649", "a9d6c06bfd811649"},
+	}
+
+	for i, tt := range tbl {
+		hh := &mockBadHasher{}
 		assert.Equal(t, tt.hash, HashID(hh, tt.id), "case #%d", i)
 	}
 }
@@ -63,7 +89,7 @@ func TestUser_GetUserInfo(t *testing.T) {
 	r, err := http.NewRequest("GET", "http://blah.com", nil)
 	assert.Nil(t, err)
 	_, err = GetUserInfo(r)
-	assert.NotNil(t, err, "no user info")
+	assert.EqualError(t, err, "user can't be parsed")
 
 	r = SetUserInfo(r, User{Name: "test", ID: "id"})
 	u, err := GetUserInfo(r)
