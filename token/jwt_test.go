@@ -204,6 +204,13 @@ func TestJWT_GetFromHeader(t *testing.T) {
 
 }
 
+func TestJWT_GetFailed(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false})
+	req := httptest.NewRequest("GET", "/", nil)
+	_, _, err := j.Get(req)
+	assert.Error(t, err, "token cookie was not presented")
+}
+
 func TestJWT_SetAndGetWithCookies(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31,
@@ -348,7 +355,15 @@ func TestJWT_Validator(t *testing.T) {
 }
 
 func TestClaims_String(t *testing.T) {
-	assert.Equal(t, `{"aud":"test_sys","exp":2789191822,"jti":"random id","iss":"remark42","nbf":1526884222,"user":{"name":"name1","id":"id1","picture":"http://example.com/pic.png","ip":"127.0.0.1","email":"me@example.com"},"handshake":{"state":"123456","from":"from","id":"myid-123456"}}`, testClaims.String())
+	s := testClaims.String()
+	assert.True(t, strings.Contains(s, `"aud":"test_sys"`))
+	assert.True(t, strings.Contains(s, `"exp":2789191822`))
+	assert.True(t, strings.Contains(s, `"jti":"random id"`))
+	assert.True(t, strings.Contains(s, `"iss":"remark42"`))
+	assert.True(t, strings.Contains(s, `"nbf":1526884222`))
+	assert.True(t, strings.Contains(s, `"user":`))
+	assert.True(t, strings.Contains(s, `"name":"name1"`))
+	assert.True(t, strings.Contains(s, `"picture":"http://example.com/pic.png"`))
 }
 
 var testClaims = Claims{
