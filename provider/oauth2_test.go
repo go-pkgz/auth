@@ -48,7 +48,7 @@ func TestOauth2Login(t *testing.T) {
 	u := token.User{}
 	err = json.Unmarshal(body, &u)
 	assert.Nil(t, err)
-	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser1", Picture: "http://example.com/ava12345.png", IP: ""}, u)
+	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser1", Picture: "http://example.com/custom.png", IP: ""}, u)
 
 	tk := resp.Cookies()[0].Value
 	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
@@ -56,6 +56,7 @@ func TestOauth2Login(t *testing.T) {
 
 	claims, err := jwtSvc.Parse(tk)
 	require.NoError(t, err)
+	t.Log(claims)
 	assert.Equal(t, "remark42", claims.Issuer)
 	assert.Equal(t, "remark", claims.Audience)
 
@@ -179,8 +180,13 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 	jwtService := token.NewService(token.Opts{
 		SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false, TokenDuration: time.Hour, CookieDuration: days31,
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
-			if claims.User != nil && claims.User.ID == "mock_myuser2" {
-				claims.User.SetBoolAttr("admin", true)
+			if claims.User != nil {
+				switch claims.User.ID {
+				case "mock_myuser2":
+					claims.User.SetBoolAttr("admin", true)
+				case "mock_myuser1":
+					claims.User.Picture = "http://example.com/custom.png"
+				}
 			}
 			return claims
 		}),

@@ -21,6 +21,7 @@ func TestDevProvider(t *testing.T) {
 			SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
+			DisableIAT:     true,
 		}),
 	}
 

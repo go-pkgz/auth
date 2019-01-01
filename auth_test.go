@@ -284,6 +284,7 @@ func prepService(t *testing.T) (teardown func()) {
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		DisableXSRF:    true,
+		DisableIAT:     true,
 		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
 			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_") // allow only dev_ names
 		}),

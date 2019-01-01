@@ -101,6 +101,7 @@ func TestJWT_Set(t *testing.T) {
 			claims.User.SetBoolAttr("boola", true)
 			return claims
 		}),
+		DisableIAT: true,
 	})
 
 	claims := testClaims
@@ -130,6 +131,16 @@ func TestJWT_Set(t *testing.T) {
 	assert.Equal(t, 0, cookies[0].MaxAge)
 	assert.Equal(t, "XSRF-TOKEN", cookies[1].Name)
 	assert.Equal(t, "random id", cookies[1].Value)
+
+	j.DisableIAT = false
+	rr = httptest.NewRecorder()
+	err = j.Set(rr, claims)
+	assert.Nil(t, err)
+	cookies = rr.Result().Cookies()
+	t.Log(cookies)
+	require.Equal(t, 2, len(cookies))
+	assert.Equal(t, "JWT", cookies[0].Name)
+	assert.NotEqual(t, testJwtValidSess, cookies[0].Value, "iat changed the token")
 }
 
 func TestJWT_SetProlonged(t *testing.T) {
@@ -238,7 +249,8 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 			claims.User.SetBoolAttr("boola", true)
 			return claims
 		}),
-		Issuer: "remark42",
+		Issuer:     "remark42",
+		DisableIAT: true,
 	})
 
 	claims := testClaims
@@ -278,6 +290,7 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 			claims.User.SetBoolAttr("boola", true)
 			return claims
 		}),
+		DisableIAT: true,
 	})
 
 	claims := testClaims
