@@ -1,15 +1,16 @@
 package provider
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/go-pkgz/auth/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -25,6 +26,8 @@ func TestDirect_LoginHandler(t *testing.T) {
 		Issuer: "iss-test",
 		L:      logger.Std,
 	}
+
+	assert.Equal(t, "test", d.Name())
 
 	handler := http.HandlerFunc(d.LoginHandler)
 	rr := httptest.NewRecorder()
@@ -46,6 +49,46 @@ func TestDirect_LoginHandler(t *testing.T) {
 	assert.Equal(t, "myuser", claims.User.Name)
 }
 
+func TestDirect_LoginHandlerFailed(t *testing.T) {
+	d := DirectHandler{
+		ProviderName: "test",
+		CredChecker:  nil,
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer: "iss-test",
+		L:      logger.Std,
+	}
+
+	handler := http.HandlerFunc(d.LoginHandler)
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, 500, rr.Code)
+	assert.Equal(t, `{"error":"no credential store"}`+"\n", rr.Body.String())
+
+	d.CredChecker = &mockCredsChecker{err: errors.New("some err"), ok: false}
+	handler = http.HandlerFunc(d.LoginHandler)
+	rr = httptest.NewRecorder()
+	req, err = http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, 500, rr.Code)
+	assert.Equal(t, `{"error":"failed to access creds store"}`+"\n", rr.Body.String())
+
+	d.CredChecker = &mockCredsChecker{err: nil, ok: false}
+	handler = http.HandlerFunc(d.LoginHandler)
+	rr = httptest.NewRecorder()
+	req, err = http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, 403, rr.Code)
+	assert.Equal(t, `{"error":"incorrect user or password"}`+"\n", rr.Body.String())
+
+}
 func TestDirect_Logout(t *testing.T) {
 	d := DirectHandler{
 		ProviderName: "test",

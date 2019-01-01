@@ -5,9 +5,10 @@ import (
 	"net/http"
 
 	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/go-pkgz/rest"
+
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
-	"github.com/go-pkgz/rest"
 )
 
 // DirectHandler implements non-oauth2 provider authorizing user in traditional way with storage
