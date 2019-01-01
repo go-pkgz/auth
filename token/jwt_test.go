@@ -347,6 +347,10 @@ func TestJWT_Validator(t *testing.T) {
 	assert.False(t, ch.Validate("bad", Claims{}))
 }
 
+func TestClaims_String(t *testing.T) {
+	assert.Equal(t, `{"aud":"test_sys","exp":2789191822,"jti":"random id","iss":"remark42","nbf":1526884222,"user":{"name":"name1","id":"id1","picture":"http://example.com/pic.png","ip":"127.0.0.1","email":"me@example.com"},"handshake":{"state":"123456","from":"from","id":"myid-123456"}}`, testClaims.String())
+}
+
 var testClaims = Claims{
 	StandardClaims: jwt.StandardClaims{
 		Id:        "random id",
