@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-pkgz/auth/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/provider"
 	"github.com/go-pkgz/auth/token"
 )
 
