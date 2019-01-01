@@ -8,6 +8,7 @@ import (
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,6 +65,14 @@ func TestJWT_Token(t *testing.T) {
 	res, err := j.Token(claims)
 	assert.Nil(t, err)
 	assert.Equal(t, testJwtValid, res)
+
+	j.SecretReader = nil
+	res, err = j.Token(claims)
+	assert.EqualError(t, err, "secretreader not defined")
+
+	j.SecretReader = SecretFunc(func(id string) (string, error) { return "", errors.New("err blah") })
+	res, err = j.Token(claims)
+	assert.EqualError(t, err, "can't get secret: err blah")
 }
 
 func TestJWT_Parse(t *testing.T) {
@@ -91,6 +100,14 @@ func TestJWT_Parse(t *testing.T) {
 	})
 	_, err = j.Parse(testJwtValid)
 	assert.NotNil(t, err, "bad token", "valid token parsed with wrong secret")
+
+	j = NewService(Opts{
+		SecretReader: SecretFunc(func(id string) (string, error) {
+			return "", errors.New("err blah")
+		}),
+	})
+	_, err = j.Parse(testJwtValid)
+	assert.EqualError(t, err, "can't get secret: err blah")
 }
 
 func TestJWT_Set(t *testing.T) {

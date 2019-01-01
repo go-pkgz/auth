@@ -97,6 +97,10 @@ func (j *Service) Token(claims Claims) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
+	if j.SecretReader == nil {
+		return "", errors.New("secretreader not defined")
+	}
+
 	secret, err := j.SecretReader.Get(claims.Audience) // get secret via consumer defined SecretReader
 	if err != nil {
 		return "", errors.Wrap(err, "can't get secret")
