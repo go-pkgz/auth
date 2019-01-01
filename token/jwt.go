@@ -159,7 +159,9 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) error {
 		claims.ExpiresAt = time.Now().Add(j.TokenDuration).Unix()
 	}
 
-	claims.Issuer = j.Issuer
+	if claims.Issuer == "" {
+		claims.Issuer = j.Issuer
+	}
 
 	tokenString, err := j.Token(claims)
 	if err != nil {

@@ -56,7 +56,7 @@ func TestOauth2Login(t *testing.T) {
 
 	claims, err := jwtSvc.Parse(tk)
 	require.NoError(t, err)
-	assert.Equal(t, "go-pkgz/auth", claims.Issuer)
+	assert.Equal(t, "remark42", claims.Issuer)
 	assert.Equal(t, "remark", claims.Audience)
 
 	// check admin user

@@ -205,6 +205,20 @@ func (s *Service) AddProvider(name string, cid string, csecret string) {
 	s.authMiddleware.Providers = s.providers
 }
 
+// AddDirectProvider adds provider with direct check against data store
+// it doesn't do any handshake and uses provided credChecker to verify user and password from the request
+func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecker) {
+	dh := provider.DirectHandler{
+		L:            s.logger,
+		ProviderName: name,
+		Issuer:       s.issuer,
+		TokenService: s.jwtService,
+		CredChecker:  credChecker,
+	}
+	s.providers = append(s.providers, provider.NewService(dh))
+	s.authMiddleware.Providers = s.providers
+}
+
 // DevAuth makes dev oauth2 server, for testing and development only!
 func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
 	p, err := s.Provider("dev") // peak dev provider

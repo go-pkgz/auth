@@ -173,7 +173,7 @@ func TestIntegrationList(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, `["dev","github"]`+"\n", string(b))
+	assert.Equal(t, `["dev","github","direct"]`+"\n", string(b))
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
@@ -252,6 +252,30 @@ func TestBadRequests(t *testing.T) {
 	defer resp.Body.Close()
 }
 
+func TestDirectProvider(t *testing.T) {
+	teardown := prepService(t)
+	defer teardown()
+
+	// login
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:8080/auth/direct/login?user=dev_direct&passwd=bad")
+	require.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 403, resp.StatusCode)
+
+	resp, err = client.Get("http://127.0.0.1:8080/auth/direct/login?user=dev_direct&passwd=password")
+	require.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 200, resp.StatusCode)
+
+	resp, err = client.Get("http://127.0.0.1:8080/private")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	defer resp.Body.Close()
+}
+
 func prepService(t *testing.T) (teardown func()) {
 	options := Opts{
 		SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
@@ -272,6 +296,11 @@ func prepService(t *testing.T) (teardown func()) {
 	svc := NewService(options)
 	svc.AddProvider("dev", "", "")           // add dev provider
 	svc.AddProvider("github", "cid", "csec") // add github provider
+
+	// add direct provider
+	svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
+		return user == "dev_direct" && password == "password", nil
+	}))
 
 	// run dev/test oauth2 server on :8084
 	devAuth, err := svc.DevAuth()
