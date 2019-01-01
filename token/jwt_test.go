@@ -326,6 +326,14 @@ func TestJWT_Reset(t *testing.T) {
 	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
 }
 
+func TestJWT_Validator(t *testing.T) {
+	ch := ValidatorFunc(func(token string, claims Claims) bool {
+		return token == "good"
+	})
+	assert.True(t, ch.Validate("good", Claims{}))
+	assert.False(t, ch.Validate("bad", Claims{}))
+}
+
 var testClaims = Claims{
 	StandardClaims: jwt.StandardClaims{
 		Id:        "random id",
