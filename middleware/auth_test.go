@@ -270,6 +270,19 @@ func TestAdminRequired(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode, "valid token user, not admin")
+
+	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 401, resp.StatusCode, "not authorized")
+
+	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	req.Header.Add("X-JWT", "bad bad token")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 401, resp.StatusCode, "not authorized")
 }
 
 func makeTestMux(t *testing.T, a *Authenticator, required bool) http.Handler {
