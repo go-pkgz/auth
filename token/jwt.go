@@ -134,6 +134,10 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 		return Claims{}, errors.Wrap(err, "failed to get aud from token token")
 	}
 
+	if j.SecretReader == nil {
+		return Claims{}, errors.New("secretreader not defined")
+	}
+
 	secret, err := j.SecretReader.Get(aud)
 	if err != nil {
 		return Claims{}, errors.Wrap(err, "can't get secret")

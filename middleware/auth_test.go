@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
+	"github.com/pkg/errors"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,7 +77,7 @@ func TestAuthJWTCookie(t *testing.T) {
 
 func TestAuthJWTHeader(t *testing.T) {
 	a := makeTestAuth(t)
-	server := httptest.NewServer(makeTestMux(t, a, true))
+	server := httptest.NewServer(makeTestMux(t, &a, true))
 	defer server.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -97,7 +98,7 @@ func TestAuthJWTHeader(t *testing.T) {
 
 func TestAuthJWTRefresh(t *testing.T) {
 	a := makeTestAuth(t)
-	server := httptest.NewServer(makeTestMux(t, a, true))
+	server := httptest.NewServer(makeTestMux(t, &a, true))
 	defer server.Close()
 
 	jar, err := cookiejar.New(nil)
@@ -124,20 +125,35 @@ func TestAuthJWTRefresh(t *testing.T) {
 
 }
 
+type badJwtService struct {
+	*token.Service
+}
+
+func (b *badJwtService) Set(w http.ResponseWriter, claims token.Claims) error {
+	return errors.New("jwt set fake error")
+}
+
 func TestAuthJWTRefreshFailed(t *testing.T) {
+
 	a := makeTestAuth(t)
-	a.Validator = token.ValidatorFunc(func(token string, claims token.Claims) bool { return false })
-	server := httptest.NewServer(makeTestMux(t, a, true))
+	server := httptest.NewServer(makeTestMux(t, &a, true))
 	defer server.Close()
 
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
 	req.Header.Add("X-JWT", testJwtExpired)
 	resp, err := client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
+
+	a.JWTService = &badJwtService{Service: a.JWTService.(*token.Service)}
+	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	req.Header.Add("X-JWT", testJwtExpired)
+	resp, err = client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 401, resp.StatusCode)
@@ -150,7 +166,7 @@ func TestAuthJWTRefreshFailed(t *testing.T) {
 func TestAuthJWtBlocked(t *testing.T) {
 	a := makeTestAuth(t)
 	a.Validator = token.ValidatorFunc(func(token string, claims token.Claims) bool { return false })
-	server := httptest.NewServer(makeTestMux(t, a, true))
+	server := httptest.NewServer(makeTestMux(t, &a, true))
 	defer server.Close()
 
 	jar, err := cookiejar.New(nil)
@@ -166,7 +182,7 @@ func TestAuthJWtBlocked(t *testing.T) {
 
 func TestAuthJWtWithHandshake(t *testing.T) {
 	a := makeTestAuth(t)
-	server := httptest.NewServer(makeTestMux(t, a, true))
+	server := httptest.NewServer(makeTestMux(t, &a, true))
 	defer server.Close()
 
 	jar, err := cookiejar.New(nil)
@@ -182,7 +198,7 @@ func TestAuthJWtWithHandshake(t *testing.T) {
 
 func TestAuthWithBasic(t *testing.T) {
 	a := makeTestAuth(t)
-	server := httptest.NewServer(makeTestMux(t, a, true))
+	server := httptest.NewServer(makeTestMux(t, &a, true))
 	defer server.Close()
 
 	client := &http.Client{Timeout: 1 * time.Second}
@@ -203,7 +219,7 @@ func TestAuthWithBasic(t *testing.T) {
 
 func TestAuthNotRequired(t *testing.T) {
 	a := makeTestAuth(t)
-	server := httptest.NewServer(makeTestMux(t, a, false))
+	server := httptest.NewServer(makeTestMux(t, &a, false))
 	defer server.Close()
 
 	client := &http.Client{Timeout: 1 * time.Second}
@@ -256,7 +272,7 @@ func TestAdminRequired(t *testing.T) {
 	assert.Equal(t, 403, resp.StatusCode, "valid token user, not admin")
 }
 
-func makeTestMux(t *testing.T, a Authenticator, required bool) http.Handler {
+func makeTestMux(t *testing.T, a *Authenticator, required bool) http.Handler {
 	mux := http.NewServeMux()
 	authMiddleware := a.Auth
 	if !required {
