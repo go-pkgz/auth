@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -120,6 +121,30 @@ func TestAuthJWTRefresh(t *testing.T) {
 	ts := time.Unix(claims.ExpiresAt, 0)
 	assert.True(t, ts.After(time.Now()), "expiration in the future")
 	log.Print(time.Unix(claims.ExpiresAt, 0))
+
+}
+
+func TestAuthJWTRefreshFailed(t *testing.T) {
+	a := makeTestAuth(t)
+	a.Validator = token.ValidatorFunc(func(token string, claims token.Claims) bool { return false })
+	server := httptest.NewServer(makeTestMux(t, a, true))
+	defer server.Close()
+
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	req.Header.Add("X-JWT", testJwtExpired)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 401, resp.StatusCode)
+
+	data, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "Unauthorized\n", string(data))
 }
 
 func TestAuthJWtBlocked(t *testing.T) {
@@ -248,7 +273,7 @@ func makeTestAuth(t *testing.T) Authenticator {
 	j := token.NewService(token.Opts{
 		SecretReader:   token.SecretFunc(func(aud string) (string, error) { return "xyz 12345", nil }),
 		SecureCookies:  false,
-		TokenDuration:  time.Hour,
+		TokenDuration:  time.Second,
 		CookieDuration: time.Hour * 24 * 31,
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
@@ -261,6 +286,6 @@ func makeTestAuth(t *testing.T) Authenticator {
 		AdminPasswd: "123456",
 		JWTService:  j,
 		Validator:   token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
-		L:           logger.Func(func(fmt string, args ...interface{}) { log.Printf(fmt, args) }),
+		L:           logger.Std,
 	}
 }
