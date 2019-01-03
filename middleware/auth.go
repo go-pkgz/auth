@@ -2,7 +2,9 @@
 package middleware
 
 import (
+	"math/rand"
 	"net/http"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -96,7 +98,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 					return
 				}
 
-				if a.JWTService.IsExpired(claims) {
+				if a.shouldRefresh(claims) {
 					if claims, err = a.refreshExpiredToken(w, claims); err != nil {
 						a.JWTService.Reset(w)
 						onError(h, w, r, errors.Wrap(err, "can't refresh token"))
@@ -117,12 +119,25 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 // refreshExpiredToken makes a new token with passed claims
 func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.Claims) (token.Claims, error) {
-
 	claims.ExpiresAt = 0 // this will cause now+duration for refreshed token
 	if err := a.JWTService.Set(w, claims); err != nil {
 		return token.Claims{}, err
 	}
 	return claims, nil
+}
+
+// shouldRefresh checks if token expired and about to be expired with a jitter
+func (a *Authenticator) shouldRefresh(claims token.Claims) bool {
+	if a.JWTService.IsExpired(claims) {
+		return true
+	}
+	now := time.Now()
+	exp := time.Unix(claims.ExpiresAt, 0)
+	if exp.Sub(now) < time.Second {
+		rndMsecs := rand.Int31n(1000)
+		return exp.Sub(now) <= time.Duration(rndMsecs)*time.Millisecond
+	}
+	return false
 }
 
 // AdminOnly middleware allows access for admins only
