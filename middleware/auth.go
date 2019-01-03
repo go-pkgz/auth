@@ -4,7 +4,6 @@ package middleware
 import (
 	"math/rand"
 	"net/http"
-	"time"
 
 	"github.com/pkg/errors"
 
@@ -16,10 +15,11 @@ import (
 // Authenticator is top level auth object providing middlewares
 type Authenticator struct {
 	logger.L
-	JWTService  TokenService
-	Providers   []provider.Service
-	Validator   token.Validator
-	AdminPasswd string
+	JWTService    TokenService
+	Providers     []provider.Service
+	Validator     token.Validator
+	AdminPasswd   string
+	RefreshFactor int
 }
 
 // TokenService defines interface accessing tokens
@@ -126,18 +126,19 @@ func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.
 	return claims, nil
 }
 
-// shouldRefresh checks if token expired and about to be expired with a jitter
+// shouldRefresh checks if token expired with an optional random rejection of refresh.
+// the goal is to prevent multiple refresh request executed at the same time by allowing only some of them
 func (a *Authenticator) shouldRefresh(claims token.Claims) bool {
-	if a.JWTService.IsExpired(claims) {
+	if !a.JWTService.IsExpired(claims) {
+		return false
+	}
+
+	// disable randomizing with 0 factor
+	if a.RefreshFactor == 0 {
 		return true
 	}
-	now := time.Now()
-	exp := time.Unix(claims.ExpiresAt, 0)
-	if exp.Sub(now) < time.Second {
-		rndMsecs := rand.Int31n(1000)
-		return exp.Sub(now) <= time.Duration(rndMsecs)*time.Millisecond
-	}
-	return false
+
+	return rand.Int31n(int32(a.RefreshFactor)) == 0 // randomize selection
 }
 
 // AdminOnly middleware allows access for admins only

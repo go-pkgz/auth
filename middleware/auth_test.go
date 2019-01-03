@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	jwt "github.com/dgrijalva/jwt-go"
+
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 	"github.com/pkg/errors"
@@ -283,6 +285,37 @@ func TestAdminRequired(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode, "not authorized")
+}
+
+func TestShouldRefresh(t *testing.T) {
+
+	c := token.Claims{
+		StandardClaims: jwt.StandardClaims{
+			Audience: "au1",
+			Issuer:   "test iss",
+		},
+	}
+	a := makeTestAuth(t)
+
+	assert.True(t, a.shouldRefresh(c), "token with 0 time")
+
+	c.ExpiresAt = time.Now().Unix() + 5
+	assert.False(t, a.shouldRefresh(c), "token in the future 5s")
+
+	c.ExpiresAt = time.Now().Unix() - 1
+	for i := 0; i < 10; i++ {
+		assert.True(t, a.shouldRefresh(c), "token in the past, factor 0")
+	}
+
+	a.RefreshFactor = 5
+	refreshCount := 0
+	for i := 0; i < 10; i++ {
+		if a.shouldRefresh(c) {
+			refreshCount++
+		}
+	}
+	t.Logf("refreshes=%d", refreshCount)
+	assert.True(t, refreshCount > 0 && refreshCount < 5, "refresh minimized")
 }
 
 func makeTestMux(t *testing.T, a *Authenticator, required bool) http.Handler {
