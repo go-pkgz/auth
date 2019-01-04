@@ -4,7 +4,6 @@ package middleware
 import (
 	"math/rand"
 	"net/http"
-	"strings"
 
 	"github.com/pkg/errors"
 
@@ -16,12 +15,12 @@ import (
 // Authenticator is top level auth object providing middlewares
 type Authenticator struct {
 	logger.L
-	JWTService    TokenService
-	Providers     []provider.Service
-	Validator     token.Validator
-	AdminPasswd   string
-	RefreshFactor int
-	Audiences     []string
+	JWTService     TokenService
+	Providers      []provider.Service
+	Validator      token.Validator
+	AdminPasswd    string
+	RefreshFactor  int
+	AudienceReader token.Audience // allowed aud values
 }
 
 // TokenService defines interface accessing tokens
@@ -87,8 +86,8 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 				return
 			}
 
-			if !a.allowedAud(&claims) {
-				onError(h, w, r, errors.New("invalid aud"))
+			if err = token.CheckAuds(&claims, a.AudienceReader); err != nil {
+				onError(h, w, r, errors.Wrap(err, "invalid aud"))
 				return
 			}
 
@@ -185,16 +184,4 @@ func (a *Authenticator) basicAdminUser(r *http.Request) bool {
 	}
 
 	return true
-}
-
-func (a *Authenticator) allowedAud(claims *token.Claims) bool {
-	if len(a.Audiences) == 0 {
-		return true
-	}
-	for _, a := range a.Audiences {
-		if strings.EqualFold(a, claims.Audience) {
-			return true
-		}
-	}
-	return false
 }

@@ -53,10 +53,10 @@ type Opts struct {
 	AvatarResizeLimit int          // resize avatar's limit in pixels
 	AvatarRoutePath   string       // avatar routing prefix, i.e. "/api/v1/avatar", default `/avatar`
 
-	AdminPasswd   string   // if presented, allows basic auth with user admin and given password
-	Audiences     []string // list of allowed aud values, default (empty) allows any
-	RefreshFactor int      // estimated number of request client sends in parallel during token refresh.
-	Logger        logger.L // logger interface, default is no logging at all
+	AdminPasswd    string         // if presented, allows basic auth with user admin and given password
+	AudienceReader token.Audience // list of allowed aud values, default (empty) allows any
+	RefreshFactor  int            // estimated number of request client sends in parallel during token refresh.
+	Logger         logger.L       // logger interface, default is no logging at all
 }
 
 // NewService initializes everything
@@ -66,10 +66,10 @@ func NewService(opts Opts) (res *Service) {
 		opts:   opts,
 		logger: opts.Logger,
 		authMiddleware: middleware.Authenticator{
-			Validator:     opts.Validator,
-			AdminPasswd:   opts.AdminPasswd,
-			RefreshFactor: opts.RefreshFactor,
-			Audiences:     opts.Audiences,
+			Validator:      opts.Validator,
+			AdminPasswd:    opts.AdminPasswd,
+			RefreshFactor:  opts.RefreshFactor,
+			AudienceReader: opts.AudienceReader,
 		},
 		issuer: opts.Issuer,
 	}
@@ -95,7 +95,7 @@ func NewService(opts Opts) (res *Service) {
 		XSRFCookieName: opts.XSRFCookieName,
 		XSRFHeaderKey:  opts.XSRFHeaderKey,
 		Issuer:         res.issuer,
-		Audiences:      opts.Audiences,
+		AudienceReader: opts.AudienceReader,
 	})
 
 	if opts.SecretReader == nil {

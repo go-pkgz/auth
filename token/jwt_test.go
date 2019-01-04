@@ -77,11 +77,11 @@ func TestJWT_Token(t *testing.T) {
 	assert.EqualError(t, err, "can't get secret: err blah")
 
 	j.SecretReader = SecretFunc(mockKeyStore)
-	j.Audiences = []string{"a1", "aa2"}
+	j.AudienceReader = AudienceFunc(func() ([]string, error) { return []string{"a1", "aa2"}, nil })
 	res, err = j.Token(claims)
-	assert.EqualError(t, err, "aud test_sys not allowed")
+	assert.EqualError(t, err, `aud rejected: aud "test_sys" not allowed`)
 
-	j.Audiences = []string{"a1", "aa2", "test_sys"}
+	j.AudienceReader = AudienceFunc(func() ([]string, error) { return []string{"a1", "test_sys", "aa2"}, nil })
 	_, err = j.Token(claims)
 	assert.NoError(t, err, "aud test_sys allowed")
 
@@ -418,6 +418,24 @@ func TestClaims_String(t *testing.T) {
 	assert.True(t, strings.Contains(s, `"user":`))
 	assert.True(t, strings.Contains(s, `"name":"name1"`))
 	assert.True(t, strings.Contains(s, `"picture":"http://example.com/pic.png"`))
+}
+
+func TestAudience(t *testing.T) {
+
+	c := Claims{
+		StandardClaims: jwt.StandardClaims{
+			Audience: "au1",
+			Issuer:   "test iss",
+		},
+	}
+
+	assert.NoError(t, CheckAuds(&c, nil), "any aud allowed")
+
+	err := CheckAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy"}, nil }))
+	assert.EqualError(t, err, `aud "au1" not allowed`)
+
+	err = CheckAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy", "au1"}, nil }))
+	assert.Nil(t, err, `au1 allowed`)
 }
 
 var testClaims = Claims{

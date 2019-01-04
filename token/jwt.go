@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
 )
 
@@ -58,8 +58,8 @@ type Opts struct {
 	XSRFCookieName string
 	XSRFHeaderKey  string
 
-	Audiences []string // allowed aud values
-	Issuer    string   // optional value for iss claim, usually application name
+	AudienceReader Audience // allowed aud values
+	Issuer         string   // optional value for iss claim, usually application name
 }
 
 // NewService makes JWT service
@@ -93,17 +93,6 @@ func NewService(opts Opts) *Service {
 func (j *Service) Token(claims Claims) (string, error) {
 
 	// make token for allowed aud values only, rejects others
-	allowedAud := func(claims *Claims) bool {
-		if len(j.Audiences) == 0 { // lack of any allowed means any
-			return true
-		}
-		for _, a := range j.Audiences {
-			if strings.EqualFold(a, claims.Audience) {
-				return true
-			}
-		}
-		return false
-	}
 
 	// update claims with ClaimsUpdFunc defined by consumer
 	if j.ClaimsUpd != nil {
@@ -116,8 +105,8 @@ func (j *Service) Token(claims Claims) (string, error) {
 		return "", errors.New("secret reader not defined")
 	}
 
-	if !allowedAud(&claims) {
-		return "", errors.Errorf("aud %s not allowed", claims.Audience)
+	if err := CheckAuds(&claims, j.AudienceReader); err != nil {
+		return "", errors.Wrap(err, "aud rejected")
 	}
 
 	secret, err := j.SecretReader.Get() // get secret via consumer defined SecretReader
@@ -137,7 +126,7 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 	parser := jwt.Parser{SkipClaimsValidation: true} // allow parsing of expired tokens
 
 	if j.SecretReader == nil {
-		return Claims{}, errors.New("secretreader not defined")
+		return Claims{}, errors.New("secret reader not defined")
 	}
 
 	secret, err := j.SecretReader.Get()
@@ -272,6 +261,31 @@ func (j *Service) Reset(w http.ResponseWriter) {
 	http.SetCookie(w, &xsrfCookie)
 }
 
+// CheckAuds verifies if claims.Audience in the list of allowed by audReader
+func CheckAuds(claims *Claims, audReader Audience) error {
+	if audReader == nil { // lack of any allowed means any
+		return nil
+	}
+	auds, err := audReader.Get()
+	if err != nil {
+		return errors.Wrap(err, "failed to get auds")
+	}
+	for _, a := range auds {
+		if strings.EqualFold(a, claims.Audience) {
+			return nil
+		}
+	}
+	return errors.Errorf("aud %q not allowed", claims.Audience)
+}
+
+func (c Claims) String() string {
+	b, err := json.Marshal(c)
+	if err != nil {
+		return fmt.Sprintf("%+v %+v", c.StandardClaims, c.User)
+	}
+	return string(b)
+}
+
 // Secret defines interface returning secret key for given id (aud)
 type Secret interface {
 	Get() (string, error)
@@ -315,10 +329,15 @@ func (f ValidatorFunc) Validate(token string, claims Claims) bool {
 	return f(token, claims)
 }
 
-func (c Claims) String() string {
-	b, err := json.Marshal(c)
-	if err != nil {
-		return fmt.Sprintf("%+v %+v", c.StandardClaims, c.User)
-	}
-	return string(b)
+// Audience defines interface returning list of allowed audiences
+type Audience interface {
+	Get() ([]string, error)
+}
+
+// AudienceFunc type is an adapter to allow the use of ordinary functions as Audience.
+type AudienceFunc func() ([]string, error)
+
+// Get calls f()
+func (f AudienceFunc) Get() ([]string, error) {
+	return f()
 }
