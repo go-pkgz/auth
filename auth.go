@@ -96,7 +96,7 @@ func NewService(opts Opts) (res *Service) {
 	})
 
 	if opts.SecretReader == nil {
-		jwtService.SecretReader = token.SecretFunc(func(id string) (string, error) {
+		jwtService.SecretReader = token.SecretFunc(func() (string, error) {
 			return "", errors.New("secrets reader not available")
 		})
 		res.logger.Logf("[WARN] no secret reader defined")

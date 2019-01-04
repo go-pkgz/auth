@@ -101,7 +101,7 @@ func (j *Service) Token(claims Claims) (string, error) {
 		return "", errors.New("secretreader not defined")
 	}
 
-	secret, err := j.SecretReader.Get(claims.Audience) // get secret via consumer defined SecretReader
+	secret, err := j.SecretReader.Get() // get secret via consumer defined SecretReader
 	if err != nil {
 		return "", errors.Wrap(err, "can't get secret")
 	}
@@ -113,35 +113,15 @@ func (j *Service) Token(claims Claims) (string, error) {
 	return tokenString, nil
 }
 
-// Parse token string and verify. Not checking for expiration
+// Parse token string and verify. Not checking for expiration!
 func (j *Service) Parse(tokenString string) (Claims, error) {
 	parser := jwt.Parser{SkipClaimsValidation: true} // allow parsing of expired tokens
-
-	getAud := func() (aud string, err error) { // parse token without signature check to get id (aud)
-		preToken, _, err := parser.ParseUnverified(tokenString, &Claims{})
-		if err != nil {
-			return "", errors.Wrap(err, "can't pre-parse token")
-		}
-		if _, ok := preToken.Method.(*jwt.SigningMethodHMAC); !ok {
-			return "", errors.Errorf("unexpected signing method: %v", preToken.Header["alg"])
-		}
-		preClaims, ok := preToken.Claims.(*Claims)
-		if !ok {
-			return "", errors.New("invalid token")
-		}
-		return preClaims.Audience, nil
-	}
-
-	aud, err := getAud()
-	if err != nil {
-		return Claims{}, errors.Wrap(err, "failed to get aud from token token")
-	}
 
 	if j.SecretReader == nil {
 		return Claims{}, errors.New("secretreader not defined")
 	}
 
-	secret, err := j.SecretReader.Get(aud)
+	secret, err := j.SecretReader.Get()
 	if err != nil {
 		return Claims{}, errors.Wrap(err, "can't get secret")
 	}
@@ -259,16 +239,16 @@ func (j *Service) Reset(w http.ResponseWriter) {
 
 // Secret defines interface returning secret key for given id (aud)
 type Secret interface {
-	Get(id string) (string, error)
+	Get() (string, error)
 }
 
 // SecretFunc type is an adapter to allow the use of ordinary functions as Secret. If f is a function
 // with the appropriate signature, SecretFunc(f) is a Handler that calls f.
-type SecretFunc func(id string) (string, error)
+type SecretFunc func() (string, error)
 
 // Get calls f(id)
-func (f SecretFunc) Get(id string) (string, error) {
-	return f(id)
+func (f SecretFunc) Get() (string, error) {
+	return f()
 }
 
 // ClaimsUpdater defines interface adding extras to claims
