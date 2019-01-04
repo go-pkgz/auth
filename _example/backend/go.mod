@@ -3,7 +3,7 @@ module github.com/go-pkgz/auth/_example
 require (
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/go-chi/chi v3.3.3+incompatible
-	github.com/go-pkgz/auth v0.2.1
+	github.com/go-pkgz/auth v0.3.0
 	github.com/go-pkgz/rest v1.1.5
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kr/pty v1.1.3 // indirect

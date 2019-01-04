@@ -20,6 +20,8 @@ github.com/go-pkgz/auth v0.1.2-0.20190101215502-c6b94aae831f h1:uUtmvz+RcHtNOPUC
 github.com/go-pkgz/auth v0.1.2-0.20190101215502-c6b94aae831f/go.mod h1:nlPGqCP4kx3BB+uXyN0Ja7w4EpGN0t24UzPo5thifiA=
 github.com/go-pkgz/auth v0.2.1 h1:cP5OIQJNvYOeP7mC3teb/ZViAGavmLrOOPGODe/zcSk=
 github.com/go-pkgz/auth v0.2.1/go.mod h1:nlPGqCP4kx3BB+uXyN0Ja7w4EpGN0t24UzPo5thifiA=
+github.com/go-pkgz/auth v0.3.0 h1:GG7FXX6ugWsL9Lc10R0LYkR3fUlOY5rKn9R25NbTVrw=
+github.com/go-pkgz/auth v0.3.0/go.mod h1:nlPGqCP4kx3BB+uXyN0Ja7w4EpGN0t24UzPo5thifiA=
 github.com/go-pkgz/mongo v1.0.0 h1:9jijAK7prCRMetiyTu3c1rv/2lMypzuf2DWcVpTlwzw=
 github.com/go-pkgz/mongo v1.0.0/go.mod h1:R9si/F2aJsjz4MUxhzuppIHY8yLV3YCeuCpgcI50cu4=
 github.com/go-pkgz/rest v1.1.5 h1:5br4mnscfLb27yxv5hJFLBVmAt09PrmIBP+meA3CfHc=
