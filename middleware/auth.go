@@ -4,6 +4,7 @@ package middleware
 import (
 	"math/rand"
 	"net/http"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -20,6 +21,7 @@ type Authenticator struct {
 	Validator     token.Validator
 	AdminPasswd   string
 	RefreshFactor int
+	Audiences     []string
 }
 
 // TokenService defines interface accessing tokens
@@ -83,6 +85,10 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 			if claims.Handshake != nil { // handshake in token indicate special use cases, not for login
 				onError(h, w, r, errors.New("invalid kind of token"))
 				return
+			}
+
+			if !a.allowedAud(&claims) {
+				onError(h, w, r, errors.New("invalid aud"))
 			}
 
 			if claims.User == nil {
@@ -178,4 +184,16 @@ func (a *Authenticator) basicAdminUser(r *http.Request) bool {
 	}
 
 	return true
+}
+
+func (a *Authenticator) allowedAud(claims *token.Claims) bool {
+	if len(a.Audiences) == 0 {
+		return true
+	}
+	for _, a := range a.Audiences {
+		if strings.EqualFold(a, claims.Audience) {
+			return true
+		}
+	}
+	return false
 }

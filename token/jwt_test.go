@@ -29,7 +29,7 @@ var testJwtNbf = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsI
 
 var days31 = time.Hour * 24 * 31
 
-func mockKeyStore(aud string) (string, error) { return "xyz 12345", nil }
+func mockKeyStore() (string, error) { return "xyz 12345", nil }
 
 func TestJWT_NewDefault(t *testing.T) {
 	j := NewService(Opts{})
@@ -70,9 +70,9 @@ func TestJWT_Token(t *testing.T) {
 
 	j.SecretReader = nil
 	res, err = j.Token(claims)
-	assert.EqualError(t, err, "secretreader not defined")
+	assert.EqualError(t, err, "secret reader not defined")
 
-	j.SecretReader = SecretFunc(func(id string) (string, error) { return "", errors.New("err blah") })
+	j.SecretReader = SecretFunc(func() (string, error) { return "", errors.New("err blah") })
 	res, err = j.Token(claims)
 	assert.EqualError(t, err, "can't get secret: err blah")
 }
@@ -99,17 +99,13 @@ func TestJWT_Parse(t *testing.T) {
 	assert.EqualError(t, err, "can't parse token: signature is invalid")
 
 	j = NewService(Opts{
-		SecretReader: SecretFunc(func(id string) (string, error) {
-			return "bad 12345", nil
-		}),
+		SecretReader: SecretFunc(func() (string, error) { return "bad 12345", nil }),
 	})
 	_, err = j.Parse(testJwtValid)
 	assert.NotNil(t, err, "bad token", "valid token parsed with wrong secret")
 
 	j = NewService(Opts{
-		SecretReader: SecretFunc(func(id string) (string, error) {
-			return "", errors.New("err blah")
-		}),
+		SecretReader: SecretFunc(func() (string, error) { return "", errors.New("err blah") }),
 	})
 	_, err = j.Parse(testJwtValid)
 	assert.EqualError(t, err, "can't get secret: err blah")
@@ -248,7 +244,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	req.Header.Add(jwtHeaderKey, "bad bad token")
 	_, _, err = j.Get(req)
 	require.NotNil(t, err)
-	assert.True(t, strings.Contains(err.Error(), "can't pre-parse token: token contains an invalid number of segments"), err.Error())
+	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token contains an invalid number of segments"), err.Error())
 
 }
 

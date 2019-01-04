@@ -254,7 +254,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 	}
 }
 
-func mockKeyStore(aud string) (string, error) { return "12345", nil }
+func mockKeyStore() (string, error) { return "12345", nil }
 
 type mockAvatarSaver struct{}
 
