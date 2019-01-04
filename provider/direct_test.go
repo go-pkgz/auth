@@ -19,7 +19,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 		ProviderName: "test",
 		CredChecker:  &mockCredsChecker{ok: true},
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
@@ -54,7 +54,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 		ProviderName: "test",
 		CredChecker:  nil,
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
@@ -94,7 +94,7 @@ func TestDirect_Logout(t *testing.T) {
 		ProviderName: "test",
 		CredChecker:  &mockCredsChecker{ok: true},
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
