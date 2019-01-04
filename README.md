@@ -12,7 +12,6 @@ This library provides "social login" with Github, Google, Facebook and Yandex as
 - Integrated avatar proxy with FS, boltdb and gridfs storages
 - Support of user-defined storages for avatars
 - Black list with user-defined validator
-- Multiple aud (audience) supported
 - Secure key with customizable `SecretReader`
 - Ability to store an extra information to token and retrieve on login
 - Pre-auth and post-auth hooks to handle custom use cases. 
