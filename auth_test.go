@@ -36,6 +36,8 @@ func TestNewService(t *testing.T) {
 
 	svc := NewService(options)
 	assert.NotNil(t, svc)
+	assert.NotNil(t, svc.TokenService())
+	assert.NotNil(t, svc.AvatarProxy())
 }
 
 func TestProvider(t *testing.T) {
