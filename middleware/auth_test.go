@@ -235,6 +235,14 @@ func TestAuthWithBasic(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode, "wrong token creds")
+
+	a.AdminPasswd = "" // disable admin
+	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	req.SetBasicAuth("admin", "123456")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 401, resp.StatusCode, "admin with basic not allowed")
 }
 
 func TestAuthNotRequired(t *testing.T) {

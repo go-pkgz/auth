@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
 )
 
@@ -116,7 +116,7 @@ func (j *Service) Token(claims Claims) (string, error) {
 
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
-		return "", errors.Wrap(err, "can't sign token token")
+		return "", errors.Wrap(err, "can't sign token")
 	}
 	return tokenString, nil
 }
