@@ -252,7 +252,7 @@ func TestAdminRequired(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(201)
 	}
-	mux.Handle("/auth", a.Auth(a.AdminOnly(http.HandlerFunc(handler))))
+	mux.Handle("/auth", a.AdminOnly(http.HandlerFunc(handler)))
 
 	server := httptest.NewServer(mux)
 	defer server.Close()
