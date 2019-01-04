@@ -105,7 +105,7 @@ func (j *Service) Token(claims Claims) (string, error) {
 		return "", errors.New("secret reader not defined")
 	}
 
-	if err := CheckAuds(&claims, j.AudienceReader); err != nil {
+	if err := j.checkAuds(&claims, j.AudienceReader); err != nil {
 		return "", errors.Wrap(err, "aud rejected")
 	}
 
@@ -149,6 +149,9 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 		return Claims{}, errors.New("invalid token")
 	}
 
+	if err = j.checkAuds(claims, j.AudienceReader); err != nil {
+		return Claims{}, errors.Wrap(err, "aud rejected")
+	}
 	return *claims, j.validate(claims)
 }
 
@@ -261,8 +264,8 @@ func (j *Service) Reset(w http.ResponseWriter) {
 	http.SetCookie(w, &xsrfCookie)
 }
 
-// CheckAuds verifies if claims.Audience in the list of allowed by audReader
-func CheckAuds(claims *Claims, audReader Audience) error {
+// checkAuds verifies if claims.Audience in the list of allowed by audReader
+func (j *Service) checkAuds(claims *Claims, audReader Audience) error {
 	if audReader == nil { // lack of any allowed means any
 		return nil
 	}

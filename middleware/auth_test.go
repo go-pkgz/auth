@@ -75,24 +75,6 @@ func TestAuthJWTCookie(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode, "no user info in the token")
-
-	a.AudienceReader = token.AudienceFunc(func() ([]string, error) { return []string{"xxx"}, nil })
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
-	require.Nil(t, err)
-	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
-	req.Header.Add("X-XSRF-TOKEN", "random id")
-	resp, err = client.Do(req)
-	require.NoError(t, err)
-	assert.Equal(t, 401, resp.StatusCode, "invalid aud")
-
-	a.AudienceReader = token.AudienceFunc(func() ([]string, error) { return []string{"test_sys"}, nil })
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
-	require.Nil(t, err)
-	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
-	req.Header.Add("X-XSRF-TOKEN", "random id")
-	resp, err = client.Do(req)
-	require.NoError(t, err)
-	assert.Equal(t, 201, resp.StatusCode, "valid aud")
 }
 
 func TestAuthJWTHeader(t *testing.T) {

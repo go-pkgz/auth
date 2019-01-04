@@ -66,10 +66,9 @@ func NewService(opts Opts) (res *Service) {
 		opts:   opts,
 		logger: opts.Logger,
 		authMiddleware: middleware.Authenticator{
-			Validator:      opts.Validator,
-			AdminPasswd:    opts.AdminPasswd,
-			RefreshFactor:  opts.RefreshFactor,
-			AudienceReader: opts.AudienceReader,
+			Validator:     opts.Validator,
+			AdminPasswd:   opts.AdminPasswd,
+			RefreshFactor: opts.RefreshFactor,
 		},
 		issuer: opts.Issuer,
 	}

@@ -422,6 +422,10 @@ func TestClaims_String(t *testing.T) {
 
 func TestAudience(t *testing.T) {
 
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31,
+	})
+
 	c := Claims{
 		StandardClaims: jwt.StandardClaims{
 			Audience: "au1",
@@ -429,12 +433,12 @@ func TestAudience(t *testing.T) {
 		},
 	}
 
-	assert.NoError(t, CheckAuds(&c, nil), "any aud allowed")
+	assert.NoError(t, j.checkAuds(&c, nil), "any aud allowed")
 
-	err := CheckAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy"}, nil }))
+	err := j.checkAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy"}, nil }))
 	assert.EqualError(t, err, `aud "au1" not allowed`)
 
-	err = CheckAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy", "au1"}, nil }))
+	err = j.checkAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy", "au1"}, nil }))
 	assert.Nil(t, err, `au1 allowed`)
 }
 

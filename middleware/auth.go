@@ -15,12 +15,11 @@ import (
 // Authenticator is top level auth object providing middlewares
 type Authenticator struct {
 	logger.L
-	JWTService     TokenService
-	Providers      []provider.Service
-	Validator      token.Validator
-	AdminPasswd    string
-	RefreshFactor  int
-	AudienceReader token.Audience // allowed aud values
+	JWTService    TokenService
+	Providers     []provider.Service
+	Validator     token.Validator
+	AdminPasswd   string
+	RefreshFactor int
 }
 
 // TokenService defines interface accessing tokens
@@ -80,11 +79,6 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 			if claims.Handshake != nil { // handshake in token indicate special use cases, not for login
 				onError(h, w, r, errors.New("invalid kind of token"))
-				return
-			}
-
-			if err = token.CheckAuds(&claims, a.AudienceReader); err != nil {
-				onError(h, w, r, errors.Wrap(err, "invalid aud"))
 				return
 			}
 
