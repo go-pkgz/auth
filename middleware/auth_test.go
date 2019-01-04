@@ -75,6 +75,15 @@ func TestAuthJWTCookie(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode, "no user info in the token")
+
+	a.Audiences = []string{"xxx"}
+	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	require.Nil(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 401, resp.StatusCode, "invalid aud")
 }
 
 func TestAuthJWTHeader(t *testing.T) {
@@ -316,6 +325,24 @@ func TestShouldRefresh(t *testing.T) {
 	}
 	t.Logf("refreshes=%d", refreshCount)
 	assert.True(t, refreshCount > 0 && refreshCount < 5, "refresh minimized")
+}
+
+func TestAllowedAud(t *testing.T) {
+	c := token.Claims{
+		StandardClaims: jwt.StandardClaims{
+			Audience: "au1",
+			Issuer:   "test iss",
+		},
+	}
+
+	a := Authenticator{Audiences: nil}
+	assert.True(t, a.allowedAud(&c), "any aud allowed")
+
+	a.Audiences = []string{"xxx", "yyy"}
+	assert.False(t, a.allowedAud(&c), "au1 not allowed")
+
+	a.Audiences = []string{"xxx", "au1", "yyy"}
+	assert.True(t, a.allowedAud(&c), "au1 allowed")
 }
 
 func makeTestMux(t *testing.T, a *Authenticator, required bool) http.Handler {

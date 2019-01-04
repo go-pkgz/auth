@@ -89,6 +89,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 			if !a.allowedAud(&claims) {
 				onError(h, w, r, errors.New("invalid aud"))
+				return
 			}
 
 			if claims.User == nil {

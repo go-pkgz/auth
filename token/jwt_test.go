@@ -75,6 +75,16 @@ func TestJWT_Token(t *testing.T) {
 	j.SecretReader = SecretFunc(func() (string, error) { return "", errors.New("err blah") })
 	res, err = j.Token(claims)
 	assert.EqualError(t, err, "can't get secret: err blah")
+
+	j.SecretReader = SecretFunc(mockKeyStore)
+	j.Audiences = []string{"a1", "aa2"}
+	res, err = j.Token(claims)
+	assert.EqualError(t, err, "aud test_sys not allowed")
+
+	j.Audiences = []string{"a1", "aa2", "test_sys"}
+	_, err = j.Token(claims)
+	assert.NoError(t, err, "aud test_sys allowed")
+
 }
 
 func TestJWT_Parse(t *testing.T) {
