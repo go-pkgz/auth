@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -32,9 +31,7 @@ func TestNewService(t *testing.T) {
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
-		Logger: logger.Func(func(fmt string, args ...interface{}) {
-			log.Printf(fmt, args)
-		}),
+		Logger:         logger.Std,
 	}
 
 	svc := NewService(options)
@@ -45,9 +42,7 @@ func TestProvider(t *testing.T) {
 	options := Opts{
 		SecretReader: token.SecretFunc(func(id string) (string, error) { return "secret", nil }),
 		URL:          "http://127.0.0.1:8080",
-		Logger: logger.Func(func(fmt string, args ...interface{}) {
-			log.Printf(fmt, args)
-		}),
+		Logger:       logger.Std,
 	}
 	svc := NewService(options)
 
@@ -292,6 +287,7 @@ func prepService(t *testing.T) (teardown func()) {
 		AvatarResizeLimit: 120,
 		AvatarRoutePath:   "/api/v1/avatar",
 		AdminPasswd:       "password",
+		Logger:            logger.Std,
 	}
 
 	svc := NewService(options)

@@ -157,11 +157,27 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 	}
 
 	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if !ok {
 		return Claims{}, errors.New("invalid token")
 	}
 
-	return *claims, nil
+	return *claims, j.validate(claims)
+}
+
+func (j *Service) validate(claims *Claims) error {
+	cerr := claims.Valid()
+
+	if cerr == nil {
+		return nil
+	}
+
+	if e, ok := cerr.(*jwt.ValidationError); ok {
+		e.Errors ^= jwt.ValidationErrorExpired // clear ValidationErrorExpired, allow expired token
+		if e.Errors != 0 {
+			return e
+		}
+	}
+	return nil
 }
 
 // Set creates token cookie with xsrf cookie and put it to ResponseWriter
