@@ -255,7 +255,37 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	_, _, err = j.Get(req)
 	require.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token contains an invalid number of segments"), err.Error())
+}
 
+func TestJWT_GetFromQuery(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31,
+		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
+			claims.User.SetStrAttr("stra", "stra-val")
+			claims.User.SetBoolAttr("boola", true)
+			return claims
+		}),
+	})
+
+	req := httptest.NewRequest("GET", "/blah?token="+testJwtValid, nil)
+	claims, token, err := j.Get(req)
+	assert.Nil(t, err)
+	assert.Equal(t, testJwtValid, token)
+	assert.False(t, j.IsExpired(claims))
+	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
+		Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
+	assert.Equal(t, "remark42", claims.Issuer)
+
+	req = httptest.NewRequest("GET", "/blah?token="+testJwtExpired, nil)
+	claims, token, err = j.Get(req)
+	assert.Nil(t, err)
+	assert.Equal(t, testJwtExpired, token)
+	assert.True(t, j.IsExpired(claims))
+
+	req = httptest.NewRequest("GET", "/blah?token=blah", nil)
+	_, _, err = j.Get(req)
+	require.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token contains an invalid number of segments"), err.Error())
 }
 
 func TestJWT_GetFailed(t *testing.T) {
