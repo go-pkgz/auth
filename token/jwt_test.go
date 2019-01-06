@@ -27,6 +27,8 @@ var testJwtBadSign = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5c
 
 var testJwtNbf = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE2OTk4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJoYW5kc2hha2UiOnsic3RhdGUiOiIxMjM0NTYiLCJmcm9tIjoiZnJvbSIsImlkIjoibXlpZC0xMjM0NTYifX0.gJu5OWWlSgRnpa1S9iLr-PIB7a4VIr-CFY_2FcDJh7k"
 
+var testJwtNoneAlg = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpc3MiOiJodHRwczovL2p3dC1pZHAuZXhhbXBsZS5jb20iLCJzdWIiOiJtYWlsdG86bWlrZUBleGFtcGxlLmNvbSIsIm5iZiI6MTU0Njc0MzcxMSwiZXhwIjoxNTQ2NzQ3MzExLCJpYXQiOjE1NDY3NDM3MTEsImp0aSI6ImlkMTIzNDU2IiwidHlwIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS9yZWdpc3RlciJ9."
+
 var days31 = time.Hour * 24 * 31
 
 func mockKeyStore() (string, error) { return "xyz 12345", nil }
@@ -108,6 +110,9 @@ func TestJWT_Parse(t *testing.T) {
 	_, err = j.Parse(testJwtBadSign)
 	assert.EqualError(t, err, "can't parse token: signature is invalid")
 
+	_, err = j.Parse(testJwtNoneAlg)
+	assert.EqualError(t, err, "can't parse token: unexpected signing method: none")
+
 	j = NewService(Opts{
 		SecretReader: SecretFunc(func() (string, error) { return "bad 12345", nil }),
 	})
@@ -119,6 +124,7 @@ func TestJWT_Parse(t *testing.T) {
 	})
 	_, err = j.Parse(testJwtValid)
 	assert.EqualError(t, err, "can't get secret: err blah")
+
 }
 
 func TestJWT_Set(t *testing.T) {
