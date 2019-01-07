@@ -10,13 +10,12 @@ import (
 	"time"
 
 	"github.com/go-chi/chi"
-
+	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/auth/avatar"
-	lg "github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -50,7 +49,7 @@ func main() {
 			}
 			return false
 		}),
-		Logger: lg.Std, // optional logger for auth library
+		Logger: lgr.Std, // optional logger for auth library
 	}
 
 	// create auth service

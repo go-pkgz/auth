@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/lgr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDevProvider(t *testing.T) {
-	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std,
+	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: lgr.Std,
 		JwtService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
@@ -27,7 +27,7 @@ func TestDevProvider(t *testing.T) {
 
 	devProvider := NewDev(params)
 	s := Service{Provider: devProvider}
-	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: logger.Std}
+	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: lgr.Std}
 
 	router := http.NewServeMux()
 	router.Handle("/auth/dev/", http.HandlerFunc(s.Handler))
@@ -79,7 +79,7 @@ func TestDevProvider(t *testing.T) {
 }
 
 func TestDevProviderCancel(t *testing.T) {
-	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std,
+	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: lgr.Std,
 		JwtService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
@@ -89,7 +89,7 @@ func TestDevProviderCancel(t *testing.T) {
 	}
 
 	devProvider := NewDev(params)
-	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: logger.Std}
+	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: lgr.Std}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan bool)

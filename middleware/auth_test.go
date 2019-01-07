@@ -11,8 +11,8 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 
-	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/lgr"
 	"github.com/pkg/errors"
 
 	"github.com/stretchr/testify/assert"
@@ -356,6 +356,6 @@ func makeTestAuth(t *testing.T) Authenticator {
 		AdminPasswd: "123456",
 		JWTService:  j,
 		Validator:   token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
-		L:           logger.Std,
+		L:           lgr.Std,
 	}
 }

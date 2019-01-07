@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/lgr"
 )
 
 func TestDirect_LoginHandler(t *testing.T) {
@@ -24,7 +24,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 			CookieDuration: time.Hour * 24 * 31,
 		}),
 		Issuer: "iss-test",
-		L:      logger.Std,
+		L:      lgr.Std,
 	}
 
 	assert.Equal(t, "test", d.Name())
@@ -59,7 +59,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 			CookieDuration: time.Hour * 24 * 31,
 		}),
 		Issuer: "iss-test",
-		L:      logger.Std,
+		L:      lgr.Std,
 	}
 
 	handler := http.HandlerFunc(d.LoginHandler)
@@ -99,7 +99,7 @@ func TestDirect_Logout(t *testing.T) {
 			CookieDuration: time.Hour * 24 * 31,
 		}),
 		Issuer: "iss-test",
-		L:      logger.Std,
+		L:      lgr.Std,
 	}
 
 	handler := http.HandlerFunc(d.LogoutHandler)

@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-pkgz/auth/avatar"
-	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/provider"
 	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/lgr"
 )
 
 func TestNewService(t *testing.T) {
@@ -31,7 +31,7 @@ func TestNewService(t *testing.T) {
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
-		Logger:         logger.Std,
+		Logger:         lgr.Std,
 	}
 
 	svc := NewService(options)
@@ -44,7 +44,7 @@ func TestProvider(t *testing.T) {
 	options := Opts{
 		SecretReader: token.SecretFunc(func() (string, error) { return "secret", nil }),
 		URL:          "http://127.0.0.1:8080",
-		Logger:       logger.Std,
+		Logger:       lgr.Std,
 	}
 	svc := NewService(options)
 
@@ -289,7 +289,7 @@ func prepService(t *testing.T) (teardown func()) {
 		AvatarResizeLimit: 120,
 		AvatarRoutePath:   "/api/v1/avatar",
 		AdminPasswd:       "password",
-		Logger:            logger.Std,
+		Logger:            lgr.Std,
 	}
 
 	svc := NewService(options)
