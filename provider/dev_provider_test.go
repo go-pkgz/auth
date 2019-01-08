@@ -16,7 +16,8 @@ import (
 )
 
 func TestDevProvider(t *testing.T) {
-	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: lgr.Std,
+	l := lgr.New(lgr.Debug, lgr.CallerFile)
+	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: l,
 		JwtService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
@@ -27,7 +28,7 @@ func TestDevProvider(t *testing.T) {
 
 	devProvider := NewDev(params)
 	s := Service{Provider: devProvider}
-	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: lgr.Std}
+	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: l}
 
 	router := http.NewServeMux()
 	router.Handle("/auth/dev/", http.HandlerFunc(s.Handler))
@@ -79,7 +80,8 @@ func TestDevProvider(t *testing.T) {
 }
 
 func TestDevProviderCancel(t *testing.T) {
-	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: lgr.Std,
+	lgr.Setup(lgr.Debug, lgr.CallerFile)
+	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: lgr.Default(),
 		JwtService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
@@ -89,7 +91,7 @@ func TestDevProviderCancel(t *testing.T) {
 	}
 
 	devProvider := NewDev(params)
-	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: lgr.Std}
+	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: lgr.Default()}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan bool)
