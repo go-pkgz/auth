@@ -5,7 +5,7 @@ require (
 	github.com/coreos/bbolt v1.3.0
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/globalsign/mgo v0.0.0-20181015135952-eeefdecb41b8
-	github.com/go-pkgz/lgr v0.1.3
+	github.com/go-pkgz/lgr v0.1.4
 	github.com/go-pkgz/mongo v1.0.0
 	github.com/go-pkgz/rest v1.1.6
 	github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022

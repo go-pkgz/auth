@@ -274,7 +274,7 @@ func TestDirectProvider(t *testing.T) {
 }
 
 func prepService(t *testing.T) (teardown func()) {
-	lgr.Setup(lgr.CallerFile, lgr.Debug)
+	lgr.Setup(lgr.CallerFile, lgr.Debug, lgr.LevelBraces)
 
 	options := Opts{
 		SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
