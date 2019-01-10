@@ -142,8 +142,9 @@ func TestJWT_Set(t *testing.T) {
 	claims.Handshake = nil
 
 	rr := httptest.NewRecorder()
-	err := j.Set(rr, claims)
+	c, err := j.Set(rr, claims)
 	assert.Nil(t, err)
+	assert.Equal(t, claims, c)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 2, len(cookies))
@@ -155,7 +156,7 @@ func TestJWT_Set(t *testing.T) {
 
 	claims.SessionOnly = true
 	rr = httptest.NewRecorder()
-	err = j.Set(rr, claims)
+	_, err = j.Set(rr, claims)
 	assert.Nil(t, err)
 	cookies = rr.Result().Cookies()
 	t.Log(cookies)
@@ -168,7 +169,7 @@ func TestJWT_Set(t *testing.T) {
 
 	j.DisableIAT = false
 	rr = httptest.NewRecorder()
-	err = j.Set(rr, claims)
+	_, err = j.Set(rr, claims)
 	assert.Nil(t, err)
 	cookies = rr.Result().Cookies()
 	t.Log(cookies)
@@ -192,7 +193,7 @@ func TestJWT_SetProlonged(t *testing.T) {
 	claims.ExpiresAt = 0
 
 	rr := httptest.NewRecorder()
-	err := j.Set(rr, claims)
+	_, err := j.Set(rr, claims)
 	assert.NoError(t, err)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
@@ -218,7 +219,7 @@ func TestJWT_NoIssuer(t *testing.T) {
 	claims.Issuer = ""
 
 	rr := httptest.NewRecorder()
-	err := j.Set(rr, claims)
+	_, err := j.Set(rr, claims)
 	assert.NoError(t, err)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
@@ -316,7 +317,8 @@ func TestJWT_SetAndGetWithCookies(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/valid" {
-			assert.Nil(t, j.Set(w, claims))
+			_, e := j.Set(w, claims)
+			require.NoError(t, e)
 			w.WriteHeader(200)
 		}
 	}))
@@ -354,7 +356,8 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 	claims.SessionOnly = true
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/valid" {
-			assert.Nil(t, j.Set(w, claims))
+			_, e := j.Set(w, claims)
+			require.NoError(t, e)
 			w.WriteHeader(200)
 		}
 	}))
@@ -397,7 +400,8 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/expired" {
-			assert.Nil(t, j.Set(w, claims))
+			_, e := j.Set(w, claims)
+			require.NoError(t, e)
 			w.WriteHeader(200)
 		}
 	}))

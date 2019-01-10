@@ -8,6 +8,7 @@ require (
 	github.com/go-pkgz/lgr v0.1.4
 	github.com/go-pkgz/mongo v1.0.0
 	github.com/go-pkgz/rest v1.1.6
+	github.com/hashicorp/golang-lru v0.5.0
 	github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022
 	github.com/pkg/errors v0.8.1
 	github.com/stretchr/objx v0.1.1 // indirect

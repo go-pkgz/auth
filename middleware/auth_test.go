@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	jwt "github.com/dgrijalva/jwt-go"
 
 	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/lgr"
@@ -124,15 +124,47 @@ func TestAuthJWTRefresh(t *testing.T) {
 	ts := time.Unix(claims.ExpiresAt, 0)
 	assert.True(t, ts.After(time.Now()), "expiration in the future")
 	log.Print(time.Unix(claims.ExpiresAt, 0))
+}
 
+func TestAuthJWTRefreshConcurrent(t *testing.T) {
+
+	a := makeTestAuth(t)
+	server := httptest.NewServer(makeTestMux(t, &a, true))
+	defer server.Close()
+
+	var refreshCount int32
+	var wg sync.WaitGroup
+
+	wg.Add(100)
+	for i := 0; i < 100; i++ {
+		go func() {
+			defer wg.Done()
+			jar, err := cookiejar.New(nil)
+			require.Nil(t, err)
+			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+			req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+			require.NoError(t, err)
+			req.Header.Add("X-JWT", testJwtExpired)
+			resp, err := client.Do(req)
+			require.NoError(t, err)
+			assert.Equal(t, 201, resp.StatusCode)
+
+			cookies := resp.Cookies()
+			if len(cookies) == 2 && resp.Cookies()[0].Name == "JWT" && resp.Cookies()[0].Value != testJwtExpired {
+				atomic.AddInt32(&refreshCount, 1)
+			}
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), atomic.LoadInt32(&refreshCount), "should make one refresh only")
 }
 
 type badJwtService struct {
 	*token.Service
 }
 
-func (b *badJwtService) Set(w http.ResponseWriter, claims token.Claims) error {
-	return errors.New("jwt set fake error")
+func (b *badJwtService) Set(w http.ResponseWriter, claims token.Claims) (token.Claims, error) {
+	return token.Claims{}, errors.New("jwt set fake error")
 }
 
 func TestAuthJWTRefreshFailed(t *testing.T) {
@@ -144,18 +176,12 @@ func TestAuthJWTRefreshFailed(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	a.JWTService = &badJwtService{Service: a.JWTService.(*token.Service)}
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
 	req.Header.Add("X-JWT", testJwtExpired)
 	resp, err := client.Do(req)
-	require.NoError(t, err)
-	assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
-
-	a.JWTService = &badJwtService{Service: a.JWTService.(*token.Service)}
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
-	require.NoError(t, err)
-	req.Header.Add("X-JWT", testJwtExpired)
-	resp, err = client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 401, resp.StatusCode)
@@ -293,37 +319,6 @@ func TestAdminRequired(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode, "not authorized")
-}
-
-func TestShouldRefresh(t *testing.T) {
-
-	c := token.Claims{
-		StandardClaims: jwt.StandardClaims{
-			Audience: "au1",
-			Issuer:   "test iss",
-		},
-	}
-	a := makeTestAuth(t)
-
-	assert.True(t, a.shouldRefresh(c), "token with 0 time")
-
-	c.ExpiresAt = time.Now().Unix() + 5
-	assert.False(t, a.shouldRefresh(c), "token in the future 5s")
-
-	c.ExpiresAt = time.Now().Unix() - 1
-	for i := 0; i < 10; i++ {
-		assert.True(t, a.shouldRefresh(c), "token in the past, factor 0")
-	}
-
-	a.RefreshFactor = 5
-	refreshCount := 0
-	for i := 0; i < 10; i++ {
-		if a.shouldRefresh(c) {
-			refreshCount++
-		}
-	}
-	t.Logf("refreshes=%d", refreshCount)
-	assert.True(t, refreshCount > 0 && refreshCount < 5, "refresh minimized")
 }
 
 func makeTestMux(t *testing.T, a *Authenticator, required bool) http.Handler {
