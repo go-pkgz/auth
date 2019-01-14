@@ -2,7 +2,6 @@
 package middleware
 
 import (
-	"log"
 	"net/http"
 	"sync"
 
@@ -128,7 +127,7 @@ func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.
 	a.refresh.once.Do(func() {
 		var e error
 		if a.refresh.cache, e = lru.New(refreshCacheSize); e != nil {
-			log.Printf("[WARN] can't make refresh cache, %v", e)
+			a.Logf("[WARN] can't make refresh cache, %v", e)
 			a.refresh.cache = nil
 		}
 	})
