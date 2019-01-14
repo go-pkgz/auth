@@ -7,7 +7,7 @@ require (
 	github.com/globalsign/mgo v0.0.0-20181015135952-eeefdecb41b8
 	github.com/go-pkgz/lgr v0.1.4
 	github.com/go-pkgz/mongo v1.0.0
-	github.com/go-pkgz/rest v1.1.6
+	github.com/go-pkgz/rest v1.2.0
 	github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022
 	github.com/pkg/errors v0.8.1
 	github.com/stretchr/objx v0.1.1 // indirect
