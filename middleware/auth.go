@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 	"sync"
 
@@ -123,17 +124,32 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 // refreshExpiredToken makes a new token with passed claims
 func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.Claims, tkn string) (token.Claims, error) {
-	a.refresh.once.Do(func() { a.refresh.cache, _ = lru.New(refreshCacheSize) })
-	if c, ok := a.refresh.cache.Get(tkn); ok {
-		// already in cache
-		return c.(token.Claims), nil
+
+	a.refresh.once.Do(func() {
+		var e error
+		if a.refresh.cache, e = lru.New(refreshCacheSize); e != nil {
+			log.Printf("[WARN] can't make refresh cache, %v", e)
+			a.refresh.cache = nil
+		}
+	})
+
+	if a.refresh.cache != nil {
+		if c, ok := a.refresh.cache.Get(tkn); ok {
+			// already in cache
+			return c.(token.Claims), nil
+		}
 	}
-	claims.ExpiresAt = 0 // this will cause now+duration for refreshed token
-	c, err := a.JWTService.Set(w, claims)
+
+	claims.ExpiresAt = 0                  // this will cause now+duration for refreshed token
+	c, err := a.JWTService.Set(w, claims) // Set changes token
 	if err != nil {
 		return token.Claims{}, err
 	}
-	a.refresh.cache.Add(tkn, c)
+
+	if a.refresh.cache != nil {
+		a.refresh.cache.Add(tkn, c)
+	}
+
 	a.Logf("[DEBUG] token refreshed for %+v", claims.User)
 	return c, nil
 }
