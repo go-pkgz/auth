@@ -28,6 +28,8 @@ type Authenticator struct {
 	}
 }
 
+const refreshCacheSize = 1000
+
 // TokenService defines interface accessing tokens
 type TokenService interface {
 	Parse(tokenString string) (claims token.Claims, err error)
@@ -121,7 +123,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 // refreshExpiredToken makes a new token with passed claims
 func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.Claims, tkn string) (token.Claims, error) {
-	a.refresh.once.Do(func() { a.refresh.cache, _ = lru.New(1000) })
+	a.refresh.once.Do(func() { a.refresh.cache, _ = lru.New(refreshCacheSize) })
 	if c, ok := a.refresh.cache.Get(tkn); ok {
 		// already in cache
 		return c.(token.Claims), nil
