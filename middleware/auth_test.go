@@ -98,6 +98,20 @@ func TestAuthJWTHeader(t *testing.T) {
 	assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
 }
 
+func TestAuthJWTHeaderExpired(t *testing.T) {
+	a := makeTestAuth(t)
+	server := httptest.NewServer(makeTestMux(t, &a, true))
+	defer server.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	require.Nil(t, err)
+	req.Header.Add("X-JWT", testJwtExpired)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 401, resp.StatusCode, "expired token user")
+}
+
 func TestAuthJWTRefresh(t *testing.T) {
 	a := makeTestAuth(t)
 	server := httptest.NewServer(makeTestMux(t, &a, true))

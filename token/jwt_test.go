@@ -252,10 +252,8 @@ func TestJWT_GetFromHeader(t *testing.T) {
 
 	req = httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(jwtHeaderKey, testJwtExpired)
-	claims, token, err = j.Get(req)
-	assert.Nil(t, err)
-	assert.Equal(t, testJwtExpired, token)
-	assert.True(t, j.IsExpired(claims))
+	_, _, err = j.Get(req)
+	assert.NotNil(t, err)
 
 	req = httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(jwtHeaderKey, "bad bad token")
@@ -284,10 +282,8 @@ func TestJWT_GetFromQuery(t *testing.T) {
 	assert.Equal(t, "remark42", claims.Issuer)
 
 	req = httptest.NewRequest("GET", "/blah?token="+testJwtExpired, nil)
-	claims, token, err = j.Get(req)
-	assert.Nil(t, err)
-	assert.Equal(t, testJwtExpired, token)
-	assert.True(t, j.IsExpired(claims))
+	_, _, err = j.Get(req)
+	assert.NotNil(t, err)
 
 	req = httptest.NewRequest("GET", "/blah?token=blah", nil)
 	_, _, err = j.Get(req)

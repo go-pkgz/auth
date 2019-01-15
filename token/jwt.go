@@ -241,6 +241,10 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 		return Claims{}, "", errors.Wrap(err, "failed to get token")
 	}
 
+	if !fromCookie && j.IsExpired(claims) {
+		return Claims{}, "", errors.New("token expired")
+	}
+
 	if j.DisableXSRF {
 		return claims, tokenString, nil
 	}

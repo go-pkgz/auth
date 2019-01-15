@@ -91,7 +91,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 			}
 
 			if claims.User == nil {
-				onError(h, w, r, errors.New("failed auth, no user info presented in the claim"))
+				onError(h, w, r, errors.New("no user info presented in the claim"))
 				return
 			}
 
