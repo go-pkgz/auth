@@ -95,21 +95,7 @@ func TestAuthJWTHeader(t *testing.T) {
 	req.Header.Add("X-JWT", testJwtExpired)
 	resp, err = client.Do(req)
 	require.NoError(t, err)
-	assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
-}
-
-func TestAuthJWTHeaderExpired(t *testing.T) {
-	a := makeTestAuth(t)
-	server := httptest.NewServer(makeTestMux(t, &a, true))
-	defer server.Close()
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
-	require.Nil(t, err)
-	req.Header.Add("X-JWT", testJwtExpired)
-	resp, err := client.Do(req)
-	require.NoError(t, err)
-	assert.Equal(t, 401, resp.StatusCode, "expired token user")
+	assert.Equal(t, 401, resp.StatusCode, "token expired")
 }
 
 func TestAuthJWTRefresh(t *testing.T) {
@@ -122,7 +108,11 @@ func TestAuthJWTRefresh(t *testing.T) {
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
-	req.Header.Add("X-JWT", testJwtExpired)
+
+	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
@@ -158,7 +148,12 @@ func TestAuthJWTRefreshConcurrent(t *testing.T) {
 			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 			req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 			require.NoError(t, err)
-			req.Header.Add("X-JWT", testJwtExpired)
+
+			expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+			req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
+				MaxAge: expiration, Secure: false})
+			req.Header.Add("X-XSRF-TOKEN", "random id")
+
 			resp, err := client.Do(req)
 			require.NoError(t, err)
 			assert.Equal(t, 201, resp.StatusCode)
@@ -171,6 +166,32 @@ func TestAuthJWTRefreshConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 	assert.Equal(t, int32(1), atomic.LoadInt32(&refreshCount), "should make one refresh only")
+
+	// make another expired token
+	c, err := a.JWTService.Parse(testJwtExpired)
+	require.NoError(t, err)
+	c.User.ID = "other ID"
+	tkSvc := a.JWTService.(*token.Service)
+	tkn, err := tkSvc.Token(c)
+	require.NoError(t, err)
+
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: tkn, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 201, resp.StatusCode)
+
+	cookies := resp.Cookies()
+	require.Equal(t, 2, len(cookies))
+	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+	assert.NotEqual(t, tkn, resp.Cookies()[0].Value)
+	t.Log(resp.Cookies()[0].Value)
 }
 
 type badJwtService struct {
