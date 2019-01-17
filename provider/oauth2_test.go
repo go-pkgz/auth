@@ -11,12 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-pkgz/lgr"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -203,7 +202,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 	})
 
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
-		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: lgr.Std}
+		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std}
 
 	provider = initOauth2Handler(params, provider)
 	svc := Service{Provider: provider}

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
-	"github.com/go-pkgz/lgr"
 	"github.com/pkg/errors"
 
 	"github.com/stretchr/testify/assert"
@@ -130,7 +130,7 @@ func TestAuthJWTRefresh(t *testing.T) {
 	log.Print(time.Unix(claims.ExpiresAt, 0))
 }
 
-func TestAuthJWTRefreshConcurrent(t *testing.T) {
+func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 
 	a := makeTestAuth(t)
 	server := httptest.NewServer(makeTestMux(t, &a, true))
@@ -138,7 +138,7 @@ func TestAuthJWTRefreshConcurrent(t *testing.T) {
 
 	var refreshCount int32
 	var wg sync.WaitGroup
-
+	a.RefreshCache = newTestRefreshCache()
 	wg.Add(100)
 	for i := 0; i < 100; i++ {
 		go func() {
@@ -392,6 +392,28 @@ func makeTestAuth(t *testing.T) Authenticator {
 		AdminPasswd: "123456",
 		JWTService:  j,
 		Validator:   token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
-		L:           lgr.Std,
+		L:           logger.Std,
 	}
+}
+
+type testRefreshCache struct {
+	data map[interface{}]interface{}
+	sync.Mutex
+}
+
+func newTestRefreshCache() *testRefreshCache {
+	return &testRefreshCache{data: make(map[interface{}]interface{})}
+}
+
+func (c *testRefreshCache) Get(key interface{}) (value interface{}, ok bool) {
+	c.Lock()
+	defer c.Unlock()
+	value, ok = c.data[key]
+	return value, ok
+}
+
+func (c *testRefreshCache) Set(key, value interface{}) {
+	c.Lock()
+	defer c.Unlock()
+	c.data[key] = value
 }

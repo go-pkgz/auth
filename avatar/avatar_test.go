@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
-	"github.com/go-pkgz/lgr"
 )
 
 func TestAvatar_Put(t *testing.T) {
@@ -34,7 +34,7 @@ func TestAvatar_Put(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: lgr.NoOp}
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.NoOp}
 	os.MkdirAll("/tmp/avatars.test", 0700)
 	defer os.RemoveAll("/tmp/avatars.test")
 
@@ -93,7 +93,7 @@ func TestAvatar_Routes(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: lgr.Std}
+	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
 	os.MkdirAll("/tmp/avatars.test", 0700)
 	defer os.RemoveAll("/tmp/avatars.test")
 
@@ -158,7 +158,7 @@ func TestAvatar_resize(t *testing.T) {
 		assert.Equal(t, cExp, content)
 	}
 
-	p := Proxy{L: lgr.Std}
+	p := Proxy{L: logger.Std}
 	// Reader is nil.
 	resizedR := p.resize(nil, 100)
 	// assert.EqualError(t, err, "limit should be greater than 0")
