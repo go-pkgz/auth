@@ -11,12 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/lgr"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth/token"
 )
+
+var testJwtValid = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19fQ.NN7TK-IbzpNgHMtld9-7BDypMGDZdMpwCmUMSfd31Zk"
 
 var days31 = time.Hour * 24 * 31
 
@@ -116,13 +120,19 @@ func TestOauth2Logout(t *testing.T) {
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 
-	resp, err := client.Get("http://localhost:8691/login")
+	req, err := http.NewRequest("GET", "http://localhost:8691/logout", nil)
 	require.Nil(t, err)
-	assert.Equal(t, 200, resp.StatusCode)
-	assert.Equal(t, 2, len(resp.Cookies()))
-	resp, err = client.Get("http://localhost:8691/logout")
+	resp, err := client.Do(req)
 	require.Nil(t, err)
-	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, 403, resp.StatusCode, "user not lagged in")
+
+	req, err = http.NewRequest("GET", "http://localhost:8691/logout", nil)
+	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err = client.Do(req)
+	require.Nil(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 
 	assert.Equal(t, 2, len(resp.Cookies()))
 	assert.Equal(t, "JWT", resp.Cookies()[0].Name, "token cookie cleared")
@@ -193,7 +203,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 	})
 
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
-		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}}
+		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: lgr.Std}
 
 	provider = initOauth2Handler(params, provider)
 	svc := Service{Provider: provider}
