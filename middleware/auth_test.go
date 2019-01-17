@@ -215,7 +215,13 @@ func TestAuthJWTRefreshFailed(t *testing.T) {
 	a.JWTService = &badJwtService{Service: a.JWTService.(*token.Service)}
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
-	req.Header.Add("X-JWT", testJwtExpired)
+
+	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
+		MaxAge: expiration, Secure: false})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+
+	require.Nil(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
