@@ -72,7 +72,7 @@ func main() {
 	// setup http server
 	router := chi.NewRouter()
 	// add some external middlewares from go-pkgz/rest
-	router.Use(rest.AppInfo("auth-example", "umputun", "1.0.0"), rest.Ping, rest.Recoverer)
+	router.Use(rest.AppInfo("auth-example", "umputun", "1.0.0"), rest.Ping)
 	router.Use(logger.Logger)             // log all http requests
 	router.Get("/open", openRouteHandler) // open page
 	router.Group(func(r chi.Router) {
