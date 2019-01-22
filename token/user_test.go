@@ -74,6 +74,10 @@ func TestUser_Attrs(t *testing.T) {
 
 	vb := u.BoolAttr("k2")
 	assert.False(t, vb)
+
+	u.SetSliceAttr("ks", []string{"ss1", "ss2", "blah"})
+	assert.Equal(t, []string{"ss1", "ss2", "blah"}, u.SliceAttr("ks"))
+	assert.Equal(t, []string{}, u.SliceAttr("k2"), "not a slice")
 }
 
 func TestUser_Admin(t *testing.T) {
