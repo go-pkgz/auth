@@ -2,8 +2,7 @@
 
 ## build and try
 
-- build with provided compose file - `docker-compose build`
-- start the example - `docker-compose up`
+- run `go run main.go`
 - open route: http://127.0.0.1:8080/open
 - web application - http://127.0.0.1:8080/web
 

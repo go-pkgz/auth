@@ -82,7 +82,7 @@ func main() {
 
 	// static files under ~/web
 	workDir, _ := os.Getwd()
-	filesDir := filepath.Join(workDir, "web")
+	filesDir := filepath.Join(workDir, "frontend")
 	fileServer(router, "/web", http.Dir(filesDir))
 
 	// setup auth routes
