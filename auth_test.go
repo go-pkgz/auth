@@ -233,6 +233,24 @@ func TestLogout(t *testing.T) {
 	defer resp.Body.Close()
 }
 
+func TestLogoutNoProviders(t *testing.T) {
+	svc := NewService(Opts{Logger: logger.Std})
+	authRoute, _ := svc.Handlers()
+
+	mux := http.NewServeMux()
+	mux.Handle("/auth/", authRoute)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/auth/logout")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 400, resp.StatusCode)
+	b, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"error\":\"provides not defined\"}\n", string(b))
+}
+
 func TestBadRequests(t *testing.T) {
 	teardown := prepService(t)
 	defer teardown()
