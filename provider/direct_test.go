@@ -35,7 +35,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
-	assert.Equal(t, `{"name":"myuser","id":"","picture":""}`+"\n", rr.Body.String())
+	assert.Equal(t, `{"name":"myuser","id":"test_ed6307123e30cc7682328522d1d090d9c7525b32","picture":""}`+"\n", rr.Body.String())
 
 	request := &http.Request{Header: http.Header{"Cookie": rr.HeaderMap["Set-Cookie"]}}
 	c, err := request.Cookie("JWT")
