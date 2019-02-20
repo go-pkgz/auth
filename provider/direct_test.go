@@ -68,7 +68,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 500, rr.Code)
-	assert.Equal(t, `{"error":"no credential store"}`+"\n", rr.Body.String())
+	assert.Equal(t, `{"error":"no credential checker"}`+"\n", rr.Body.String())
 
 	d.CredChecker = &mockCredsChecker{err: errors.New("some err"), ok: false}
 	handler = http.HandlerFunc(d.LoginHandler)
@@ -77,7 +77,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 500, rr.Code)
-	assert.Equal(t, `{"error":"failed to access creds store"}`+"\n", rr.Body.String())
+	assert.Equal(t, `{"error":"failed to check user credentials"}`+"\n", rr.Body.String())
 
 	d.CredChecker = &mockCredsChecker{err: nil, ok: false}
 	handler = http.HandlerFunc(d.LoginHandler)

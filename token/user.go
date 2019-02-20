@@ -23,9 +23,10 @@ type User struct {
 	Name    string `json:"name"`
 	ID      string `json:"id"`
 	Picture string `json:"picture"`
-	IP      string `json:"ip,omitempty"`
-	Email   string `json:"email,omitempty"`
 
+	// set by client
+	IP         string                 `json:"ip,omitempty"`
+	Email      string                 `json:"email,omitempty"`
 	Attributes map[string]interface{} `json:"attrs,omitempty"`
 }
 
@@ -82,7 +83,7 @@ func (u *User) SliceAttr(key string) []string {
 	return r
 }
 
-// SetSliceAttr sets boolean attribute
+// SetSliceAttr sets slice attribute for given key
 func (u *User) SetSliceAttr(key string, val []string) {
 	if u.Attributes == nil {
 		u.Attributes = map[string]interface{}{}
