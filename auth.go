@@ -1,3 +1,4 @@
+// Package auth provides "social login" with Github, Google, Facebook and Yandex as well as custom auth providers.
 package auth
 
 import (
