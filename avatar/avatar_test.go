@@ -55,6 +55,25 @@ func TestAvatar_Put(t *testing.T) {
 	assert.Equal(t, int64(21), fi.Size())
 }
 
+func TestAvatar_PutIdenticon(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Print("request: ", r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
+
+	u := token.User{ID: "user1", Name: "user1 name"}
+	res, err := p.Put(u)
+	assert.NoError(t, err)
+	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", res)
+	fi, err := os.Stat("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(999), fi.Size())
+
+}
+
 func TestAvatar_PutFailed(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,14 +82,10 @@ func TestAvatar_PutFailed(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test")}
+	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
 
-	u := token.User{ID: "user1", Name: "user1 name"}
+	u := token.User{ID: "user1", Name: "user1 name", Picture: "http://127.0.0.1:22345/avater/pic"}
 	_, err := p.Put(u)
-	assert.EqualError(t, err, "no picture for user1")
-
-	u = token.User{ID: "user1", Name: "user1 name", Picture: "http://127.0.0.1:22345/avater/pic"}
-	_, err = p.Put(u)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connect: connection refused")
 
@@ -86,7 +101,8 @@ func TestAvatar_Routes(t *testing.T) {
 		if r.URL.Path == "/pic.png" {
 			w.Header().Set("Content-Type", "image/*")
 			w.Header().Set("Custom-Header", "xyz")
-			fmt.Fprint(w, "some picture bin data")
+			_, err := fmt.Fprint(w, "some picture bin data")
+			require.NoError(t, err)
 			return
 		}
 		http.Error(w, "not found", http.StatusNotFound)
