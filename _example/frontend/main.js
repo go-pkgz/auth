@@ -70,25 +70,119 @@ function login(prov) {
 	});
 }
 
+function loginAnonymously(username) {
+	return fetch(
+		`/auth/anonymous/login?id=auth-example&user=${encodeURIComponent(username)}`
+	);
+}
+
+const validUsernameRegex = /^[a-zA-Z][\w ]+$/;
+
+function getUsernameInvalidReason(username) {
+	if (username.length < 3) return "Username must be at least 3 characters long";
+	if (!validUsernameRegex.test(username))
+		return "Username must start from the letter and contain only latin letters, numbers, underscores, and spaces";
+	return null;
+}
+
+function getAnonymousLoginForm(onSubmit) {
+	const form = document.createElement("form");
+
+	const input = document.createElement("input");
+	input.type = "text";
+	input.placeholder = "Username";
+	input.className = "anon-form__input";
+
+	const submit = document.createElement("input");
+	submit.type = "submit";
+	submit.value = "Log in";
+	submit.className = "anon-form__submit";
+
+	const onValueChange = val => {
+		const reason = getUsernameInvalidReason(val);
+		if (reason === null) {
+			submit.disabled = false;
+			submit.title = "";
+		} else {
+			submit.disabled = true;
+			submit.title = reason;
+		}
+	};
+
+	onValueChange(input.value);
+
+	input.addEventListener("input", e => {
+		const val = e.target.value;
+		const reason = getUsernameInvalidReason(val);
+		if (reason === null) {
+			submit.disabled = false;
+			submit.title = "";
+		} else {
+			submit.disabled = true;
+			submit.title = reason;
+		}
+	});
+
+	form.appendChild(input);
+	form.appendChild(submit);
+
+	form.addEventListener("submit", e => {
+		e.preventDefault();
+		onSubmit(input.value);
+	});
+
+	return form;
+}
+
 function getLoginLinks() {
 	return getProviders().then(providers =>
 		providers.map(prov => {
-			const a = document.createElement("a");
-			a.dataset.provider = prov;
-			a.href = "#";
-			a.textContent = "Login with " + prov;
-			a.className = "login__prov";
-			a.addEventListener("click", e => {
-				e.preventDefault();
-				login(prov)
-					.then(() => {
-						window.location.replace(window.location.href);
-					})
-					.catch(e => {
-						const status = document.querySelector(".status__label");
-						status.textContent = e.message;
-					});
-			});
+			let a;
+			if (prov === "anonymous") {
+				a = document.createElement("span");
+				a.dataset.provider = prov;
+				a.className = "login__prov";
+
+				const textEl = document.createElement("span");
+				textEl.textContent = "Login with " + prov;
+				textEl.className = "pseudo";
+				a.appendChild(textEl);
+				textEl.addEventListener("click", e => {
+					form.style.display = form.style.display === "none" ? "block" : "none";
+					form.querySelector(".anon-form__input").focus();
+				});
+
+				const form = getAnonymousLoginForm(username => {
+					loginAnonymously(username)
+						.then(() => {
+							window.location.replace(window.location.href);
+						})
+						.catch(e => {
+							const status = document.querySelector(".status__label");
+							status.textContent = e.message;
+						});
+				});
+				form.style.display = "none";
+				form.className = "anon-form login__anon-form";
+
+				a.appendChild(form);
+			} else {
+				a = document.createElement("span");
+				a.dataset.provider = prov;
+				a.textContent = "Login with " + prov;
+				a.className = "pseudo login__prov";
+				a.addEventListener("click", e => {
+					e.preventDefault();
+					login(prov)
+						.then(() => {
+							window.location.replace(window.location.href);
+						})
+						.catch(e => {
+							const status = document.querySelector(".status__label");
+							status.textContent = e.message;
+						});
+				});
+			}
 			return a;
 		})
 	);

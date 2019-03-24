@@ -3,12 +3,19 @@ html {
 	background: hsl(0, 0%, 99%);
 }
 
-a {
+a,
+.pseudo {
 	color: hsla(200, 60%, 50%, 1);
 	text-decoration-color: hsla(200, 60%, 50%, 0.5);
 }
 
-a:hover {
+.pseudo {
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+a:hover,
+.pseudo:hover {
 	color: hsla(200, 80%, 70%, 1);
 	text-decoration-color: hsla(200, 80%, 70%, 0.5);
 }
@@ -41,6 +48,17 @@ hr {
 	letter-spacing: normal;
 }
 
+.anon-form {
+	background: white;
+	padding: 0.5em;
+	z-index: 999;
+	box-shadow: 0 0 0.15rem rgba(0, 0, 0, 0.2);
+}
+
+.anon-form__input {
+	min-width: 20em;
+}
+
 @media screen and (max-width: 34em) {
 	.pretitle {
 		display: block;
@@ -66,6 +84,14 @@ hr {
 
 .login__prov {
 	margin-right: 0.4em;
+	position: relative;
+	display: inline-block;
+}
+
+.login__anon-form {
+	position: absolute;
+	top: 1.4em;
+	left: -0.5em;
 }
 
 .info-label {
