@@ -156,7 +156,7 @@ func TestIntegrationAvatar(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, 825, len(b))
+	assert.Equal(t, 569, len(b))
 }
 
 func TestIntegrationList(t *testing.T) {
