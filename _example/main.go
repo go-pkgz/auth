@@ -22,7 +22,7 @@ import (
 
 func main() {
 
-	log.Setup(log.Debug, log.Msec, log.LevelBraces) // setup default logger with go-pkgz/lgr
+	log.Setup(log.Debug, log.Msec, log.LevelBraces, log.CallerFile, log.CallerFunc) // setup default logger with go-pkgz/lgr
 
 	/// define auth options
 	options := auth.Opts{
