@@ -227,6 +227,7 @@ func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecke
 		Issuer:       s.issuer,
 		TokenService: s.jwtService,
 		CredChecker:  credChecker,
+		AvatarSaver:  s.avatarProxy,
 	}
 	s.providers = append(s.providers, provider.NewService(dh))
 	s.authMiddleware.Providers = s.providers
