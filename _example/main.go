@@ -2,15 +2,16 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi"
-	"github.com/go-pkgz/lgr"
+	"github.com/go-pkgz/auth/provider"
+	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
 
@@ -21,7 +22,9 @@ import (
 
 func main() {
 
-	/// define options
+	log.Setup(log.Debug, log.Msec, log.LevelBraces) // setup default logger with go-pkgz/lgr
+
+	/// define auth options
 	options := auth.Opts{
 		SecretReader: token.SecretFunc(func() (string, error) { // secret key for JWT
 			return "secret", nil
@@ -49,7 +52,7 @@ func main() {
 			}
 			return false
 		}),
-		Logger: lgr.Std, // optional logger for auth library
+		Logger: log.Default(), // optional logger for auth library
 	}
 
 	// create auth service
@@ -57,11 +60,14 @@ func main() {
 	service.AddProvider("dev", "", "")                                                             // add dev provider
 	service.AddProvider("github", os.Getenv("AEXMPL_GITHUB_CID"), os.Getenv("AEXMPL_GITHUB_CSEC")) // add github provider
 
+	// allow anonymous user via custom (direct) provider
+	service.AddDirectProvider("anonymous", anonymousAuthProvider())
+
 	// run dev/test oauth2 server on :8084
 	go func() {
 		devAuthServer, err := service.DevAuth() // peak dev oauth2 server
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("[PANIC] failed to start dev oauth2 server, %v", err)
 		}
 		devAuthServer.Run(context.Background())
 	}()
@@ -73,8 +79,8 @@ func main() {
 	router := chi.NewRouter()
 	// add some external middlewares from go-pkgz/rest
 	router.Use(rest.AppInfo("auth-example", "umputun", "1.0.0"), rest.Ping)
-	router.Use(logger.Logger)             // log all http requests
-	router.Get("/open", openRouteHandler) // open page
+	router.Use(logger.New(logger.Log(log.Default()), logger.WithBody, logger.Prefix("[INFO]")).Handler) // log all http requests
+	router.Get("/open", openRouteHandler)                                                               // open page
 	router.Group(func(r chi.Router) {
 		r.Use(m.Auth)
 		r.Get("/private_data", protectedDataHandler) // protected api
@@ -90,7 +96,29 @@ func main() {
 	router.Mount("/auth", authRoutes)  // add auth handlers
 	router.Mount("/avatar", avaRoutes) // add avatar handler
 
-	log.Fatal(http.ListenAndServe(":8080", router))
+	if err := http.ListenAndServe(":8080", router); err != nil {
+		log.Printf("[PANIC] failed to start http server, %v", err)
+	}
+}
+
+// anonymousAuthProvider allows auth-free login with any valid user name
+func anonymousAuthProvider() provider.CredCheckerFunc {
+	log.Printf("[WARN] anonymous access enabled")
+	var isValidAnonName = regexp.MustCompile(`^[a-zA-Z][\w ]+$`).MatchString
+
+	return provider.CredCheckerFunc(func(user, _ string) (ok bool, err error) {
+		user = strings.TrimSpace(user)
+		if len(user) < 3 {
+			log.Printf("[WARN] name %q is too short, should be at least 3 characters", user)
+			return false, nil
+		}
+
+		if !isValidAnonName(user) {
+			log.Printf("[WARN] name %q should have letters, digits, underscores and spaces only", user)
+			return false, nil
+		}
+		return true, nil
+	})
 }
 
 // FileServer conveniently sets up a http.FileServer handler to serve static files from a http.FileSystem.
