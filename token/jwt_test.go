@@ -31,6 +31,13 @@ var testJwtNoneAlg = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpc3MiOiJodHRwczovL2
 
 var days31 = time.Hour * 24 * 31
 
+const (
+	jwtCustomCookieName  = "jc1"
+	jwtCustomHeaderKey   = "jh1"
+	xsrfCustomCookieName = "xc1"
+	xsrfCustomHeaderKey  = "xh1"
+)
+
 func mockKeyStore() (string, error) { return "xyz 12345", nil }
 
 func TestJWT_NewDefault(t *testing.T) {
@@ -43,11 +50,13 @@ func TestJWT_NewDefault(t *testing.T) {
 }
 
 func TestJWT_NewNotDefault(t *testing.T) {
-	j := NewService(Opts{JWTCookieName: "jc1", JWTHeaderKey: "jh1", XSRFCookieName: "xc1", XSRFHeaderKey: "xh1", Issuer: "i1"})
-	assert.Equal(t, "jc1", j.JWTCookieName)
-	assert.Equal(t, "jh1", j.JWTHeaderKey)
-	assert.Equal(t, "xc1", j.XSRFCookieName)
-	assert.Equal(t, "xh1", j.XSRFHeaderKey)
+	j := NewService(Opts{JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey, Issuer: "i1",
+	})
+	assert.Equal(t, jwtCustomCookieName, j.JWTCookieName)
+	assert.Equal(t, jwtCustomHeaderKey, j.JWTHeaderKey)
+	assert.Equal(t, xsrfCustomCookieName, j.XSRFCookieName)
+	assert.Equal(t, xsrfCustomHeaderKey, j.XSRFHeaderKey)
 	assert.Equal(t, "i1", j.Issuer)
 }
 
@@ -130,6 +139,8 @@ func TestJWT_Parse(t *testing.T) {
 func TestJWT_Set(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31, Issuer: "remark42",
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
 		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
@@ -148,10 +159,10 @@ func TestJWT_Set(t *testing.T) {
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 2, len(cookies))
-	assert.Equal(t, "JWT", cookies[0].Name)
+	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 	assert.Equal(t, testJwtValidNoHandshake, cookies[0].Value)
 	assert.Equal(t, 31*24*3600, cookies[0].MaxAge)
-	assert.Equal(t, "XSRF-TOKEN", cookies[1].Name)
+	assert.Equal(t, xsrfCustomCookieName, cookies[1].Name)
 	assert.Equal(t, "random id", cookies[1].Value)
 
 	claims.SessionOnly = true
@@ -161,10 +172,10 @@ func TestJWT_Set(t *testing.T) {
 	cookies = rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 2, len(cookies))
-	assert.Equal(t, "JWT", cookies[0].Name)
+	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 	assert.Equal(t, testJwtValidSess, cookies[0].Value)
 	assert.Equal(t, 0, cookies[0].MaxAge)
-	assert.Equal(t, "XSRF-TOKEN", cookies[1].Name)
+	assert.Equal(t, xsrfCustomCookieName, cookies[1].Name)
 	assert.Equal(t, "random id", cookies[1].Value)
 
 	j.DisableIAT = false
@@ -174,13 +185,15 @@ func TestJWT_Set(t *testing.T) {
 	cookies = rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 2, len(cookies))
-	assert.Equal(t, "JWT", cookies[0].Name)
+	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 	assert.NotEqual(t, testJwtValidSess, cookies[0].Value, "iat changed the token")
 }
 
 func TestJWT_SetProlonged(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31, Issuer: "remark42",
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
 		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
@@ -197,7 +210,7 @@ func TestJWT_SetProlonged(t *testing.T) {
 	assert.NoError(t, err)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
-	assert.Equal(t, "JWT", cookies[0].Name)
+	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 
 	cc, err := j.Parse(cookies[0].Value)
 	assert.NoError(t, err)
@@ -207,6 +220,8 @@ func TestJWT_SetProlonged(t *testing.T) {
 func TestJWT_NoIssuer(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31, Issuer: "xyz",
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
 		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
@@ -223,7 +238,7 @@ func TestJWT_NoIssuer(t *testing.T) {
 	assert.NoError(t, err)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
-	assert.Equal(t, "JWT", cookies[0].Name)
+	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 
 	cc, err := j.Parse(cookies[0].Value)
 	assert.NoError(t, err)
@@ -233,6 +248,8 @@ func TestJWT_NoIssuer(t *testing.T) {
 func TestJWT_GetFromHeader(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31,
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
 		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
@@ -241,7 +258,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Add(jwtHeaderKey, testJwtValid)
+	req.Header.Add(jwtCustomHeaderKey, testJwtValid)
 	claims, token, err := j.Get(req)
 	assert.Nil(t, err)
 	assert.Equal(t, testJwtValid, token)
@@ -251,12 +268,12 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	assert.Equal(t, "remark42", claims.Issuer)
 
 	req = httptest.NewRequest("GET", "/", nil)
-	req.Header.Add(jwtHeaderKey, testJwtExpired)
+	req.Header.Add(jwtCustomHeaderKey, testJwtExpired)
 	_, _, err = j.Get(req)
 	assert.NotNil(t, err)
 
 	req = httptest.NewRequest("GET", "/", nil)
-	req.Header.Add(jwtHeaderKey, "bad bad token")
+	req.Header.Add(jwtCustomHeaderKey, "bad bad token")
 	_, _, err = j.Get(req)
 	require.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token contains an invalid number of segments"), err.Error())
@@ -301,6 +318,8 @@ func TestJWT_GetFailed(t *testing.T) {
 func TestJWT_SetAndGetWithCookies(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31,
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
 		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
@@ -326,7 +345,7 @@ func TestJWT_SetAndGetWithCookies(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/valid", nil)
 	req.AddCookie(resp.Cookies()[0])
-	req.Header.Add(xsrfHeaderKey, "random id")
+	req.Header.Add(xsrfCustomHeaderKey, "random id")
 	r, _, err := j.Get(req)
 	assert.Nil(t, err)
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
@@ -339,6 +358,8 @@ func TestJWT_SetAndGetWithCookies(t *testing.T) {
 func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31,
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
 		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
@@ -365,14 +386,14 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/valid", nil)
 	req.AddCookie(resp.Cookies()[0])
-	req.Header.Add(xsrfHeaderKey, "random id wrong")
+	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
 	_, _, err = j.Get(req)
 	assert.EqualError(t, err, "xsrf mismatch")
 
 	j.DisableXSRF = true
 	req = httptest.NewRequest("GET", "/valid", nil)
 	req.AddCookie(resp.Cookies()[0])
-	req.Header.Add(xsrfHeaderKey, "random id wrong")
+	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
 	c, _, err := j.Get(req)
 	require.Nil(t, err, "xsrf mismatch, but ignored")
 	assert.Equal(t, claims, c)
@@ -381,6 +402,8 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31,
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
 		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
@@ -409,7 +432,7 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/expired", nil)
 	req.AddCookie(resp.Cookies()[0])
-	req.Header.Add(xsrfHeaderKey, "random id")
+	req.Header.Add(xsrfCustomHeaderKey, "random id")
 	r, _, err := j.Get(req)
 	assert.Nil(t, err)
 	assert.True(t, j.IsExpired(r))
@@ -417,6 +440,8 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 
 func TestJWT_Reset(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
 		TokenDuration: time.Hour, CookieDuration: days31,
 	})
 
@@ -432,7 +457,7 @@ func TestJWT_Reset(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	assert.Equal(t, "JWT=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0", resp.Header.Get("Set-Cookie"))
+	assert.Equal(t, "jc1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0", resp.Header.Get("Set-Cookie"))
 	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
 }
 
