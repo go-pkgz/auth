@@ -42,11 +42,11 @@ func mockKeyStore() (string, error) { return "xyz 12345", nil }
 
 func TestJWT_NewDefault(t *testing.T) {
 	j := NewService(Opts{})
-	assert.Equal(t, "JWT", j.JWTCookieName)
-	assert.Equal(t, "X-JWT", j.JWTHeaderKey)
-	assert.Equal(t, "XSRF-TOKEN", j.XSRFCookieName)
-	assert.Equal(t, "X-XSRF-TOKEN", j.XSRFHeaderKey)
-	assert.Equal(t, "go-pkgz/auth", j.Issuer)
+	assert.Equal(t, defaultJWTCookieName, j.JWTCookieName)
+	assert.Equal(t, defaultJWTHeaderKey, j.JWTHeaderKey)
+	assert.Equal(t, defaultXSRFCookieName, j.XSRFCookieName)
+	assert.Equal(t, defaultXSRFHeaderKey, j.XSRFHeaderKey)
+	assert.Equal(t, defaultIssuer, j.Issuer)
 }
 
 func TestJWT_NewNotDefault(t *testing.T) {
