@@ -483,8 +483,8 @@ var testClaims = Claims{
 		Id:        "random id",
 		Issuer:    "remark42",
 		Audience:  "test_sys",
-		ExpiresAt: time.Date(2058, 5, 21, 1, 30, 22, 0, time.Local).Unix(),
-		NotBefore: time.Date(2018, 5, 21, 1, 30, 22, 0, time.Local).Unix(),
+		ExpiresAt: time.Date(2058, 5, 21, 7, 30, 22, 0, time.UTC).Unix(),
+		NotBefore: time.Date(2018, 5, 21, 6, 30, 22, 0, time.UTC).Unix(),
 	},
 
 	User: &User{
