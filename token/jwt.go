@@ -32,16 +32,19 @@ type Handshake struct {
 	ID    string `json:"id,omitempty"`
 }
 
-// default names for cookies and headers
 const (
-	jwtCookieName  = "JWT"
-	jwtHeaderKey   = "X-JWT"
-	xsrfCookieName = "XSRF-TOKEN"
-	xsrfHeaderKey  = "X-XSRF-TOKEN"
-	tokenQuery     = "token"
-	issuer         = "go-pkgz/auth"
-	tokenDuration  = time.Minute * 15
-	cookieDuration = time.Hour * 24 * 31
+	// default names for cookies and headers
+	defaultJWTCookieName  = "JWT"
+	defaultJWTHeaderKey   = "X-JWT"
+	defaultXSRFCookieName = "XSRF-TOKEN"
+	defaultXSRFHeaderKey  = "X-XSRF-TOKEN"
+
+	defaultIssuer = "go-pkgz/auth"
+
+	defaultTokenDuration  = time.Minute * 15
+	defaultCookieDuration = time.Hour * 24 * 31
+
+	tokenQuery = "token"
 )
 
 // Opts holds constructor params
@@ -73,18 +76,18 @@ func NewService(opts Opts) *Service {
 		}
 	}
 
-	setDefault(&res.JWTCookieName, jwtCookieName)
-	setDefault(&res.JWTHeaderKey, jwtHeaderKey)
-	setDefault(&res.XSRFCookieName, xsrfCookieName)
-	setDefault(&res.XSRFHeaderKey, xsrfHeaderKey)
-	setDefault(&res.Issuer, issuer)
+	setDefault(&res.JWTCookieName, defaultJWTCookieName)
+	setDefault(&res.JWTHeaderKey, defaultJWTHeaderKey)
+	setDefault(&res.XSRFCookieName, defaultXSRFCookieName)
+	setDefault(&res.XSRFHeaderKey, defaultXSRFHeaderKey)
+	setDefault(&res.Issuer, defaultIssuer)
 
 	if opts.TokenDuration == 0 {
-		res.TokenDuration = tokenDuration
+		res.TokenDuration = defaultTokenDuration
 	}
 
 	if opts.CookieDuration == 0 {
-		res.CookieDuration = cookieDuration
+		res.CookieDuration = defaultCookieDuration
 	}
 
 	return &res
