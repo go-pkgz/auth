@@ -169,7 +169,7 @@ func (j *Service) validate(claims *Claims) error {
 	if e, ok := cerr.(*jwt.ValidationError); ok {
 		e.Errors ^= jwt.ValidationErrorExpired // clear ValidationErrorExpired, allow expired token
 		if e.Errors != 0 {
-			return e
+			return cerr
 		}
 	}
 	return nil
