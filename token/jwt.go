@@ -167,12 +167,12 @@ func (j *Service) validate(claims *Claims) error {
 	}
 
 	if e, ok := cerr.(*jwt.ValidationError); ok {
-		e.Errors ^= jwt.ValidationErrorExpired // clear ValidationErrorExpired, allow expired token
-		if e.Errors != 0 {
-			return cerr
+		if e.Errors == jwt.ValidationErrorExpired {
+			return nil // allow expired tokens
 		}
 	}
-	return nil
+
+	return cerr
 }
 
 // Set creates token cookie with xsrf cookie and put it to ResponseWriter
