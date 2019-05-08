@@ -126,6 +126,7 @@ func TestOauth2Logout(t *testing.T) {
 	assert.Equal(t, 403, resp.StatusCode, "user not lagged in")
 
 	req, err = http.NewRequest("GET", "http://localhost:8691/logout", nil)
+	require.NoError(t, err)
 	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")

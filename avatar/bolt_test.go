@@ -15,11 +15,9 @@ import (
 var testDb = "/tmp/test-remark-avatars.db"
 
 func TestBoltDB_PutAndGet(t *testing.T) {
-	var b Store = prepBoltStore(t)
-	defer func() {
-		assert.Nil(t, b.Close())
-		os.Remove(testDb)
-	}()
+	var b Store
+	b, teardown := prepBoltStore(t)
+	defer teardown()
 
 	avatar, err := b.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
@@ -46,11 +44,8 @@ func TestBoltDB_PutAndGet(t *testing.T) {
 }
 
 func TestBoltDB_Remove(t *testing.T) {
-	b := prepBoltStore(t)
-	defer func() {
-		assert.Nil(t, b.Close())
-		os.Remove(testDb)
-	}()
+	b, teardown := prepBoltStore(t)
+	defer teardown()
 
 	assert.NotNil(t, b.Remove("no-such-thing.image"))
 
@@ -62,11 +57,8 @@ func TestBoltDB_Remove(t *testing.T) {
 }
 
 func TestBoltDB_List(t *testing.T) {
-	b := prepBoltStore(t)
-	defer func() {
-		assert.Nil(t, b.Close())
-		os.Remove(testDb)
-	}()
+	b, teardown := prepBoltStore(t)
+	defer teardown()
 
 	// write some avatars
 	_, err := b.Put("user1", strings.NewReader("some picture bin data 1"))
@@ -91,9 +83,12 @@ func TestBoltDB_List(t *testing.T) {
 }
 
 // makes new boltdb, put two records
-func prepBoltStore(t *testing.T) *BoltDB {
-	os.Remove(testDb)
+func prepBoltStore(t *testing.T) (blt *BoltDB, teardown func()) {
+	_ = os.Remove(testDb)
 	boltStore, err := NewBoltDB(testDb, bolt.Options{})
 	require.Nil(t, err)
-	return boltStore
+	return boltStore, func() {
+		assert.Nil(t, boltStore.Close())
+		_ = os.Remove(testDb)
+	}
 }

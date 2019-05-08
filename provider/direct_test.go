@@ -37,7 +37,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 	assert.Equal(t, 200, rr.Code)
 	assert.Equal(t, `{"name":"myuser","id":"test_ed6307123e30cc7682328522d1d090d9c7525b32","picture":""}`+"\n", rr.Body.String())
 
-	request := &http.Request{Header: http.Header{"Cookie": rr.HeaderMap["Set-Cookie"]}}
+	request := &http.Request{Header: http.Header{"Cookie": rr.Header()["Set-Cookie"]}}
 	c, err := request.Cookie("JWT")
 	require.NoError(t, err)
 	claims, err := d.TokenService.Parse(c.Value)
@@ -108,9 +108,9 @@ func TestDirect_Logout(t *testing.T) {
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
-	assert.Equal(t, 2, len(rr.HeaderMap["Set-Cookie"]))
+	assert.Equal(t, 2, len(rr.Header()["Set-Cookie"]))
 
-	request := &http.Request{Header: http.Header{"Cookie": rr.HeaderMap["Set-Cookie"]}}
+	request := &http.Request{Header: http.Header{"Cookie": rr.Header()["Set-Cookie"]}}
 	c, err := request.Cookie("JWT")
 	require.NoError(t, err)
 	assert.Equal(t, time.Time{}, c.Expires)

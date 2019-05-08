@@ -67,8 +67,8 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "go-pkgz/auth", op.Issuer)
 
 	p, err = svc.Provider("github")
-	op = p.Provider.(provider.Oauth2Handler)
 	assert.NoError(t, err)
+	op = p.Provider.(provider.Oauth2Handler)
 	assert.Equal(t, "github", op.Name())
 
 	pp := svc.Providers()

@@ -141,10 +141,10 @@ func TestAvatar_Routes(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	assert.Equal(t, []string{"image/*"}, rr.HeaderMap["Content-Type"])
-	assert.Equal(t, []string{"21"}, rr.HeaderMap["Content-Length"])
-	assert.Equal(t, []string(nil), rr.HeaderMap["Custom-Header"], "strip all custom headers")
-	assert.NotNil(t, rr.HeaderMap["Etag"])
+	assert.Equal(t, []string{"image/*"}, rr.Header()["Content-Type"])
+	assert.Equal(t, []string{"21"}, rr.Header()["Content-Length"])
+	assert.Equal(t, []string(nil), rr.Header()["Custom-Header"], "strip all custom headers")
+	assert.NotNil(t, rr.Header()["Etag"])
 
 	bb := bytes.Buffer{}
 	sz, err := io.Copy(&bb, rr.Body)
@@ -164,7 +164,7 @@ func TestAvatar_Routes(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusNotModified, rr.Code)
-	assert.Equal(t, []string{`"a008de0a2ccb3308b5d99ffff66436e15538f701"`}, rr.HeaderMap["Etag"])
+	assert.Equal(t, []string{`"a008de0a2ccb3308b5d99ffff66436e15538f701"`}, rr.Header()["Etag"])
 }
 
 func TestAvatar_resize(t *testing.T) {
