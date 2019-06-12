@@ -235,10 +235,9 @@ func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecke
 	s.authMiddleware.Providers = s.providers
 }
 
-// AddDirectProvider adds provider with direct check against data store
-// it doesn't do any handshake and uses provided credChecker to verify user and password from the request
-func (s *Service) AddConfirmProvider(name string, msgTmpl string, sender provider.Sender) {
-	dh := provider.ConfirmHandler{
+// AddVerifProvider adds provider user's verification sent by sender
+func (s *Service) AddVerifProvider(name string, msgTmpl string, sender provider.Sender) {
+	dh := provider.VerifyHandler{
 		L:            s.logger,
 		ProviderName: name,
 		Issuer:       s.issuer,

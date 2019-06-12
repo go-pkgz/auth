@@ -21,10 +21,10 @@ var (
 	testConfirmedBadIDToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJibGFoQHVzZXIuY29tIn19.hB91-kyY9-Q2Ln6IJGR9StQi-QQiXYu8SV31YhOoTbc`
 )
 
-func TestConfirmHandler_LoginSendConfirm(t *testing.T) {
+func TestVerifyHandler_AuthHandlerHandler_LoginSendConfirm(t *testing.T) {
 
 	emailer := mockSender{}
-	e := ConfirmHandler{
+	e := VerifyHandler{
 		ProviderName: "test",
 		TokenService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
@@ -57,8 +57,8 @@ func TestConfirmHandler_LoginSendConfirm(t *testing.T) {
 	assert.Equal(t, "test", e.Name())
 }
 
-func TestConfirmHandler_LoginAcceptConfirm(t *testing.T) {
-	e := ConfirmHandler{
+func TestVerifyHandler_AuthHandlerHandler_LoginAcceptConfirm(t *testing.T) {
+	e := VerifyHandler{
 		ProviderName: "test",
 		TokenService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
@@ -90,9 +90,9 @@ func TestConfirmHandler_LoginAcceptConfirm(t *testing.T) {
 	assert.Equal(t, true, claims.SessionOnly)
 }
 
-func TestConfirm_LoginHandlerFailed(t *testing.T) {
+func TestVerifyHandler_AuthHandler_LoginHandlerFailed(t *testing.T) {
 	emailer := mockSender{}
-	d := ConfirmHandler{
+	d := VerifyHandler{
 		ProviderName: "test",
 		Sender:       &emailer,
 		TokenService: token.NewService(token.Opts{
@@ -146,8 +146,8 @@ func TestConfirm_LoginHandlerFailed(t *testing.T) {
 	assert.Equal(t, `{"error":"can't execute confirmation template"}`+"\n", rr.Body.String())
 }
 
-func TestConfirm_AuthHandler(t *testing.T) {
-	d := ConfirmHandler{}
+func TestVerifyHandler_AuthHandler_AuthHandler(t *testing.T) {
+	d := VerifyHandler{}
 	handler := http.HandlerFunc(d.AuthHandler)
 	rr := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/callback", nil)
@@ -156,8 +156,8 @@ func TestConfirm_AuthHandler(t *testing.T) {
 	assert.Equal(t, 200, rr.Code)
 }
 
-func TestConfirm_Logout(t *testing.T) {
-	d := ConfirmHandler{
+func TestVerifyHandler_AuthHandler_Logout(t *testing.T) {
+	d := VerifyHandler{
 		ProviderName: "test",
 		TokenService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),

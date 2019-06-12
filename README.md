@@ -148,14 +148,14 @@ The API for this provider - `GET /auth/<name>/login?user=<user>&passwd=<password
 
 _note: password parameter doesn't have to be naked/real password and can be any kind of password hash prepared by caller._ 
 
-### Confirmed authentication
+### Verified authentication
 
 Another non-oauth2 provider allowing user-confirmed authentication, for example by email or slack or telegram. This is 
-done by adding confirmed provider with `auth.AddConfirmProvider`.
+done by adding confirmed provider with `auth.AddVerifProvider`.
  
 ```go
     msgTemplate := "Confirmation email, token: {{.Token}}"
-	service.AddConfirmProvider("email", msgTemplate, sender)
+	service.AddVerifProvider("email", msgTemplate, sender)
 ```
 
 Message template may use the follow elements:

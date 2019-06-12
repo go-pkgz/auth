@@ -16,12 +16,12 @@ import (
 	"github.com/go-pkgz/auth/token"
 )
 
-// ConfirmHandler implements non-oauth2 provider authorizing users with some confirmation.
+// VerifyHandler implements non-oauth2 provider authorizing users with some confirmation.
 // can be email, IM or anything else implementing Sender interface
-type ConfirmHandler struct {
+type VerifyHandler struct {
 	logger.L
 	ProviderName string
-	TokenService ConfirmTokenService
+	TokenService VerifTokenService
 	Issuer       string
 	AvatarSaver  AvatarSaver
 	Sender       Sender
@@ -42,7 +42,7 @@ func (f SenderFunc) Send(address string, text string) error {
 }
 
 // TokenService defines interface accessing tokens
-type ConfirmTokenService interface {
+type VerifTokenService interface {
 	Token(claims token.Claims) (string, error)
 	Parse(tokenString string) (claims token.Claims, err error)
 	Set(w http.ResponseWriter, claims token.Claims) (token.Claims, error)
@@ -50,11 +50,11 @@ type ConfirmTokenService interface {
 }
 
 // Name of the handler
-func (e ConfirmHandler) Name() string { return e.ProviderName }
+func (e VerifyHandler) Name() string { return e.ProviderName }
 
 // LoginHandler gets name and address from query, makes confirmation token and sends it to user.
 // In case if confirmation token presented in the query uses it to create auth token
-func (e ConfirmHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GET /login?site=site&&user=name&address=someone@example.com
 	tkn := r.URL.Query().Get("token")
@@ -116,7 +116,7 @@ func (e ConfirmHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /login?site=site&&user=name&address=someone@example.com
-func (e ConfirmHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) {
+func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) {
 	user, address := r.URL.Query().Get("user"), r.URL.Query().Get("address")
 	if user == "" || address == "" {
 		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, errors.New("wrong request"), "can't get user and address")
@@ -177,10 +177,10 @@ func (e ConfirmHandler) sendConfirmation(w http.ResponseWriter, r *http.Request)
 }
 
 // AuthHandler doesn't do anything for direct login as it has no callbacks
-func (e ConfirmHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {}
+func (e VerifyHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {}
 
 // LogoutHandler - GET /logout
-func (e ConfirmHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (e VerifyHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	e.TokenService.Reset(w)
 }
 

@@ -302,7 +302,7 @@ func TestDirectProvider(t *testing.T) {
 	defer resp.Body.Close()
 }
 
-func TestConfirmProvider(t *testing.T) {
+func TestVerifProvider(t *testing.T) {
 	teardown := prepService(t)
 	defer teardown()
 
@@ -364,7 +364,7 @@ func prepService(t *testing.T) (teardown func()) {
 		return user == "dev_direct" && password == "password", nil
 	}))
 
-	svc.AddConfirmProvider("email", "{{.Token}}", &sender)
+	svc.AddVerifProvider("email", "{{.Token}}", &sender)
 
 	// run dev/test oauth2 server on :8084
 	devAuth, err := svc.DevAuth()
