@@ -170,7 +170,7 @@ func TestIntegrationList(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, `["dev","github","direct"]`+"\n", string(b))
+	assert.Equal(t, `["dev","github","direct","email"]`+"\n", string(b))
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
@@ -192,7 +192,7 @@ func TestIntegrationUserInfo(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
 
-	//get user info
+	// get user info
 	req, err := http.NewRequest("GET", "http://127.0.0.1:8080/auth/user", nil)
 	require.NoError(t, err)
 	t.Log(resp.Cookies())
@@ -285,10 +285,54 @@ func TestDirectProvider(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
 
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	t.Logf("resp %s", string(body))
+	t.Logf("headers: %+v", resp.Header)
+	require.Equal(t, 2, len(resp.Cookies()))
+	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
+	assert.Equal(t, 86400, resp.Cookies()[0].MaxAge)
+	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
+	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
+
 	resp, err = client.Get("http://127.0.0.1:8080/private")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
+}
+
+func TestConfirmProvider(t *testing.T) {
+	teardown := prepService(t)
+	defer teardown()
+
+	// login
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:8080/auth/email/login?user=dev&address=email")
+	require.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 200, resp.StatusCode)
+
+	tkn := sender.text
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client = &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	resp, err = client.Get("http://127.0.0.1:8080/auth/email/login?token=" + tkn)
+	require.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 200, resp.StatusCode)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	t.Logf("resp %s", string(body))
+	t.Logf("headers: %+v", resp.Header)
+	require.Equal(t, 2, len(resp.Cookies()))
+	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
+	assert.Equal(t, 86400, resp.Cookies()[0].MaxAge)
+	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
+	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
+
 }
 
 func prepService(t *testing.T) (teardown func()) {
@@ -319,6 +363,8 @@ func prepService(t *testing.T) (teardown func()) {
 	svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
 		return user == "dev_direct" && password == "password", nil
 	}))
+
+	svc.AddConfirmProvider("email", "{{.Token}}", &sender)
 
 	// run dev/test oauth2 server on :8084
 	devAuth, err := svc.DevAuth()
@@ -353,4 +399,22 @@ func prepService(t *testing.T) (teardown func()) {
 		devAuth.Shutdown()
 		os.RemoveAll("/tmp/auth-pkgz")
 	}
+}
+
+var sender = mockSender{}
+
+type mockSender struct {
+	err error
+
+	to   string
+	text string
+}
+
+func (m *mockSender) Send(to string, text string) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.to = to
+	m.text = text
+	return nil
 }
