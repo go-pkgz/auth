@@ -146,6 +146,29 @@ Such provider acts like any other, i.e. will be registered as `/auth/local/login
 The API for this provider - `GET /auth/<name>/login?user=<user>&passwd=<password>&aud=<site_id>&session=[1|0]`
 
 _note: password parameter doesn't have to be naked/real password and can be any kind of password hash prepared by caller._ 
+
+### Confirmed authentication
+
+This is another non-oauth2 provider allowing user-confirmed authentication, for example by email or slack or telegram. This is 
+done by adding confirmed provided with  `auth.AddConfirmProvider`.
+ 
+```go
+    msgTemplate := "Confirmation email, token: {{.Token}}"
+	service.AddConfirmProvider("email", msgTemplate, sender)
+```
+
+Message template may use the follow elements:
+
+- `{{.Address}}` - user address, for example email
+- `{{.User}}` - user name
+- `{{.Token}}` - confirmation token
+
+The API for this provider:
+
+ - `GET /auth/<name>/login?user=<user>&address=<adsress>&aud=<site_id>` - send confirmation request to user
+ - `GET /auth/<name>/login?token=<conf.token>&sess=[1|0]` - authorize with confirmation token
+
+The provider acts like any other, i.e. will be registered as `/auth/email/login`.
   
 ### Customization
 

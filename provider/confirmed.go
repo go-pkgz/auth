@@ -21,7 +21,7 @@ import (
 type ConfirmHandler struct {
 	logger.L
 	ProviderName string
-	TokenService EmailTokenService
+	TokenService ConfirmTokenService
 	Issuer       string
 	AvatarSaver  AvatarSaver
 	Sender       Sender
@@ -42,7 +42,7 @@ func (f SenderFunc) Send(address string, text string) error {
 }
 
 // TokenService defines interface accessing tokens
-type EmailTokenService interface {
+type ConfirmTokenService interface {
 	Token(claims token.Claims) (string, error)
 	Parse(tokenString string) (claims token.Claims, err error)
 	Set(w http.ResponseWriter, claims token.Claims) (token.Claims, error)
