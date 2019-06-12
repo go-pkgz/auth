@@ -19,9 +19,10 @@ import (
 var (
 	testConfirmedToken      = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn19.D8AvAunK7Tj-P6P56VyaoZ-hyA6U8duZ9HV8-ACEya8`
 	testConfirmedBadIDToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJibGFoQHVzZXIuY29tIn19.hB91-kyY9-Q2Ln6IJGR9StQi-QQiXYu8SV31YhOoTbc`
+	testConfirmedGravatar   = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJncmF2YTo6ZWVmcmV0c291bEBnbWFpbC5jb20ifX0.yQTtG7neX3YjLZ-SGeiiNmwNfJWA7nR50KAxDw834XE`
 )
 
-func TestVerifyHandler_AuthHandlerHandler_LoginSendConfirm(t *testing.T) {
+func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 
 	emailer := mockSender{}
 	e := VerifyHandler{
@@ -57,7 +58,7 @@ func TestVerifyHandler_AuthHandlerHandler_LoginSendConfirm(t *testing.T) {
 	assert.Equal(t, "test", e.Name())
 }
 
-func TestVerifyHandler_AuthHandlerHandler_LoginAcceptConfirm(t *testing.T) {
+func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	e := VerifyHandler{
 		ProviderName: "test",
 		TokenService: token.NewService(token.Opts{
@@ -90,7 +91,28 @@ func TestVerifyHandler_AuthHandlerHandler_LoginAcceptConfirm(t *testing.T) {
 	assert.Equal(t, true, claims.SessionOnly)
 }
 
-func TestVerifyHandler_AuthHandler_LoginHandlerFailed(t *testing.T) {
+func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer: "iss-test",
+		L:      logger.Std,
+	}
+
+	handler := http.HandlerFunc(e.LoginHandler)
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s&sess=1", testConfirmedGravatar), nil)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, 200, rr.Code)
+	assert.Equal(t, `{"name":"grava","id":"test_47dbf92d92954b1297cae73a864c159b4d847b9f","picture":"https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851.jpg"}`+"\n", rr.Body.String())
+}
+
+func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 	emailer := mockSender{}
 	d := VerifyHandler{
 		ProviderName: "test",
@@ -146,7 +168,7 @@ func TestVerifyHandler_AuthHandler_LoginHandlerFailed(t *testing.T) {
 	assert.Equal(t, `{"error":"can't execute confirmation template"}`+"\n", rr.Body.String())
 }
 
-func TestVerifyHandler_AuthHandler_AuthHandler(t *testing.T) {
+func TestVerifyHandler_AuthHandler(t *testing.T) {
 	d := VerifyHandler{}
 	handler := http.HandlerFunc(d.AuthHandler)
 	rr := httptest.NewRecorder()
@@ -156,7 +178,7 @@ func TestVerifyHandler_AuthHandler_AuthHandler(t *testing.T) {
 	assert.Equal(t, 200, rr.Code)
 }
 
-func TestVerifyHandler_AuthHandler_Logout(t *testing.T) {
+func TestVerifyHandler_Logout(t *testing.T) {
 	d := VerifyHandler{
 		ProviderName: "test",
 		TokenService: token.NewService(token.Opts{

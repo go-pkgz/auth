@@ -83,6 +83,13 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		Name: user,
 		ID:   e.ProviderName + "_" + token.HashID(sha1.New(), address),
 	}
+	// try to get gravatar for email
+	if strings.Contains(address, "@") { // TODO: better email check to avoid silly hits to gravatar api
+		if picURL, err := getGravatarURL(address); err == nil {
+			u.Picture = picURL
+		}
+	}
+
 	if u, err = setAvatar(e.AvatarSaver, u); err != nil {
 		rest.SendErrorJSON(w, r, e.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
 		return
