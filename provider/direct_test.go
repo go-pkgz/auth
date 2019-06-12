@@ -87,8 +87,8 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 403, rr.Code)
 	assert.Equal(t, `{"error":"incorrect user or password"}`+"\n", rr.Body.String())
-
 }
+
 func TestDirect_Logout(t *testing.T) {
 	d := DirectHandler{
 		ProviderName: "test",
