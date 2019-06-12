@@ -108,6 +108,10 @@ func (e ConfirmHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, e.L, http.StatusInternalServerError, err, "failed to set token")
 		return
 	}
+	if confClaims.Handshake != nil && confClaims.Handshake.From != "" {
+		http.Redirect(w, r, confClaims.Handshake.From, http.StatusTemporaryRedirect)
+		return
+	}
 	rest.RenderJSON(w, r, claims.User)
 }
 
