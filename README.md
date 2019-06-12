@@ -9,7 +9,8 @@ This library provides "social login" with Github, Google, Facebook and Yandex as
 - JWT stored in a secure cookie with XSRF protection. Cookies can be session-only
 - Minimal scopes with user name, id and picture (avatar) only
 - Direct authentication with user's provided credential checker
-- Integrated avatar proxy with FS, boltdb and gridfs storages
+- Confirmed authentication with user's provided sender (email, im, etc)
+- Integrated avatar proxy with FS, boltdb and gridfs storage
 - Support of user-defined storage for avatars
 - Identicon for default avatars  
 - Black list with user-defined validator
@@ -149,8 +150,8 @@ _note: password parameter doesn't have to be naked/real password and can be any 
 
 ### Confirmed authentication
 
-This is another non-oauth2 provider allowing user-confirmed authentication, for example by email or slack or telegram. This is 
-done by adding confirmed provided with  `auth.AddConfirmProvider`.
+Another non-oauth2 provider allowing user-confirmed authentication, for example by email or slack or telegram. This is 
+done by adding confirmed provider with `auth.AddConfirmProvider`.
  
 ```go
     msgTemplate := "Confirmation email, token: {{.Token}}"
@@ -162,10 +163,21 @@ Message template may use the follow elements:
 - `{{.Address}}` - user address, for example email
 - `{{.User}}` - user name
 - `{{.Token}}` - confirmation token
+- `{{.Site}}` - site ID
+
+Sender should be provided by end-user and implements a single function interface
+
+```go
+type Sender interface {
+	Send(address string, text string) error
+}
+```
+
+For convenience a functional wrapper `SenderFunc` provided.
 
 The API for this provider:
 
- - `GET /auth/<name>/login?user=<user>&address=<adsress>&aud=<site_id>` - send confirmation request to user
+ - `GET /auth/<name>/login?user=<user>&address=<adsress>&aud=<site_id>&from=<url>` - send confirmation request to user
  - `GET /auth/<name>/login?token=<conf.token>&sess=[1|0]` - authorize with confirmation token
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
