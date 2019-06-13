@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ func main() {
 
 	log.Setup(log.Debug, log.Msec, log.LevelBraces, log.CallerFile, log.CallerFunc) // setup default logger with go-pkgz/lgr
 
-	/// define auth options
+	// define auth options
 	options := auth.Opts{
 		SecretReader: token.SecretFunc(func() (string, error) { // secret key for JWT
 			return "secret", nil
@@ -62,6 +63,15 @@ func main() {
 
 	// allow anonymous user via custom (direct) provider
 	service.AddDirectProvider("anonymous", anonymousAuthProvider())
+
+	// add verified provider
+	service.AddVerifProvider("email",
+		"To confirm use {{.Token}}\nor follow http://localhost:8080/auth/email/login?token={{.Token}}",
+		provider.SenderFunc(func(address string, text string) error { // sender just prints token
+			fmt.Printf("CONFIRMATION for %s\n%s\n", address, text)
+			return nil
+		}),
+	)
 
 	// run dev/test oauth2 server on :8084
 	go func() {

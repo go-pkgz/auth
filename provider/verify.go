@@ -181,6 +181,8 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		rest.SendErrorJSON(w, r, e.L, http.StatusInternalServerError, err, "failed to send confirmation")
 		return
 	}
+
+	rest.RenderJSON(w, r, rest.JSON{"user": user, "address": address})
 }
 
 // AuthHandler doesn't do anything for direct login as it has no callbacks
