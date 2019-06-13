@@ -95,12 +95,11 @@ func randToken() (string, error) {
 
 func getGravatarURL(email string) (res string, err error) {
 
-	hasher := md5.New()
-	hasher.Write([]byte(email))
-	emailHash := fmt.Sprintf("%v", hex.EncodeToString(hasher.Sum(nil)))
+	hash := md5.Sum([]byte(email))
+	hexHash := hex.EncodeToString(hash[:])
 
 	client := http.Client{Timeout: 1 * time.Second}
-	res = "https://www.gravatar.com/avatar/" + emailHash + ".jpg"
+	res = "https://www.gravatar.com/avatar/" + hexHash + ".jpg"
 	resp, err := client.Get(res + "?d=404&s=80")
 	if err != nil {
 		return "", err
