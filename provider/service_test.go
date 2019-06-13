@@ -69,6 +69,14 @@ func TestSetAvatar(t *testing.T) {
 	assert.Error(t, err, "some error")
 }
 
+func TestService_getGravatarURL(t *testing.T) {
+	r, err := getGravatarURL("eefretsoul@gmail.com")
+	require.NoError(t, err)
+	assert.Equal(t, "https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851.jpg", r)
+	r, err = getGravatarURL("umputun-xyz@example.com")
+	require.EqualError(t, err, "404 Not Found")
+}
+
 type mockAva struct {
 	ok  bool
 	res string

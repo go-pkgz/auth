@@ -235,6 +235,21 @@ func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecke
 	s.authMiddleware.Providers = s.providers
 }
 
+// AddVerifProvider adds provider user's verification sent by sender
+func (s *Service) AddVerifProvider(name string, msgTmpl string, sender provider.Sender) {
+	dh := provider.VerifyHandler{
+		L:            s.logger,
+		ProviderName: name,
+		Issuer:       s.issuer,
+		TokenService: s.jwtService,
+		AvatarSaver:  s.avatarProxy,
+		Sender:       sender,
+		Template:     msgTmpl,
+	}
+	s.providers = append(s.providers, provider.NewService(dh))
+	s.authMiddleware.Providers = s.providers
+}
+
 // DevAuth makes dev oauth2 server, for testing and development only!
 func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
 	p, err := s.Provider("dev") // peak dev provider
