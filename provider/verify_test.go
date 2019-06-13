@@ -34,7 +34,7 @@ func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 		}),
 		Issuer:   "iss-test",
 		L:        logger.Std,
-		Sender:   &emailer,
+		Sender:   SenderFunc(emailer.Send),
 		Template: "{{.User}} {{.Address}} {{.Site}} token:{{.Token}}",
 	}
 
@@ -168,6 +168,30 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 	assert.Equal(t, `{"error":"can't execute confirmation template"}`+"\n", rr.Body.String())
 }
 
+func TestVerifyHandler_LoginHandlerAvatarFailed(t *testing.T) {
+	emailer := mockSender{}
+	d := VerifyHandler{
+		ProviderName: "test",
+		Sender:       &emailer,
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:      "iss-test",
+		L:           logger.Std,
+		AvatarSaver: mockAvatarSaverVerif{err: errors.New("avatar save error")},
+	}
+
+	handler := http.HandlerFunc(d.LoginHandler)
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?token="+testConfirmedToken, nil)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, 500, rr.Code)
+	assert.Equal(t, `{"error":"failed to save avatar to proxy"}`+"\n", rr.Body.String())
+}
+
 func TestVerifyHandler_AuthHandler(t *testing.T) {
 	d := VerifyHandler{}
 	handler := http.HandlerFunc(d.AuthHandler)
@@ -222,4 +246,13 @@ func (m *mockSender) Send(to string, text string) error {
 	m.to = to
 	m.text = text
 	return nil
+}
+
+type mockAvatarSaverVerif struct {
+	err error
+	url string
+}
+
+func (a mockAvatarSaverVerif) Put(u token.User) (avatarURL string, err error) {
+	return a.url, a.err
 }
