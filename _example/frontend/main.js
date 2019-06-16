@@ -23,7 +23,9 @@ function req(endpoint, data = {}) {
 	}
 
 	return fetch(endpoint, cloneData).then(resp => {
-		if (resp.status >= 400) throw resp;
+		if (resp.status >= 400) {
+			throw resp;
+		}
 		return resp.json().catch(() => null);
 	});
 }
@@ -76,12 +78,38 @@ function loginAnonymously(username) {
 	);
 }
 
+function sendEmailAuthData(username, email) {
+	return req(
+		`/auth/email/login?id=auth-example&user=${encodeURIComponent(
+			username
+		)}&address=${encodeURIComponent(email)}`
+	);
+}
+
+function loginViaEmailToken(token) {
+	return req(`/auth/email/login?token=${token}`);
+}
+
 const validUsernameRegex = /^[a-zA-Z][\w ]+$/;
 
 function getUsernameInvalidReason(username) {
 	if (username.length < 3) return "Username must be at least 3 characters long";
 	if (!validUsernameRegex.test(username))
 		return "Username must start from the letter and contain only latin letters, numbers, underscores, and spaces";
+	return null;
+}
+
+const validEmailRegex = /[^@]+@[^\.]+\..+/;
+
+function getEmailInvalidReason(email) {
+	if (!validEmailRegex.test(email)) {
+		return "Email should match /^[a-zA-Z][\\w ]+$/ regex";
+	}
+	return null;
+}
+
+function getTokenInvalidReason(token) {
+	if (token.length < 1) return "Token should be filled";
 	return null;
 }
 
@@ -112,15 +140,7 @@ function getAnonymousLoginForm(onSubmit) {
 	onValueChange(input.value);
 
 	input.addEventListener("input", e => {
-		const val = e.target.value;
-		const reason = getUsernameInvalidReason(val);
-		if (reason === null) {
-			submit.disabled = false;
-			submit.title = "";
-		} else {
-			submit.disabled = true;
-			submit.title = reason;
-		}
+		onValueChange(e.target.value);
 	});
 
 	form.appendChild(input);
@@ -134,7 +154,140 @@ function getAnonymousLoginForm(onSubmit) {
 	return form;
 }
 
+function getEmailLoginForm(onSubmit) {
+	const form = document.createElement("form");
+
+	const usernameInput = document.createElement("input");
+	usernameInput.type = "text";
+	usernameInput.placeholder = "Username";
+	usernameInput.className = "email-form__input email-form__username-input";
+
+	const emailInput = document.createElement("input");
+	emailInput.type = "text";
+	emailInput.placeholder = "Email";
+	emailInput.className = "email-form__input email-form__email-input";
+
+	const submit = document.createElement("input");
+	submit.type = "submit";
+	submit.value = "Log in";
+	submit.className = "anon-form__submit";
+
+	const formValidation = ["Enter username", "Enter email"];
+
+	const onUserNameValueChange = val => {
+		const reason = getUsernameInvalidReason(val);
+		formValidation[0] = reason === null ? null : reason;
+		submit.title = formValidation.filter(x => x !== null).join("\n") || "";
+		submit.disabled = submit.title.length > 0;
+	};
+
+	const onEmailValueChange = val => {
+		const reason = getEmailInvalidReason(val);
+		formValidation[1] = reason === null ? null : reason;
+		submit.title = formValidation.filter(x => x !== null).join("\n") || "";
+		submit.disabled = submit.title.length > 0;
+	};
+
+	submit.title = formValidation.filter(x => x !== null).join("\n") || "";
+	submit.disabled = submit.title.length > 0;
+
+	usernameInput.addEventListener("input", e => {
+		onUserNameValueChange(e.target.value);
+	});
+
+	emailInput.addEventListener("input", e => {
+		onEmailValueChange(e.target.value);
+	});
+
+	form.appendChild(usernameInput);
+	form.appendChild(emailInput);
+	form.appendChild(submit);
+
+	form.addEventListener("submit", e => {
+		e.preventDefault();
+		onSubmit(usernameInput.value, emailInput.value);
+	});
+
+	form.reset = () => {
+		usernameInput.value = "";
+		onUserNameValueChange("");
+		emailInput.value = "";
+		onEmailValueChange("");
+	};
+
+	return form;
+}
+
+function getEmailTokenLoginForm(onSubmit) {
+	const form = document.createElement("form");
+
+	const tokenInput = document.createElement("input");
+	tokenInput.type = "text";
+	tokenInput.placeholder = "Token";
+	tokenInput.className = "email-form__input email-form__token-input";
+
+	const submit = document.createElement("input");
+	submit.type = "submit";
+	submit.value = "Submit";
+	submit.className = "email-form__submit";
+
+	const onTokenValueChange = val => {
+		const reason = getTokenInvalidReason(val);
+		if (reason !== null) {
+			submit.title = reason;
+			submit.disabled = true;
+		} else {
+			submit.title = "";
+			submit.disabled = false;
+		}
+	};
+
+	onTokenValueChange(tokenInput.value);
+
+	tokenInput.addEventListener("input", e => {
+		onTokenValueChange(e.target.value);
+	});
+
+	form.appendChild(tokenInput);
+	form.appendChild(submit);
+
+	form.addEventListener("submit", e => {
+		e.preventDefault();
+		onSubmit(tokenInput.value);
+	});
+
+	form.reset = () => {
+		tokenInput.value = "";
+		onTokenValueChange("");
+	};
+
+	return form;
+}
+
+function errorHandler(err) {
+	const status = document.querySelector(".status__label");
+	if (err instanceof Response) {
+		err.text().then(text => {
+			try {
+				const data = JSON.parse(text);
+				if (data.error) {
+					status.textContent = data.error;
+					console.error(data.error);
+					return;
+				}
+			} catch {}
+			status.textContent = text;
+			console.error(text);
+		});
+		return;
+	}
+	status.textContent = err.message;
+	console.error(err.message);
+}
+
 function getLoginLinks() {
+	let formSwitcher = () => {};
+
 	return getProviders().then(providers =>
 		providers.map(prov => {
 			let a;
@@ -148,8 +301,18 @@ function getLoginLinks() {
 				textEl.className = "pseudo";
 				a.appendChild(textEl);
 				textEl.addEventListener("click", e => {
-					form.style.display = form.style.display === "none" ? "block" : "none";
-					form.querySelector(".anon-form__input").focus();
+					const display = form.style.display;
+					formSwitcher();
+					if (display === "none") {
+						form.style.display = "block";
+						formSwitcher = () => {
+							form.style.display = "none";
+						};
+						form.querySelector(".anon-form__input").focus();
+					} else {
+						form.style.display = "none";
+						formSwitcher = () => {};
+					}
 				});
 
 				const form = getAnonymousLoginForm(username => {
@@ -157,15 +320,67 @@ function getLoginLinks() {
 						.then(() => {
 							window.location.replace(window.location.href);
 						})
-						.catch(e => {
-							const status = document.querySelector(".status__label");
-							status.textContent = e.message;
-						});
+						.catch(errorHandler);
 				});
 				form.style.display = "none";
 				form.className = "anon-form login__anon-form";
 
 				a.appendChild(form);
+			} else if (prov === "email") {
+				a = document.createElement("span");
+				a.dataset.provider = prov;
+				a.className = "login__prov";
+
+				const textEl = document.createElement("span");
+				textEl.textContent = "Login with " + prov;
+				textEl.className = "pseudo";
+				a.appendChild(textEl);
+				textEl.addEventListener("click", e => {
+					const diplay = formStage1.style.display;
+					formSwitcher();
+					if (diplay === "none") {
+						formStage1.style.display = "block";
+						formStage2.style.display = "block";
+						formSwitcher = () => {
+							formStage1.style.display = "none";
+							formStage2.style.display = "none";
+						};
+						formStage1.querySelector(".email-form__username-input").focus();
+					} else {
+						formStage1.style.display = "none";
+						formStage2.style.display = "none";
+						formSwitcher = () => {};
+					}
+				});
+
+				const formStage1 = getEmailLoginForm((username, email) => {
+					sendEmailAuthData(username, email)
+						.then(() => {
+							formStage1.classList.add("hidden");
+							formStage2.classList.remove("hidden");
+							formStage2.querySelector(".email-form__token-input").focus();
+						})
+						.catch(errorHandler);
+				});
+				formStage1.style.display = "none";
+				formStage1.className = "email-form login__email-form";
+				a.appendChild(formStage1);
+
+				const formStage2 = getEmailTokenLoginForm(token => {
+					loginViaEmailToken(token)
+						.then(() => {
+							window.location.replace(window.location.href);
+						})
+						.catch(e => {
+							formStage1.classList.remove("hidden");
+							formStage2.reset();
+							formStage2.classList.add("hidden");
+							errorHandler(e);
+						});
+				});
+				formStage2.style.display = "none";
+				formStage2.className = "email-form login__email-form hidden";
+				a.appendChild(formStage2);
 			} else {
 				a = document.createElement("span");
 				a.dataset.provider = prov;
@@ -177,10 +392,7 @@ function getLoginLinks() {
 						.then(() => {
 							window.location.replace(window.location.href);
 						})
-						.catch(e => {
-							const status = document.querySelector(".status__label");
-							status.textContent = e.message;
-						});
+						.catch(errorHandler);
 				});
 			}
 			return a;
@@ -199,7 +411,7 @@ function getLogoutLink() {
 			.then(() => {
 				window.location.replace(window.location.href);
 			})
-			.catch(e => console.error(e));
+			.catch(errorHandler);
 	});
 	return a;
 }
@@ -288,7 +500,7 @@ function main() {
 				placeholder.remove();
 				container.appendChild(el);
 			})
-			.catch(e => console.error(e));
+			.catch(() => "access to /private_data denied");
 	});
 }
 
