@@ -12,6 +12,7 @@ import (
 	"github.com/go-pkgz/rest"
 	"github.com/pkg/errors"
 
+	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 )
@@ -85,7 +86,7 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// try to get gravatar for email
 	if strings.Contains(address, "@") { // TODO: better email check to avoid silly hits to gravatar api
-		if picURL, err := getGravatarURL(address); err == nil {
+		if picURL, err := avatar.GetGravatarURL(address); err == nil {
 			u.Picture = picURL
 		}
 	}

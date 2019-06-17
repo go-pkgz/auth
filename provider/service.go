@@ -1,14 +1,11 @@
 package provider
 
 import (
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 
@@ -91,22 +88,4 @@ func randToken() (string, error) {
 		return "", errors.Wrap(err, "can't write randoms to sha1")
 	}
 	return fmt.Sprintf("%x", s.Sum(nil)), nil
-}
-
-func getGravatarURL(email string) (res string, err error) {
-
-	hash := md5.Sum([]byte(email))
-	hexHash := hex.EncodeToString(hash[:])
-
-	client := http.Client{Timeout: 1 * time.Second}
-	res = "https://www.gravatar.com/avatar/" + hexHash + ".jpg"
-	resp, err := client.Get(res + "?d=404&s=80")
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", errors.New(resp.Status)
-	}
-	return res, nil
 }

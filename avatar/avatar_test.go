@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -217,6 +218,29 @@ func TestAvatar_resize(t *testing.T) {
 		bounds := imgRz.Bounds()
 		assert.Equal(t, c.wr, bounds.Dx(), "file %s", c.file)
 		assert.Equal(t, c.hr, bounds.Dy(), "file %s", c.file)
+	}
+}
+
+func TestAvatar_GetGravatarURL(t *testing.T) {
+	tbl := []struct {
+		email string
+		err   error
+		url   string
+	}{
+		{"eefretsoul@gmail.com", nil, "https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851.jpg"},
+		{"umputun-xyz@example.com", errors.New("404 Not Found"), ""},
+	}
+
+	for i, tt := range tbl {
+		t.Run("test-"+strconv.Itoa(i), func(t *testing.T) {
+			url, err := GetGravatarURL(tt.email)
+			if tt.err != nil {
+				assert.EqualError(t, err, tt.err.Error())
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, url, tt.url)
+		})
 	}
 }
 
