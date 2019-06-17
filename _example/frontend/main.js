@@ -387,6 +387,7 @@ function getLoginLinks() {
         a.textContent = "Login with " + prov;
         a.className = "pseudo login__prov";
         a.addEventListener("click", e => {
+          formSwitcher();
           e.preventDefault();
           login(prov)
             .then(() => {
