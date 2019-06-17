@@ -94,6 +94,7 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 	e := VerifyHandler{
 		ProviderName: "test",
+		UseGravatar:  true,
 		TokenService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
@@ -110,6 +111,28 @@ func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
 	assert.Equal(t, `{"name":"grava","id":"test_47dbf92d92954b1297cae73a864c159b4d847b9f","picture":"https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851.jpg"}`+"\n", rr.Body.String())
+}
+
+func TestVerifyHandler_LoginAcceptConfirmWithGrAvatarDisabled(t *testing.T) {
+	e := VerifyHandler{
+		ProviderName: "test",
+		UseGravatar:  false,
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer: "iss-test",
+		L:      logger.Std,
+	}
+
+	handler := http.HandlerFunc(e.LoginHandler)
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s&sess=1", testConfirmedGravatar), nil)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, 200, rr.Code)
+	assert.Equal(t, `{"name":"grava","id":"test_47dbf92d92954b1297cae73a864c159b4d847b9f","picture":""}`+"\n", rr.Body.String())
 }
 
 func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {

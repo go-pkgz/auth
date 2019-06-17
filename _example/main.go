@@ -53,7 +53,8 @@ func main() {
 			}
 			return false
 		}),
-		Logger: log.Default(), // optional logger for auth library
+		Logger:      log.Default(), // optional logger for auth library
+		UseGravatar: true,          // for verified provider use gravatar service
 	}
 
 	// create auth service

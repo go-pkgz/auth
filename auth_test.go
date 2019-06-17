@@ -77,7 +77,7 @@ func TestProvider(t *testing.T) {
 
 func TestIntegrationProtected(t *testing.T) {
 
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -116,7 +116,7 @@ func TestIntegrationProtected(t *testing.T) {
 
 func TestIntegrationBasicAuth(t *testing.T) {
 
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -138,7 +138,7 @@ func TestIntegrationBasicAuth(t *testing.T) {
 
 func TestIntegrationAvatar(t *testing.T) {
 
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	// login
@@ -160,7 +160,7 @@ func TestIntegrationAvatar(t *testing.T) {
 }
 
 func TestIntegrationList(t *testing.T) {
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	resp, err := http.Get("http://127.0.0.1:8080/auth/list")
@@ -174,7 +174,7 @@ func TestIntegrationList(t *testing.T) {
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	resp, err := http.Get("http://127.0.0.1:8080/auth/user")
@@ -210,7 +210,7 @@ func TestIntegrationUserInfo(t *testing.T) {
 }
 
 func TestLogout(t *testing.T) {
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	// login
@@ -252,7 +252,7 @@ func TestLogoutNoProviders(t *testing.T) {
 }
 
 func TestBadRequests(t *testing.T) {
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -268,7 +268,7 @@ func TestBadRequests(t *testing.T) {
 }
 
 func TestDirectProvider(t *testing.T) {
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	// login
@@ -303,39 +303,45 @@ func TestDirectProvider(t *testing.T) {
 }
 
 func TestVerifProvider(t *testing.T) {
-	teardown := prepService(t)
+	_, teardown := prepService(t)
 	defer teardown()
 
 	// login
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:8080/auth/email/login?user=dev&address=email")
+	resp, err := client.Get("http://127.0.0.1:8080/auth/email/login?user=dev&address=xyz@gmail.com")
 	require.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
 
 	tkn := sender.text
 	jar, err := cookiejar.New(nil)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	client = &http.Client{Jar: jar, Timeout: 5 * time.Second}
 	resp, err = client.Get("http://127.0.0.1:8080/auth/email/login?token=" + tkn)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
 
 	body, err := ioutil.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
+
+	u := token.User{}
+	err = json.Unmarshal(body, &u)
+	require.NoError(t, err)
+	assert.Equal(t, token.User{Name: "dev", ID: "email_84714ea398a960df03e2619d1b850dfac25f585e",
+		Picture: "http://127.0.0.1:8080/api/v1/avatar/e8eb81cc51b1123059ab29575296cbfd8a6a1b6e.image"}, u)
+
 	require.Equal(t, 2, len(resp.Cookies()))
 	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
 	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
 	assert.Equal(t, 86400, resp.Cookies()[0].MaxAge)
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
-
 }
 
-func prepService(t *testing.T) (teardown func()) {
+func prepService(t *testing.T) (svc *Service, teardown func()) {
 
 	options := Opts{
 		SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
@@ -355,7 +361,7 @@ func prepService(t *testing.T) (teardown func()) {
 		Logger:            logger.Std,
 	}
 
-	svc := NewService(options)
+	svc = NewService(options)
 	svc.AddProvider("dev", "", "")           // add dev provider
 	svc.AddProvider("github", "cid", "csec") // add github provider
 
@@ -394,7 +400,7 @@ func prepService(t *testing.T) (teardown func()) {
 	ts.Listener = l
 	ts.Start()
 
-	return func() {
+	return svc, func() {
 		ts.Close()
 		devAuth.Shutdown()
 		os.RemoveAll("/tmp/auth-pkgz")

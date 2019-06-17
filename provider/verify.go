@@ -27,6 +27,7 @@ type VerifyHandler struct {
 	AvatarSaver  AvatarSaver
 	Sender       Sender
 	Template     string
+	UseGravatar  bool
 }
 
 // Sender defines interface to send emails
@@ -85,7 +86,7 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		ID:   e.ProviderName + "_" + token.HashID(sha1.New(), address),
 	}
 	// try to get gravatar for email
-	if strings.Contains(address, "@") { // TODO: better email check to avoid silly hits to gravatar api
+	if e.UseGravatar && strings.Contains(address, "@") { // TODO: better email check to avoid silly hits to gravatar api
 		if picURL, err := avatar.GetGravatarURL(address); err == nil {
 			u.Picture = picURL
 		}
