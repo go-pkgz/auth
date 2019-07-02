@@ -11,29 +11,33 @@ import (
 	"github.com/go-pkgz/auth/logger"
 )
 
+// Email implements sender interface for VerifyHandler
+// Uses common subject line and "from" for all messages
 type Email struct {
 	logger.L
 
-	Host        string
-	Port        int
-	From        string
-	Subject     string
-	ContentType string
+	Host        string // SMTP host
+	Port        int    // SMTP port
+	From        string // From email field
+	Subject     string // Email subject
+	ContentType string // Content type, optional. Will trigger MIME and Content-Type headers
 
-	TLS          bool
-	SMTPUserName string
-	SMTPPassword string
+	TLS          bool   // TLS auth
+	SMTPUserName string // user name
+	SMTPPassword string // password
 }
 
+// Send email with given text
 func (e *Email) Send(to string, text string) error {
 
 	c, err := e.client()
 	if err != nil {
 		return errors.Wrap(err, "failed to make smtp client")
 	}
+
 	var quit bool
 	defer func() {
-		if quit {
+		if quit { // quit set after Quit() passed because it's closing connection too.
 			return
 		}
 		if err = c.Close(); err != nil {
