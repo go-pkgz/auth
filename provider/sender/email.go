@@ -20,6 +20,7 @@ type Email struct {
 	EmailParams
 }
 
+// EmailParams  with all needed to make new Email client with smtp
 type EmailParams struct {
 	Host        string // SMTP host
 	Port        int    // SMTP port
@@ -100,8 +101,9 @@ func (em *Email) Send(to string, text string) error {
 
 	if err = client.Quit(); err != nil {
 		em.Logf("[WARN] failed to send quit command to %s:%d, %v", em.Host, em.Port, err)
+	} else {
+		quit = true
 	}
-	quit = true
 	return nil
 }
 
