@@ -152,7 +152,7 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tmpl := emailTemplate
+	tmpl := msgTemplate
 	if e.Template != "" {
 		tmpl = e.Template
 	}
@@ -195,7 +195,7 @@ func (e VerifyHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	e.TokenService.Reset(w)
 }
 
-var emailTemplate = `
+var msgTemplate = `
 Remark42 confirmation for {{.User}} {{.Address}}, site {{.Site}}
 
 Token: {{.Token}}
