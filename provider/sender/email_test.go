@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/smtp"
+	"os"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -14,6 +15,9 @@ import (
 )
 
 func TestEmailSend(t *testing.T) {
+	if _, ok := os.LookupEnv("SEND_EMAIL_TEST"); !ok {
+		t.Skip()
+	}
 	p := EmailParams{
 		From:        "test@umputun.com",
 		ContentType: "text/html",

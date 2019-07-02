@@ -49,7 +49,7 @@ func NewEmailClient(p EmailParams, l logger.L) *Email {
 }
 
 // Send email with given text
-// If SMTPClient defined in Email struct uses it, if not - makes new smtp.Client on each send.
+// If SMTPClient defined in Email struct iw will be used, if not - makes new smtp.Client on each send.
 // Always closes client on completion or failure.
 func (em *Email) Send(to string, text string) error {
 
