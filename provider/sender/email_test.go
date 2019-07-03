@@ -6,6 +6,7 @@ import (
 	"net/smtp"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -94,6 +95,22 @@ func TestEmail_SendFailed(t *testing.T) {
 	assert.False(t, fakeSmtp.auth)
 	assert.False(t, fakeSmtp.quit)
 	assert.True(t, fakeSmtp.close)
+}
+
+func TestEmail_SendFailed2(t *testing.T) {
+	p := EmailParams{Host: "127.0.0.2", Port: 25, From: "from@example.com",
+		Subject: "subj", ContentType: "text/html", TimeOut: time.Millisecond * 200}
+	e := NewEmailClient(p, logger.Std)
+	assert.Equal(t, p, e.EmailParams)
+	err := e.Send("to@example.com", "some text")
+	require.EqualError(t, err, "failed to make smtp client: timeout connecting to 127.0.0.2:25:"+
+		" dial tcp 127.0.0.2:25: i/o timeout")
+
+	p = EmailParams{Host: "127.0.0.1", Port: 225, From: "from@example.com", Subject: "subj", ContentType: "text/html",
+		TLS: true}
+	e = NewEmailClient(p, logger.Std)
+	err = e.Send("to@example.com", "some text")
+	require.EqualError(t, err, "failed to make smtp client: failed to dial smtp tls to 127.0.0.1:225: dial tcp 127.0.0.1:225: connect: connection refused")
 }
 
 type fakeTestSmtp struct {

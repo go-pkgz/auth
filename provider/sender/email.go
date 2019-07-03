@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/smtp"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -31,6 +33,7 @@ type EmailParams struct {
 	TLS          bool   // TLS auth
 	SMTPUserName string // user name
 	SMTPPassword string // password
+	TimeOut      time.Duration
 }
 
 // SMTPClient interface defines subset of net/smtp used by email client
@@ -124,7 +127,12 @@ func (em *Email) client() (c *smtp.Client, err error) {
 		return c, nil
 	}
 
-	c, err = smtp.Dial(srvAddress)
+	conn, err := net.DialTimeout("tcp", srvAddress, em.TimeOut)
+	if err != nil {
+		return nil, errors.Wrapf(err, "timeout connecting to %s", srvAddress)
+	}
+
+	c, err = smtp.NewClient(conn, srvAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to dial")
 	}
