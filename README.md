@@ -9,7 +9,7 @@ This library provides "social login" with Github, Google, Facebook and Yandex as
 - JWT stored in a secure cookie with XSRF protection. Cookies can be session-only
 - Minimal scopes with user name, id and picture (avatar) only
 - Direct authentication with user's provided credential checker
-- Confirmed authentication with user's provided sender (email, im, etc)
+- Verified authentication with user's provided sender (email, im, etc)
 - Integrated avatar proxy with FS, boltdb and gridfs storage
 - Support of user-defined storage for avatars
 - Identicon for default avatars  
@@ -173,7 +173,8 @@ type Sender interface {
 }
 ```
 
-For convenience a functional wrapper `SenderFunc` provided.
+For convenience a functional wrapper `SenderFunc` provided. Email sender provided in `provider/sender` package and can be 
+used as `Sender`.
 
 The API for this provider:
 
@@ -300,6 +301,7 @@ _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://githu
 1.  Take note of the **ID** and **Password**
 
 For more details refer to [Yandex OAuth](https://tech.yandex.com/oauth/doc/dg/concepts/about-docpage/) and [Yandex.Passport](https://tech.yandex.com/passport/doc/dg/index-docpage/) API documentation.
+
 
 
 ## Status 
