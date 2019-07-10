@@ -64,7 +64,7 @@ func (p Service) Handler(w http.ResponseWriter, r *http.Request) {
 		p.AuthHandler(w, r)
 		return
 	}
-	if strings.HasSuffix(r.URL.Path, urlCallbackSuffix) {
+	if strings.HasSuffix(r.URL.Path, urlLogoutSuffix) {
 		p.LogoutHandler(w, r)
 		return
 	}
