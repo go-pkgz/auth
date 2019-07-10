@@ -21,13 +21,12 @@ type Oauth2Handler struct {
 	Params
 
 	// all of these fields specific to particular oauth2 provider
-	name        string
-	redirectURL string
-	infoURL     string
-	endpoint    oauth2.Endpoint
-	scopes      []string
-	mapUser     func(userData, []byte) token.User // map info from InfoURL to User
-	conf        oauth2.Config
+	name     string
+	infoURL  string
+	endpoint oauth2.Endpoint
+	scopes   []string
+	mapUser  func(userData, []byte) token.User // map info from InfoURL to User
+	conf     oauth2.Config
 }
 
 // Params to make initialized and ready to use provider
@@ -61,13 +60,12 @@ func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
 	service.conf = oauth2.Config{
 		ClientID:     service.Cid,
 		ClientSecret: service.Csecret,
-		RedirectURL:  service.redirectURL,
 		Scopes:       service.scopes,
 		Endpoint:     service.endpoint,
 	}
 
 	p.Logf("[DEBUG] created %s oauth2, id=%s, redir=%s, endpoint=%s",
-		service.name, service.Cid, service.endpoint, service.redirectURL)
+		service.name, service.Cid, service.endpoint)
 	return service
 }
 

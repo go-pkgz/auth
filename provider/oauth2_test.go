@@ -143,11 +143,10 @@ func TestOauth2Logout(t *testing.T) {
 
 func TestOauth2InitProvider(t *testing.T) {
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", Issuer: "app-test"}
-	provider := Oauth2Handler{name: "test", redirectURL: "redir"}
+	provider := Oauth2Handler{name: "test"}
 	res := initOauth2Handler(params, provider)
 	assert.Equal(t, "cid", res.conf.ClientID)
 	assert.Equal(t, "csecret", res.conf.ClientSecret)
-	assert.Equal(t, "redir", res.redirectURL)
 	assert.Equal(t, "test", res.name)
 	assert.Equal(t, "app-test", res.Issuer)
 }
@@ -174,9 +173,8 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 			AuthURL:  fmt.Sprintf("http://localhost:%d/login/oauth/authorize", authPort),
 			TokenURL: fmt.Sprintf("http://localhost:%d/login/oauth/access_token", authPort),
 		},
-		redirectURL: fmt.Sprintf("http://localhost:%d/callback", loginPort),
-		scopes:      []string{"user:email"},
-		infoURL:     fmt.Sprintf("http://localhost:%d/user", authPort),
+		scopes:  []string{"user:email"},
+		infoURL: fmt.Sprintf("http://localhost:%d/user", authPort),
 		mapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
 				ID:      "mock_" + data.value("id"),
