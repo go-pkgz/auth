@@ -110,6 +110,8 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p.conf.RedirectURL = p.URL + r.URL.Path + urlCallbackSuffix
+
 	// return login url
 	loginURL := p.conf.AuthCodeURL(state)
 	p.Logf("[DEBUG] login url %s, claims=%+v", loginURL, claims)
