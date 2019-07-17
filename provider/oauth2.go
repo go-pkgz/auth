@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
@@ -108,7 +109,10 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.conf.RedirectURL = p.URL + r.URL.Path + urlCallbackSuffix
+	elems := strings.Split(r.URL.Path, "/")
+	path := strings.Join(elems[:len(elems)-1], "/")
+
+	p.conf.RedirectURL = strings.TrimRight(p.URL, "/") + strings.TrimRight(path, "/") + urlCallbackSuffix
 
 	// return login url
 	loginURL := p.conf.AuthCodeURL(state)
