@@ -66,35 +66,35 @@ func TestEmail_New(t *testing.T) {
 }
 
 func TestEmail_Send(t *testing.T) {
-	fakeSmtp := &fakeTestSmtp{}
+	fakeSMTP := &fakeTestSMTP{}
 	p := EmailParams{From: "from@example.com", Subject: "subj", ContentType: "text/html",
 		SMTPUserName: "user", SMTPPassword: "passwd"}
-	e := Email{L: logger.Std, EmailParams: p, SMTPClient: fakeSmtp}
+	e := Email{L: logger.Std, EmailParams: p, SMTPClient: fakeSMTP}
 	err := e.Send("to@example.com", "some text")
 	require.NoError(t, err)
 
-	assert.Equal(t, "from@example.com", fakeSmtp.mail)
-	assert.Equal(t, "to@example.com", fakeSmtp.rcpt)
+	assert.Equal(t, "from@example.com", fakeSMTP.mail)
+	assert.Equal(t, "to@example.com", fakeSMTP.rcpt)
 	assert.Equal(t, "From: from@example.com\nTo: to@example.com\nSubject: subj\n"+
-		"MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\nsome text", fakeSmtp.buff.String())
-	assert.True(t, fakeSmtp.auth)
-	assert.True(t, fakeSmtp.quit)
-	assert.False(t, fakeSmtp.close)
+		"MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\nsome text", fakeSMTP.buff.String())
+	assert.True(t, fakeSMTP.auth)
+	assert.True(t, fakeSMTP.quit)
+	assert.False(t, fakeSMTP.close)
 }
 
 func TestEmail_SendFailed(t *testing.T) {
-	fakeSmtp := &fakeTestSmtp{fail: true}
+	fakeSMTP := &fakeTestSMTP{fail: true}
 	p := EmailParams{From: "from@example.com", Subject: "subj", ContentType: "text/html"}
-	e := Email{L: logger.Std, EmailParams: p, SMTPClient: fakeSmtp}
+	e := Email{L: logger.Std, EmailParams: p, SMTPClient: fakeSMTP}
 	err := e.Send("to@example.com", "some text")
 	require.EqualError(t, err, "can't make email writer: failed")
 
-	assert.Equal(t, "from@example.com", fakeSmtp.mail)
-	assert.Equal(t, "to@example.com", fakeSmtp.rcpt)
-	assert.Equal(t, "", fakeSmtp.buff.String())
-	assert.False(t, fakeSmtp.auth)
-	assert.False(t, fakeSmtp.quit)
-	assert.True(t, fakeSmtp.close)
+	assert.Equal(t, "from@example.com", fakeSMTP.mail)
+	assert.Equal(t, "to@example.com", fakeSMTP.rcpt)
+	assert.Equal(t, "", fakeSMTP.buff.String())
+	assert.False(t, fakeSMTP.auth)
+	assert.False(t, fakeSMTP.quit)
+	assert.True(t, fakeSMTP.close)
 }
 
 func TestEmail_SendFailed2(t *testing.T) {
@@ -112,7 +112,7 @@ func TestEmail_SendFailed2(t *testing.T) {
 	require.NotNil(t, err)
 }
 
-type fakeTestSmtp struct {
+type fakeTestSMTP struct {
 	fail bool
 
 	buff        bytes.Buffer
@@ -121,13 +121,13 @@ type fakeTestSmtp struct {
 	quit, close bool
 }
 
-func (f *fakeTestSmtp) Mail(m string) error  { f.mail = m; return nil }
-func (f *fakeTestSmtp) Auth(smtp.Auth) error { f.auth = true; return nil }
-func (f *fakeTestSmtp) Rcpt(r string) error  { f.rcpt = r; return nil }
-func (f *fakeTestSmtp) Quit() error          { f.quit = true; return nil }
-func (f *fakeTestSmtp) Close() error         { f.close = true; return nil }
+func (f *fakeTestSMTP) Mail(m string) error  { f.mail = m; return nil }
+func (f *fakeTestSMTP) Auth(smtp.Auth) error { f.auth = true; return nil }
+func (f *fakeTestSMTP) Rcpt(r string) error  { f.rcpt = r; return nil }
+func (f *fakeTestSMTP) Quit() error          { f.quit = true; return nil }
+func (f *fakeTestSMTP) Close() error         { f.close = true; return nil }
 
-func (f *fakeTestSmtp) Data() (io.WriteCloser, error) {
+func (f *fakeTestSMTP) Data() (io.WriteCloser, error) {
 	if f.fail {
 		return nil, errors.New("failed")
 	}

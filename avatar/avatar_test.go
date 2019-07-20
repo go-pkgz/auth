@@ -36,7 +36,7 @@ func TestAvatar_Put(t *testing.T) {
 	defer ts.Close()
 
 	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.NoOp}
-	os.MkdirAll("/tmp/avatars.test", 0700)
+	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0700))
 	defer os.RemoveAll("/tmp/avatars.test")
 
 	u := token.User{ID: "user1", Name: "user1 name", Picture: ts.URL + "/pic.png"}
@@ -111,7 +111,7 @@ func TestAvatar_Routes(t *testing.T) {
 	defer ts.Close()
 
 	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
-	os.MkdirAll("/tmp/avatars.test", 0700)
+	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0700))
 	defer os.RemoveAll("/tmp/avatars.test")
 
 	u := token.User{ID: "user1", Name: "user1 name", Picture: ts.URL + "/pic.png"}
@@ -178,7 +178,6 @@ func TestAvatar_resize(t *testing.T) {
 	p := Proxy{L: logger.Std}
 	// Reader is nil.
 	resizedR := p.resize(nil, 100)
-	// assert.EqualError(t, err, "limit should be greater than 0")
 	assert.Nil(t, resizedR)
 
 	// Negative limit error.

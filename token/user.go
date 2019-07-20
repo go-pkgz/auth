@@ -40,7 +40,7 @@ func (u *User) SetBoolAttr(key string, val bool) {
 }
 
 // SetStrAttr sets string attribute
-func (u *User) SetStrAttr(key string, val string) {
+func (u *User) SetStrAttr(key, val string) {
 	if u.Attributes == nil {
 		u.Attributes = map[string]interface{}{}
 	}

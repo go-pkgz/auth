@@ -80,16 +80,16 @@ func TestJWT_Token(t *testing.T) {
 	assert.Equal(t, testJwtValid, res)
 
 	j.SecretReader = nil
-	res, err = j.Token(claims)
+	_, err = j.Token(claims)
 	assert.EqualError(t, err, "secret reader not defined")
 
 	j.SecretReader = SecretFunc(func() (string, error) { return "", errors.New("err blah") })
-	res, err = j.Token(claims)
+	_, err = j.Token(claims)
 	assert.EqualError(t, err, "can't get secret: err blah")
 
 	j.SecretReader = SecretFunc(mockKeyStore)
 	j.AudienceReader = AudienceFunc(func() ([]string, error) { return []string{"a1", "aa2"}, nil })
-	res, err = j.Token(claims)
+	_, err = j.Token(claims)
 	assert.EqualError(t, err, `aud rejected: aud "test_sys" not allowed`)
 
 	j.AudienceReader = AudienceFunc(func() ([]string, error) { return []string{"a1", "test_sys", "aa2"}, nil })

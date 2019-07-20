@@ -72,7 +72,7 @@ func TestAvatarStoreFS_Get(t *testing.T) {
 	assert.Equal(t, 0, size)
 	assert.EqualError(t, err, "can't load avatar some_random_name.image, id: open /tmp/avatars.test/91/some_random_name.image: no such file or directory")
 	// file exists
-	err = ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666)
+	err = ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666) //nolint
 	assert.Nil(t, err)
 	r, size, err = p.Get("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 
@@ -109,15 +109,15 @@ func TestAvatarStoreFS_ID(t *testing.T) {
 
 	// file not exists
 	id := p.ID("some_random_name.image")
-	assert.Equal(t, "a008de0a2ccb3308b5d99ffff66436e15538f701", id) // store.EncodeID("some_random_name.image")
+	assert.Equal(t, "a008de0a2ccb3308b5d99ffff66436e15538f701", id) // "some_random_name.image"
 	// file exists
-	err = ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666)
+	err = ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666) //nolint
 	require.NoError(t, err)
 	touch := time.Date(2017, 7, 14, 2, 40, 0, 0, time.UTC) // 1500000000
 	err = os.Chtimes("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", touch, touch)
 	require.NoError(t, err)
 	id = p.ID("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
-	assert.Equal(t, "325d5b451f32c2f8e7f30a9fd65bff6a42954d9a", id) // store.EncodeID("b3daa77b4c04a9551b8781d03191fe098f325e67.image1500000000")
+	assert.Equal(t, "325d5b451f32c2f8e7f30a9fd65bff6a42954d9a", id)
 }
 
 func TestAvatarStoreFS_Remove(t *testing.T) {
@@ -127,7 +127,7 @@ func TestAvatarStoreFS_Remove(t *testing.T) {
 	defer os.RemoveAll("/tmp/avatars.test")
 
 	assert.NotNil(t, p.Remove("no-such-avatar"), "remove non-existing avatar")
-	err = ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666)
+	err = ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666) //nolint
 	require.NoError(t, err)
 
 	assert.NoError(t, p.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"))
@@ -166,9 +166,9 @@ func TestAvatarStoreFS_List(t *testing.T) {
 
 func BenchmarkAvatarStoreFS_ID(b *testing.B) {
 	p := NewLocalFS("/tmp/avatars.test")
-	os.MkdirAll("/tmp/avatars.test/30", 0700)
+	_ = os.MkdirAll("/tmp/avatars.test/30", 0700)
 	defer os.RemoveAll("/tmp/avatars.test")
-	err := ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666)
+	err := ioutil.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666) //nolint
 	require.NoError(b, err)
 
 	b.ResetTimer()

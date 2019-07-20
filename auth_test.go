@@ -396,14 +396,14 @@ func prepService(t *testing.T) (svc *Service, teardown func()) {
 	l, err := net.Listen("tcp", "127.0.0.1:8080")
 	require.Nil(t, err)
 	ts := httptest.NewUnstartedServer(mux)
-	ts.Listener.Close()
+	assert.NoError(t, ts.Listener.Close())
 	ts.Listener = l
 	ts.Start()
 
 	return svc, func() {
 		ts.Close()
 		devAuth.Shutdown()
-		os.RemoveAll("/tmp/auth-pkgz")
+		_ = os.RemoveAll("/tmp/auth-pkgz")
 	}
 }
 
@@ -416,7 +416,7 @@ type mockSender struct {
 	text string
 }
 
-func (m *mockSender) Send(to string, text string) error {
+func (m *mockSender) Send(to, text string) error {
 	if m.err != nil {
 		return m.err
 	}

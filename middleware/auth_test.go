@@ -41,7 +41,7 @@ func TestAuthJWTCookie(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
@@ -109,7 +109,7 @@ func TestAuthJWTRefresh(t *testing.T) {
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
 
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 
@@ -149,7 +149,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 			req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 			require.NoError(t, err)
 
-			expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+			expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
 			req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
 				MaxAge: expiration, Secure: false})
 			req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -180,7 +180,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: tkn, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err := client.Do(req)
@@ -216,7 +216,7 @@ func TestAuthJWTRefreshFailed(t *testing.T) {
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
 
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds())
+	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
 		MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -362,7 +362,7 @@ func TestAdminRequired(t *testing.T) {
 	assert.Equal(t, 401, resp.StatusCode, "not authorized")
 }
 
-func makeTestMux(t *testing.T, a *Authenticator, required bool) http.Handler {
+func makeTestMux(_ *testing.T, a *Authenticator, required bool) http.Handler {
 	mux := http.NewServeMux()
 	authMiddleware := a.Auth
 	if !required {
@@ -375,7 +375,7 @@ func makeTestMux(t *testing.T, a *Authenticator, required bool) http.Handler {
 	return mux
 }
 
-func makeTestAuth(t *testing.T) Authenticator {
+func makeTestAuth(_ *testing.T) Authenticator {
 	j := token.NewService(token.Opts{
 		SecretReader:   token.SecretFunc(func() (string, error) { return "xyz 12345", nil }),
 		SecureCookies:  false,

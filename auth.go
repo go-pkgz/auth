@@ -131,7 +131,7 @@ func NewService(opts Opts) (res *Service) {
 }
 
 // Handlers gets http.Handler for all providers and avatars
-func (s *Service) Handlers() (authHandler http.Handler, avatarHandler http.Handler) {
+func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 
 	ah := func(w http.ResponseWriter, r *http.Request) {
 		elems := strings.Split(r.URL.Path, "/")
@@ -193,7 +193,7 @@ func (s *Service) Middleware() middleware.Authenticator {
 }
 
 // AddProvider adds provider for given name
-func (s *Service) AddProvider(name string, cid string, csecret string) {
+func (s *Service) AddProvider(name, cid, csecret string) {
 
 	p := provider.Params{
 		URL:         s.opts.URL,
@@ -239,7 +239,7 @@ func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecke
 }
 
 // AddVerifProvider adds provider user's verification sent by sender
-func (s *Service) AddVerifProvider(name string, msgTmpl string, sender provider.Sender) {
+func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender) {
 	dh := provider.VerifyHandler{
 		L:            s.logger,
 		ProviderName: name,

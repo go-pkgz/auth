@@ -83,7 +83,13 @@ func (m mockAva) Put(u token.User) (avatarURL string, err error) {
 
 type mockHandler struct{}
 
-func (n *mockHandler) Name() string                                         { return "mock-handler" }
-func (n *mockHandler) LoginHandler(w http.ResponseWriter, r *http.Request)  { w.Write([]byte("login")) }
-func (n *mockHandler) AuthHandler(w http.ResponseWriter, r *http.Request)   { w.Write([]byte("callback")) }
-func (n *mockHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) { w.Write([]byte("logout")) }
+func (n *mockHandler) Name() string { return "mock-handler" }
+func (n *mockHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write([]byte("login"))
+}
+func (n *mockHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write([]byte("callback"))
+}
+func (n *mockHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write([]byte("logout"))
+}
