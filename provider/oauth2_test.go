@@ -165,6 +165,23 @@ func TestOauth2InvalidHandler(t *testing.T) {
 	assert.Equal(t, 405, resp.StatusCode)
 }
 
+func TestMakeRedirURL(t *testing.T) {
+	cases := []struct{ rootURL, route, out string }{
+		{"localhost:8080/", "/my/auth/path/google", "localhost:8080/my/auth/path/callback"},
+		{"localhost:8080", "/auth/google", "localhost:8080/auth/callback"},
+		{"localhost:8080/", "/auth/google", "localhost:8080/auth/callback"},
+		{"localhost:8080", "/", "localhost:8080/callback"},
+		{"localhost:8080/", "/", "localhost:8080/callback"},
+		{"mysite.com", "", "mysite.com/callback"},
+	}
+
+	for i := range cases {
+		c := cases[i]
+		oh := initOauth2Handler(Params{URL: c.rootURL}, Oauth2Handler{})
+		assert.Equal(t, c.out, oh.makeRedirURL(c.route))
+	}
+}
+
 func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 
 	provider := Oauth2Handler{

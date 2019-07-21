@@ -109,10 +109,9 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	elems := strings.Split(r.URL.Path, "/")
-	path := strings.Join(elems[:len(elems)-1], "/")
-
-	p.conf.RedirectURL = strings.TrimRight(p.URL, "/") + strings.TrimRight(path, "/") + urlCallbackSuffix
+	// setting RedirectURL to rootURL/routingPath/provider/callback
+	// e.g. http://localhost:8080/auth/github/callback
+	p.conf.RedirectURL = p.makeRedirURL(r.URL.Path)
 
 	// return login url
 	loginURL := p.conf.AuthCodeURL(state)
@@ -218,4 +217,11 @@ func (p Oauth2Handler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.JwtService.Reset(w)
+}
+
+func (p Oauth2Handler) makeRedirURL(path string) string {
+	elems := strings.Split(path, "/")
+	newPath := strings.Join(elems[:len(elems)-1], "/")
+
+	return strings.TrimRight(p.URL, "/") + strings.TrimRight(newPath, "/") + urlCallbackSuffix
 }
