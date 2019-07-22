@@ -66,7 +66,7 @@ func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
 	}
 
 	p.Logf("[DEBUG] created %s oauth2, id=%s, redir=%s, endpoint=%s",
-		service.name, service.Cid, service.makeRedirURL("/YOUR_ROUTE/"+service.name+"/"), service.endpoint)
+		service.name, service.Cid, service.makeRedirURL("/{route}/"+service.name+"/"), service.endpoint)
 	return service
 }
 
