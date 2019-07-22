@@ -143,11 +143,10 @@ func TestOauth2Logout(t *testing.T) {
 
 func TestOauth2InitProvider(t *testing.T) {
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", Issuer: "app-test"}
-	provider := Oauth2Handler{name: "test", redirectURL: "redir"}
+	provider := Oauth2Handler{name: "test"}
 	res := initOauth2Handler(params, provider)
 	assert.Equal(t, "cid", res.conf.ClientID)
 	assert.Equal(t, "csecret", res.conf.ClientSecret)
-	assert.Equal(t, "redir", res.redirectURL)
 	assert.Equal(t, "test", res.name)
 	assert.Equal(t, "app-test", res.Issuer)
 }
@@ -166,6 +165,23 @@ func TestOauth2InvalidHandler(t *testing.T) {
 	assert.Equal(t, 405, resp.StatusCode)
 }
 
+func TestMakeRedirURL(t *testing.T) {
+	cases := []struct{ rootURL, route, out string }{
+		{"localhost:8080/", "/my/auth/path/google", "localhost:8080/my/auth/path/callback"},
+		{"localhost:8080", "/auth/google", "localhost:8080/auth/callback"},
+		{"localhost:8080/", "/auth/google", "localhost:8080/auth/callback"},
+		{"localhost:8080", "/", "localhost:8080/callback"},
+		{"localhost:8080/", "/", "localhost:8080/callback"},
+		{"mysite.com", "", "mysite.com/callback"},
+	}
+
+	for i := range cases {
+		c := cases[i]
+		oh := initOauth2Handler(Params{URL: c.rootURL}, Oauth2Handler{})
+		assert.Equal(t, c.out, oh.makeRedirURL(c.route))
+	}
+}
+
 func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 
 	provider := Oauth2Handler{
@@ -174,9 +190,8 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 			AuthURL:  fmt.Sprintf("http://localhost:%d/login/oauth/authorize", authPort),
 			TokenURL: fmt.Sprintf("http://localhost:%d/login/oauth/access_token", authPort),
 		},
-		redirectURL: fmt.Sprintf("http://localhost:%d/callback", loginPort),
-		scopes:      []string{"user:email"},
-		infoURL:     fmt.Sprintf("http://localhost:%d/user", authPort),
+		scopes:  []string{"user:email"},
+		infoURL: fmt.Sprintf("http://localhost:%d/user", authPort),
 		mapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
 				ID:      "mock_" + data.value("id"),

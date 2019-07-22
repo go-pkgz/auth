@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
@@ -21,13 +22,12 @@ type Oauth2Handler struct {
 	Params
 
 	// all of these fields specific to particular oauth2 provider
-	name        string
-	redirectURL string
-	infoURL     string
-	endpoint    oauth2.Endpoint
-	scopes      []string
-	mapUser     func(userData, []byte) token.User // map info from InfoURL to User
-	conf        oauth2.Config
+	name     string
+	infoURL  string
+	endpoint oauth2.Endpoint
+	scopes   []string
+	mapUser  func(userData, []byte) token.User // map info from InfoURL to User
+	conf     oauth2.Config
 }
 
 // Params to make initialized and ready to use provider
@@ -61,13 +61,12 @@ func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
 	service.conf = oauth2.Config{
 		ClientID:     service.Cid,
 		ClientSecret: service.Csecret,
-		RedirectURL:  service.redirectURL,
 		Scopes:       service.scopes,
 		Endpoint:     service.endpoint,
 	}
 
 	p.Logf("[DEBUG] created %s oauth2, id=%s, redir=%s, endpoint=%s",
-		service.name, service.Cid, service.endpoint, service.redirectURL)
+		service.name, service.Cid, service.makeRedirURL("/YOUR_ROUTE/"+service.name+"/"), service.endpoint)
 	return service
 }
 
@@ -109,6 +108,10 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to set token")
 		return
 	}
+
+	// setting RedirectURL to rootURL/routingPath/provider/callback
+	// e.g. http://localhost:8080/auth/github/callback
+	p.conf.RedirectURL = p.makeRedirURL(r.URL.Path)
 
 	// return login url
 	loginURL := p.conf.AuthCodeURL(state)
@@ -214,4 +217,11 @@ func (p Oauth2Handler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.JwtService.Reset(w)
+}
+
+func (p Oauth2Handler) makeRedirURL(path string) string {
+	elems := strings.Split(path, "/")
+	newPath := strings.Join(elems[:len(elems)-1], "/")
+
+	return strings.TrimRight(p.URL, "/") + strings.TrimRight(newPath, "/") + urlCallbackSuffix
 }

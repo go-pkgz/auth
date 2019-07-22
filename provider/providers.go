@@ -16,11 +16,10 @@ import (
 // NewGoogle makes google oauth2 provider
 func NewGoogle(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
-		name:        "google",
-		endpoint:    google.Endpoint,
-		redirectURL: p.URL + "/auth/google/callback",
-		scopes:      []string{"https://www.googleapis.com/auth/userinfo.profile"},
-		infoURL:     "https://www.googleapis.com/oauth2/v3/userinfo",
+		name:     "google",
+		endpoint: google.Endpoint,
+		scopes:   []string{"https://www.googleapis.com/auth/userinfo.profile"},
+		infoURL:  "https://www.googleapis.com/oauth2/v3/userinfo",
 		mapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
 				// encode email with provider name to avoid collision if same id returned by other provider
@@ -39,11 +38,10 @@ func NewGoogle(p Params) Oauth2Handler {
 // NewGithub makes github oauth2 provider
 func NewGithub(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
-		name:        "github",
-		endpoint:    github.Endpoint,
-		redirectURL: p.URL + "/auth/github/callback",
-		scopes:      []string{},
-		infoURL:     "https://api.github.com/user",
+		name:     "github",
+		endpoint: github.Endpoint,
+		scopes:   []string{},
+		infoURL:  "https://api.github.com/user",
 		mapUser: func(data userData, _ []byte) token.User {
 			userInfo := token.User{
 				ID:      "github_" + token.HashID(sha1.New(), data.value("login")),
@@ -74,11 +72,10 @@ func NewFacebook(p Params) Oauth2Handler {
 	}
 
 	return initOauth2Handler(p, Oauth2Handler{
-		name:        "facebook",
-		endpoint:    facebook.Endpoint,
-		redirectURL: p.URL + "/auth/facebook/callback",
-		scopes:      []string{"public_profile"},
-		infoURL:     "https://graph.facebook.com/me?fields=id,name,picture",
+		name:     "facebook",
+		endpoint: facebook.Endpoint,
+		scopes:   []string{"public_profile"},
+		infoURL:  "https://graph.facebook.com/me?fields=id,name,picture",
 		mapUser: func(data userData, bdata []byte) token.User {
 			userInfo := token.User{
 				ID:   "facebook_" + token.HashID(sha1.New(), data.value("id")),
@@ -100,10 +97,9 @@ func NewFacebook(p Params) Oauth2Handler {
 // NewYandex makes yandex oauth2 provider
 func NewYandex(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
-		name:        "yandex",
-		endpoint:    yandex.Endpoint,
-		redirectURL: p.URL + "/auth/yandex/callback",
-		scopes:      []string{},
+		name:     "yandex",
+		endpoint: yandex.Endpoint,
+		scopes:   []string{},
 		// See https://tech.yandex.com/passport/doc/dg/reference/response-docpage/
 		infoURL: "https://login.yandex.ru/info?format=json",
 		mapUser: func(data userData, _ []byte) token.User {
