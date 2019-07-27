@@ -161,6 +161,8 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p.conf.RedirectURL = p.makeRedirURL(r.URL.Path)
+
 	p.Logf("[DEBUG] token with state %s", retrievedState)
 	tok, err := p.conf.Exchange(context.Background(), r.URL.Query().Get("code"))
 	if err != nil {
