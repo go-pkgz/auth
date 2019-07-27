@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-pkgz/rest"
 	"github.com/pkg/errors"
+	"gopkg.in/oauth2.v3/server"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -287,4 +289,47 @@ func (s *Service) TokenService() *token.Service {
 // AvatarProxy returns stored in service
 func (s *Service) AvatarProxy() *avatar.Proxy {
 	return s.avatarProxy
+}
+
+// StartCustomServer starts custom go-oauth2 server (s. https://github.com/go-oauth2/oauth2)
+func (s *Service) StartCustomServer(ctx context.Context, srv *server.Server, opts provider.CustomProviderOpt) error {
+	client, err := srv.Manager.GetClient(opts.Cid)
+	if err != nil {
+		return fmt.Errorf(`failed to retrive client from custom ouath server 
+			(see https://github.com/go-oauth2/oauth2/blob/v3.10.1/manage/manager.go#L106", %s`, err)
+	}
+
+	p := provider.Params{
+		URL:         s.opts.URL,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+		Cid:         client.GetID(),
+		Csecret:     client.GetSecret(),
+		L:           s.logger,
+	}
+
+	handler := provider.NewCustHandler(p)
+
+	if err != nil {
+		return fmt.Errorf("failed to get a handler to go-auth2/oauth2 provider, %s", err)
+	}
+	s.providers = append(s.providers, provider.NewService(handler))
+	s.authMiddleware.Providers = s.providers
+
+	// Start server
+	d, err := p.RetriveDomain()
+	if err != nil {
+		s.logger.Logf("[ERROR] can't retrive domain from service URL %s", s.opts.URL)
+	}
+
+	custSrv := &provider.CustomOauthServer{
+		L:             s.logger,
+		Domain:        d,
+		WithLoginPage: true,
+		OauthServer:   srv,
+	}
+	go custSrv.Run(ctx)
+
+	return nil
 }
