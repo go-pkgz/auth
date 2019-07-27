@@ -159,7 +159,7 @@ func initCustomProvider() *server.Server {
 	clientStore.Set("cid", &models.Client{
 		ID:     "cid",
 		Secret: "csecret",
-		Domain: "http://127.0.0.1:8080", //TODO should be the same as service.rootURL
+		Domain: "http://127.0.0.1:8080",
 	})
 	manager.MapClientStorage(clientStore)
 

@@ -299,6 +299,10 @@ func (s *Service) StartCustomServer(ctx context.Context, srv *server.Server, opt
 			(see https://github.com/go-oauth2/oauth2/blob/v3.10.1/manage/manager.go#L106", %s`, err)
 	}
 
+	if client.GetDomain() != s.opts.URL {
+		s.logger.Logf("[WARN] client domain=%s is diffrent from service root url=%s", client.GetDomain(), s.opts.URL)
+	}
+
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
