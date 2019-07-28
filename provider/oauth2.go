@@ -43,8 +43,8 @@ type Params struct {
 	AvatarSaver AvatarSaver
 }
 
-// RetriveDomain parses services URL and returns the host without port
-func (p Params) RetriveDomain() (string, error) {
+// RetrieveDomain parses services URL and returns the host without port
+func (p Params) RetrieveDomain() (string, error) {
 	u, err := url.Parse(p.URL)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse service base URL=%s", p.URL)

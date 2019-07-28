@@ -44,7 +44,7 @@ func TestCustomProvider(t *testing.T) {
 	h := NewCustHandler(params)
 	s := Service{Provider: h}
 
-	d, err := params.RetriveDomain()
+	d, err := params.RetrieveDomain()
 	if err != nil {
 		assert.Fail(t, fmt.Sprintf("failed retrieve domain from %s", params.URL))
 	}
@@ -120,7 +120,7 @@ func TestCustProviderCancel(t *testing.T) {
 	}
 
 	srv := initCustomProvider()
-	d, _ := params.RetriveDomain()
+	d, _ := params.RetrieveDomain()
 
 	prov := CustomOauthServer{
 		L:             logger.Std,

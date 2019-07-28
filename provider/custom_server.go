@@ -13,6 +13,7 @@ import (
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 	"golang.org/x/oauth2"
+	goauth2 "gopkg.in/oauth2.v3"
 	"gopkg.in/oauth2.v3/server"
 )
 
@@ -64,20 +65,21 @@ func (c *CustomOauthServer) Run(ctx context.Context) {
 					return
 				}
 
-				err := c.OauthServer.HandleAuthorizeRequest(w, r)
+				err = c.OauthServer.HandleAuthorizeRequest(w, r)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
 			case strings.HasSuffix(r.URL.Path, "/access_token"):
-				err := c.OauthServer.HandleTokenRequest(w, r)
+				err = c.OauthServer.HandleTokenRequest(w, r)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 				}
 			case strings.HasPrefix(r.URL.Path, "/user"):
-				ti, err := c.OauthServer.ValidationBearerToken(r)
+				var ti goauth2.TokenInfo
+				ti, err = c.OauthServer.ValidationBearerToken(r)
 				if err != nil {
-					http.Error(w, http.StatusText(401), 401)
+					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 					return
 				}
 				userID := ti.GetUserID()
@@ -142,9 +144,9 @@ func (c *CustomOauthServer) Shutdown() {
 
 // NewCustHandler creates a handler for go-oauth2/oauth2 server
 func NewCustHandler(p Params) Oauth2Handler {
-	d, err := p.RetriveDomain()
+	d, err := p.RetrieveDomain()
 	if err != nil {
-		p.Logf("[ERROR] can't retrive domain from service URL %s", p.URL)
+		p.Logf("[ERROR] can't retrieve domain from service URL %s", p.URL)
 	}
 
 	return initOauth2Handler(p, Oauth2Handler{

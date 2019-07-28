@@ -295,12 +295,12 @@ func (s *Service) AvatarProxy() *avatar.Proxy {
 func (s *Service) StartCustomServer(ctx context.Context, srv *server.Server, opts provider.CustomProviderOpt) error {
 	client, err := srv.Manager.GetClient(opts.Cid)
 	if err != nil {
-		return fmt.Errorf(`failed to retrive client from custom ouath server 
+		return fmt.Errorf(`failed to retrieve client from custom ouath server 
 			(see https://github.com/go-oauth2/oauth2/blob/v3.10.1/manage/manager.go#L106", %s`, err)
 	}
 
 	if client.GetDomain() != s.opts.URL {
-		s.logger.Logf("[WARN] client domain=%s is diffrent from service root url=%s", client.GetDomain(), s.opts.URL)
+		s.logger.Logf("[WARN] client domain=%s is different from service root url=%s", client.GetDomain(), s.opts.URL)
 	}
 
 	p := provider.Params{
@@ -314,17 +314,13 @@ func (s *Service) StartCustomServer(ctx context.Context, srv *server.Server, opt
 	}
 
 	handler := provider.NewCustHandler(p)
-
-	if err != nil {
-		return fmt.Errorf("failed to get a handler to go-auth2/oauth2 provider, %s", err)
-	}
 	s.providers = append(s.providers, provider.NewService(handler))
 	s.authMiddleware.Providers = s.providers
 
 	// Start server
-	d, err := p.RetriveDomain()
+	d, err := p.RetrieveDomain()
 	if err != nil {
-		s.logger.Logf("[ERROR] can't retrive domain from service URL %s", s.opts.URL)
+		s.logger.Logf("[ERROR] can't retrieve domain from service URL %s", s.opts.URL)
 	}
 
 	custSrv := &provider.CustomOauthServer{

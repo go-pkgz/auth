@@ -99,7 +99,7 @@ func TestRetrieveDomain(t *testing.T) {
 
 	for i := range cases {
 		c := cases[i]
-		got, err := c.in.RetriveDomain()
+		got, err := c.in.RetrieveDomain()
 		if err != nil {
 			if !c.willFail {
 				assert.Fail(t, fmt.Sprintf("case %s failed, not expected error occured. %s", c.name, err))
