@@ -13,7 +13,6 @@ import (
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 	"golang.org/x/oauth2"
-	goauth2 "gopkg.in/oauth2.v3"
 	"gopkg.in/oauth2.v3/server"
 )
 
@@ -42,73 +41,21 @@ type CustomOauthServer struct {
 func (c *CustomOauthServer) Run(ctx context.Context) {
 	c.Logf("[INFO] run local go-oauth2/oauth2 server on %s:%d", c.Domain, custOAuthPort)
 	c.lock.Lock()
-	var err error
-
-	userLoginTmpl, err := template.New("page").Parse(customLoginTmpl)
-	if err != nil {
-		c.Logf("[ERROR] can't parse user login template, %s", err)
-		return
-	}
 
 	c.httpServer = &http.Server{
 		Addr: fmt.Sprintf(":%d", custOAuthPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.HasSuffix(r.URL.Path, "/authorize"):
-				// Called for first time, ask for username
-				if c.WithLoginPage && (r.ParseForm() != nil || r.Form.Get("username") == "") {
-					formData := struct{ Query string }{Query: r.URL.RawQuery}
-
-					if err = userLoginTmpl.Execute(w, formData); err != nil {
-						c.Logf("[WARN] can't write, %s", err)
-					}
-					return
-				}
-
-				err = c.OauthServer.HandleAuthorizeRequest(w, r)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
+				c.handleAuthorize(w, r)
 			case strings.HasSuffix(r.URL.Path, "/access_token"):
-				err = c.OauthServer.HandleTokenRequest(w, r)
-				if err != nil {
+				if err := c.OauthServer.HandleTokenRequest(w, r); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 				}
 			case strings.HasPrefix(r.URL.Path, "/user"):
-				var ti goauth2.TokenInfo
-				ti, err = c.OauthServer.ValidationBearerToken(r)
-				if err != nil {
-					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-					return
-				}
-				userID := ti.GetUserID()
-
-				ava := fmt.Sprintf(c.Domain+":%d/avatar?user=%s", custOAuthPort, userID)
-				res := fmt.Sprintf(`{
-					"id": "%s",
-					"name":"%s",
-					"picture":"%s"
-					}`, userID, userID, ava)
-
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				if _, err = w.Write([]byte(res)); err != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-
+				c.handleUserInfo(w, r)
 			case strings.HasPrefix(r.URL.Path, "/avatar"):
-				user := r.URL.Query().Get("user")
-				b, e := avatar.GenerateAvatar(user)
-				if e != nil {
-					w.WriteHeader(http.StatusNotFound)
-					return
-				}
-				if _, err = w.Write(b); err != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-
+				c.handleAvatar(w, r)
 			default:
 				w.WriteHeader(http.StatusBadRequest)
 				return
@@ -123,8 +70,67 @@ func (c *CustomOauthServer) Run(ctx context.Context) {
 		c.Shutdown()
 	}()
 
-	err = c.httpServer.ListenAndServe()
+	err := c.httpServer.ListenAndServe()
 	c.Logf("[WARN] dev oauth2 server terminated, %s", err)
+}
+
+func (c *CustomOauthServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+	// Called for first time, ask for username
+	if c.WithLoginPage && (r.ParseForm() != nil || r.Form.Get("username") == "") {
+		userLoginTmpl, err := template.New("page").Parse(customLoginTmpl)
+		if err != nil {
+			c.Logf("[ERROR] can't parse user login template, %s", err)
+			return
+		}
+
+		formData := struct{ Query string }{Query: r.URL.RawQuery}
+
+		if err := userLoginTmpl.Execute(w, formData); err != nil {
+			c.Logf("[WARN] can't write, %s", err)
+		}
+		return
+	}
+
+	err := c.OauthServer.HandleAuthorizeRequest(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+}
+
+func (c *CustomOauthServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+	ti, err := c.OauthServer.ValidationBearerToken(r)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	userID := ti.GetUserID()
+
+	ava := fmt.Sprintf(c.Domain+":%d/avatar?user=%s", custOAuthPort, userID)
+	res := fmt.Sprintf(`{
+					"id": "%s",
+					"name":"%s",
+					"picture":"%s"
+					}`, userID, userID, ava)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if _, err := w.Write([]byte(res)); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+}
+
+func (c *CustomOauthServer) handleAvatar(w http.ResponseWriter, r *http.Request) {
+	user := r.URL.Query().Get("user")
+	b, err := avatar.GenerateAvatar(user)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if _, err = w.Write(b); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 // Shutdown oauth2 dev server
