@@ -86,7 +86,7 @@ func (c *CustomOauthServer) handleAuthorize(w http.ResponseWriter, r *http.Reque
 				c.LoginPageHandler(w, r)
 				return
 			}
-			userLoginTmpl, err := template.New("page").Parse(customLoginTmpl)
+			userLoginTmpl, err := template.New("page").Parse(defaultLoginTmpl)
 			if err != nil {
 				c.Logf("[ERROR] can't parse user login template, %s", err)
 				return
@@ -184,7 +184,7 @@ func NewCustHandler(p Params) Oauth2Handler {
 	})
 }
 
-var customLoginTmpl = `
+var defaultLoginTmpl = `
 <html>
 	<head>
 		<title>Dev OAuth</title>
