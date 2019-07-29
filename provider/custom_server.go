@@ -20,8 +20,9 @@ const custOAuthPort = 9096
 
 // CustomProviderOpt are options to start go-oauth2/oauth2 server
 type CustomProviderOpt struct {
-	WithLoginPage bool
-	Cid           string
+	WithLoginPage    bool
+	LoginPageHandler func(w http.ResponseWriter, r *http.Request)
+	Cid              string
 }
 
 // CustomOauthServer is a go-oauth2/oauth2 server running on its own port
@@ -31,7 +32,9 @@ type CustomOauthServer struct {
 	Domain string
 	// WithLoginPage: redirect to login html page if true
 	WithLoginPage bool
-	httpServer    *http.Server
+	// LoginPageHandler is handler for user-defined login page
+	LoginPageHandler func(w http.ResponseWriter, r *http.Request)
+	httpServer       *http.Server
 	// OauthServer is instance of go-oauth2/oauth2 server
 	OauthServer *server.Server
 	lock        sync.Mutex
@@ -75,20 +78,27 @@ func (c *CustomOauthServer) Run(ctx context.Context) {
 }
 
 func (c *CustomOauthServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
-	// Called for first time, ask for username
-	if c.WithLoginPage && (r.ParseForm() != nil || r.Form.Get("username") == "") {
-		userLoginTmpl, err := template.New("page").Parse(customLoginTmpl)
-		if err != nil {
-			c.Logf("[ERROR] can't parse user login template, %s", err)
+	// called for first time, ask for username
+	if c.WithLoginPage || c.LoginPageHandler != nil {
+		if r.ParseForm() != nil || r.Form.Get("username") == "" {
+			// show default template if user-defined function not specified
+			if c.LoginPageHandler != nil {
+				c.LoginPageHandler(w, r)
+				return
+			}
+			userLoginTmpl, err := template.New("page").Parse(customLoginTmpl)
+			if err != nil {
+				c.Logf("[ERROR] can't parse user login template, %s", err)
+				return
+			}
+
+			formData := struct{ Query string }{Query: r.URL.RawQuery}
+
+			if err := userLoginTmpl.Execute(w, formData); err != nil {
+				c.Logf("[WARN] can't write, %s", err)
+			}
 			return
 		}
-
-		formData := struct{ Query string }{Query: r.URL.RawQuery}
-
-		if err := userLoginTmpl.Execute(w, formData); err != nil {
-			c.Logf("[WARN] can't write, %s", err)
-		}
-		return
 	}
 
 	err := c.OauthServer.HandleAuthorizeRequest(w, r)
