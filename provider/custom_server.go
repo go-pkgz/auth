@@ -12,6 +12,7 @@ import (
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
+	"github.com/microcosm-cc/bluemonday"
 	"golang.org/x/oauth2"
 	"gopkg.in/oauth2.v3/server"
 )
@@ -116,7 +117,8 @@ func (c *CustomOauthServer) handleUserInfo(w http.ResponseWriter, r *http.Reques
 	}
 	userID := ti.GetUserID()
 
-	ava := fmt.Sprintf(c.Domain+":%d/avatar?user=%s", custOAuthPort, userID)
+	p := bluemonday.UGCPolicy()
+	ava := p.Sanitize(fmt.Sprintf(c.Domain+":%d/avatar?user=%s", custOAuthPort, userID))
 	res := fmt.Sprintf(`{
 					"id": "%s",
 					"name":"%s",
