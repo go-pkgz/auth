@@ -74,7 +74,7 @@ func (c *CustomOauthServer) Run(ctx context.Context) {
 	}()
 
 	err := c.httpServer.ListenAndServe()
-	c.Logf("[WARN] dev oauth2 server terminated, %s", err)
+	c.Logf("[WARN] go-oauth2/oauth2 server terminated, %s", err)
 }
 
 func (c *CustomOauthServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
@@ -143,18 +143,18 @@ func (c *CustomOauthServer) handleAvatar(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// Shutdown oauth2 dev server
+// Shutdown go-oauth2/oauth2 server
 func (c *CustomOauthServer) Shutdown() {
-	c.Logf("[WARN] shutdown oauth2 dev server")
+	c.Logf("[WARN] shutdown go-oauth2/oauth2 server")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	c.lock.Lock()
 	if c.httpServer != nil {
 		if err := c.httpServer.Shutdown(ctx); err != nil {
-			c.Logf("[DEBUG] oauth2 dev shutdown error, %s", err)
+			c.Logf("[DEBUG] go-oauth2/oauth2 shutdown error, %s", err)
 		}
 	}
-	c.Logf("[DEBUG] shutdown dev oauth2 server completed")
+	c.Logf("[DEBUG] shutdown go-oauth2/oauth2 server completed")
 	c.lock.Unlock()
 }
 
@@ -202,7 +202,7 @@ var defaultLoginTmpl = `
 				color: hsl(200, 50%, 70%);
 				text-decoration-color: hsla(200, 50%, 70%, 0.5);
 			}
-
+			
 			form {
 				font-family: Helvetica, Arial, sans-serif;
 				margin: 100px auto;
