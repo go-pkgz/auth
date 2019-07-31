@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"text/template"
 	"time"
 
 	"github.com/go-pkgz/auth/provider"
@@ -60,6 +61,21 @@ func main() {
 	copts := provider.CustomProviderOpt{
 		WithLoginPage: true,
 		Cid:           "cid",
+		// handle user-defined template
+		// if not set: default template will be rendered
+		LoginPageHandler: func(w http.ResponseWriter, r *http.Request) {
+			userLoginTmpl, err := template.New("page").Parse(customTemplate)
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			}
+
+			formData := struct{ Query string }{Query: r.URL.RawQuery}
+
+			if err := userLoginTmpl.Execute(w, formData); err != nil {
+				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			}
+			return
+		},
 	}
 	service.StartCustomServer(context.Background(), srv, copts)
 
@@ -106,3 +122,37 @@ func initCustomProvider() *server.Server {
 
 	return srv
 }
+
+var customTemplate = `
+			<html>
+			<head>
+			<title>Dev OAuth</title>
+			</head>
+			<body>
+			<form action="/login/oauth/authorize?{{.Query}}" method="POST">
+			<label>
+				<span class="username-label">Username</span>
+				<input
+					class="username-input"
+					type="text"
+					name="username"
+					value=""
+					autofocus
+				/>
+			</label>
+			<br>
+			<label>
+			<span class="username-label">Password</span>
+			<input
+				class="username-input"
+				type="password"
+				name="password"
+				value=""
+				autofocus
+			/>
+			</label>
+			<br>
+			<input type="submit" class="form-submit" value="Authorize" />
+			<p class="notice"></p>
+		</form>
+		</body>`
