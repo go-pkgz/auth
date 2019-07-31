@@ -324,10 +324,11 @@ func (s *Service) StartCustomServer(ctx context.Context, srv *server.Server, opt
 	}
 
 	custSrv := &provider.CustomOauthServer{
-		L:             s.logger,
-		Domain:        d,
-		WithLoginPage: true,
-		OauthServer:   srv,
+		L:                s.logger,
+		Domain:           d,
+		WithLoginPage:    true,
+		OauthServer:      srv,
+		LoginPageHandler: opts.LoginPageHandler,
 	}
 	go custSrv.Run(ctx)
 
