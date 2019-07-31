@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +55,48 @@ func TestCustomProvider(t *testing.T) {
 		L:             logger.Std,
 		Domain:        d,
 		OauthServer:   srv,
-		WithLoginPage: false,
+		WithLoginPage: true,
+		LoginPageHandler: func(w http.ResponseWriter, r *http.Request) {
+			// // Simulate POST from login page
+			u, err := url.Parse("http://127.0.0.1:9096/authorize?" + r.URL.RawQuery)
+			if err != nil {
+				assert.Fail(t, "failed to parse url")
+			}
+
+			jar, err := cookiejar.New(nil)
+			if err != nil {
+				assert.Fail(t, "failed initialize cookiesjar")
+			}
+			jar.SetCookies(u, r.Cookies())
+
+			form := url.Values{}
+			form.Add("username", "admin")
+			form.Add("password", "pwd1234")
+
+			req, err := http.NewRequest("POST", "", strings.NewReader(form.Encode()))
+			req.URL = u
+			req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+			c := &http.Client{Jar: jar, Timeout: time.Second * 10}
+			resp, err := c.Do(req)
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+				return
+			}
+			assert.Equal(t, 2, len(resp.Cookies()))
+			assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+			assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
+			assert.Equal(t, 2678400, resp.Cookies()[0].MaxAge)
+			assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
+			assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
+
+			claims, err := params.JwtService.Parse(resp.Cookies()[0].Value)
+			assert.Nil(t, err)
+
+			assert.Equal(t, token.User{Name: "admin", ID: "admin",
+				Picture: "http://127.0.0.1:9096/avatar?user=admin", IP: ""}, *claims.User)
+
+		},
 	}
 
 	router := http.NewServeMux()
@@ -68,14 +111,14 @@ func TestCustomProvider(t *testing.T) {
 
 	defer func() {
 		prov.Shutdown()
-		ts.Shutdown(context.TODO())
+		_ = ts.Shutdown(context.TODO())
 	}()
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
-	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	client := &http.Client{Jar: jar, Timeout: time.Second * 10}
 
 	// check non-admin, permanent
 	resp, err := client.Get("http://127.0.0.1:8080/auth/custom/login?site=my-test-site")
@@ -86,19 +129,6 @@ func TestCustomProvider(t *testing.T) {
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
-	assert.Equal(t, 2, len(resp.Cookies()))
-	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
-	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
-	assert.Equal(t, 2678400, resp.Cookies()[0].MaxAge)
-	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
-	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
-
-	claims, err := params.JwtService.Parse(resp.Cookies()[0].Value)
-	assert.Nil(t, err)
-
-	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user",
-		Picture: "http://127.0.0.1:9096/avatar?user=dev_user", IP: ""}, *claims.User)
-
 	// check avatar
 	resp, err = client.Get("http://127.0.0.1:9096/avatar?user=dev_user")
 	require.Nil(t, err)
@@ -107,6 +137,12 @@ func TestCustomProvider(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 960, len(body))
 	t.Logf("headers: %+v", resp.Header)
+
+	// check default login page
+	prov.LoginPageHandler = nil
+	resp, err = client.Get("http://127.0.0.1:8080/auth/custom/login?site=my-test-site")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
 }
 
 func TestCustProviderCancel(t *testing.T) {
@@ -166,7 +202,13 @@ func initCustomProvider() *server.Server {
 	srv := server.NewServer(server.NewConfig(), manager)
 
 	srv.SetUserAuthorizationHandler(func(w http.ResponseWriter, r *http.Request) (string, error) {
-		return "dev_user", nil
+		if r.ParseForm() != nil {
+			return "", fmt.Errorf("no username and password in request")
+		}
+		if r.Form.Get("username") != "admin" || r.Form.Get("password") != "pwd1234" {
+			return "", fmt.Errorf("wrong creds")
+		}
+		return "admin", nil
 	})
 
 	srv.SetInternalErrorHandler(func(err error) (re *errors.Response) {

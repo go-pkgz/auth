@@ -13,8 +13,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/oauth2.v3/generates"
+	"gopkg.in/oauth2.v3/manage"
+	"gopkg.in/oauth2.v3/models"
+	"gopkg.in/oauth2.v3/server"
+	"gopkg.in/oauth2.v3/store"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -170,7 +176,7 @@ func TestIntegrationList(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, `["dev","github","direct","email"]`+"\n", string(b))
+	assert.Equal(t, `["dev","github","custom","direct","email"]`+"\n", string(b))
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
@@ -365,6 +371,14 @@ func prepService(t *testing.T) (svc *Service, teardown func()) {
 	svc.AddProvider("dev", "", "")           // add dev provider
 	svc.AddProvider("github", "cid", "csec") // add github provider
 
+	// add go-oauth2/oauth2 provider
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv := initCustomProvider()
+	svc.StartCustomServer(ctx, srv, provider.CustomProviderOpt{
+		Cid: "cid",
+	})
+
 	// add direct provider
 	svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
 		return user == "dev_direct" && password == "password", nil
@@ -423,4 +437,25 @@ func (m *mockSender) Send(to, text string) error {
 	m.to = to
 	m.text = text
 	return nil
+}
+
+func initCustomProvider() *server.Server {
+	manager := manage.NewDefaultManager()
+
+	// token store
+	manager.MustTokenStorage(store.NewMemoryTokenStore())
+
+	// generate jwt access token
+	manager.MapAccessGenerate(generates.NewJWTAccessGenerate([]byte("00000000"), jwt.SigningMethodHS512))
+
+	// client memory store
+	clientStore := store.NewClientStore()
+	clientStore.Set("cid", &models.Client{
+		ID:     "cid",
+		Secret: "csecret",
+		Domain: "http://127.0.0.1:8080",
+	})
+	manager.MapClientStorage(clientStore)
+
+	return server.NewServer(server.NewConfig(), manager)
 }
