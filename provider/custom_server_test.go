@@ -12,22 +12,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/oauth2.v3/errors"
 	"gopkg.in/oauth2.v3/generates"
 	"gopkg.in/oauth2.v3/manage"
 	"gopkg.in/oauth2.v3/models"
 	"gopkg.in/oauth2.v3/server"
+	goauth2 "gopkg.in/oauth2.v3/server"
 	"gopkg.in/oauth2.v3/store"
 )
 
 func TestCustomProvider(t *testing.T) {
-	srv := initCustomProvider()
+	srv := initGoauth2Srv()
 
 	params := Params{
 		URL: "http://127.0.0.1:8080",
@@ -43,18 +43,10 @@ func TestCustomProvider(t *testing.T) {
 		L:       logger.Std,
 	}
 
-	h := NewCustHandler(params)
-	s := Service{Provider: h}
-
-	d, err := params.RetrieveDomain()
-	if err != nil {
-		assert.Fail(t, fmt.Sprintf("failed retrieve domain from %s", params.URL))
-	}
-
-	prov := CustomOauthServer{
+	sopts := CustomServerOpts{
+		URL:           "http://127.0.0.1:9096",
+		Cid:           "cid",
 		L:             logger.Std,
-		Domain:        d,
-		OauthServer:   srv,
 		WithLoginPage: true,
 		LoginPageHandler: func(w http.ResponseWriter, r *http.Request) {
 			// // Simulate POST from login page
@@ -99,8 +91,13 @@ func TestCustomProvider(t *testing.T) {
 		},
 	}
 
+	prov, copts := NewCustomServer(srv, sopts)
+
+	h := NewCustHandler("myprov", params, copts)
+	s := Service{Provider: h}
+
 	router := http.NewServeMux()
-	router.Handle("/auth/custom/", http.HandlerFunc(s.Handler))
+	router.Handle("/auth/customprov/", http.HandlerFunc(s.Handler))
 	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -121,7 +118,7 @@ func TestCustomProvider(t *testing.T) {
 	client := &http.Client{Jar: jar, Timeout: time.Second * 10}
 
 	// check non-admin, permanent
-	resp, err := client.Get("http://127.0.0.1:8080/auth/custom/login?site=my-test-site")
+	resp, err := client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := ioutil.ReadAll(resp.Body)
@@ -140,29 +137,18 @@ func TestCustomProvider(t *testing.T) {
 
 	// check default login page
 	prov.LoginPageHandler = nil
-	resp, err = client.Get("http://127.0.0.1:8080/auth/custom/login?site=my-test-site")
+	resp, err = client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
 
 func TestCustProviderCancel(t *testing.T) {
-	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std,
-		JwtService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
-			TokenDuration:  time.Hour,
-			CookieDuration: time.Hour * 24 * 31,
-			DisableIAT:     true,
-		}),
-	}
-
-	srv := initCustomProvider()
-	d, _ := params.RetrieveDomain()
-
-	prov := CustomOauthServer{
-		L:             logger.Std,
-		Domain:        d,
+	srv := initGoauth2Srv()
+	prov := CustomServer{
 		OauthServer:   srv,
-		WithLoginPage: false,
+		URL:           "http://127.0.0.1:9096",
+		L:             logger.Std,
+		WithLoginPage: true,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -180,7 +166,7 @@ func TestCustProviderCancel(t *testing.T) {
 	}
 }
 
-func initCustomProvider() *server.Server {
+func initGoauth2Srv() *goauth2.Server {
 	manager := manage.NewDefaultManager()
 	manager.SetAuthorizeCodeTokenCfg(manage.DefaultAuthorizeCodeTokenCfg)
 

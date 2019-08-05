@@ -3,7 +3,9 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"text/template"
@@ -14,40 +16,78 @@ import (
 	"github.com/go-pkgz/auth/token"
 	"github.com/microcosm-cc/bluemonday"
 	"golang.org/x/oauth2"
-	"gopkg.in/oauth2.v3/server"
+	goauth2 "gopkg.in/oauth2.v3/server"
 )
 
-const custOAuthPort = 9096
-
-// CustomProviderOpt are options to start go-oauth2/oauth2 server
+// CustomProviderOpt are options to initialize a handler for custom go-oauth2/oauth2 server
 type CustomProviderOpt struct {
+	Cid       string
+	Csecret   string
+	Endpoint  oauth2.Endpoint
+	InfoURL   string
+	MapUserFn func(userData, []byte) token.User
+}
+
+// CustomServerOpts are options to initialize a custom go-oauth2/oauth2 server
+type CustomServerOpts struct {
+	logger.L
+	URL              string
+	Cid              string
 	WithLoginPage    bool
 	LoginPageHandler func(w http.ResponseWriter, r *http.Request)
-	Cid              string
 }
 
-// CustomOauthServer is a go-oauth2/oauth2 server running on its own port
-type CustomOauthServer struct {
+// NewCustomServer is helper function to initiate a customer server and prefill
+// options needed for provider registration (see Service.AddCustomProvider)
+func NewCustomServer(srv *goauth2.Server, sopts CustomServerOpts) (*CustomServer, CustomProviderOpt) {
+	p := CustomServer{
+		L:                sopts.L,
+		URL:              sopts.URL,
+		WithLoginPage:    sopts.WithLoginPage,
+		LoginPageHandler: sopts.LoginPageHandler,
+		OauthServer:      srv,
+	}
+
+	copts := CustomProviderOpt{
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  sopts.URL + "/authorize",
+			TokenURL: sopts.URL + "/access_token",
+		},
+		InfoURL:   sopts.URL + "/user",
+		MapUserFn: defaultMapUserFn,
+	}
+	return &p, copts
+}
+
+// CustomServer is a wrapper over go-oauth2/oauth2 server running on its own port
+type CustomServer struct {
 	logger.L
-	// Domain corresponds to the root host specified without port
-	Domain string
-	// WithLoginPage: redirect to login html page if true
-	WithLoginPage bool
-	// LoginPageHandler is handler for user-defined login page
-	LoginPageHandler func(w http.ResponseWriter, r *http.Request)
-	httpServer       *http.Server
-	// OauthServer is instance of go-oauth2/oauth2 server
-	OauthServer *server.Server
-	lock        sync.Mutex
+	URL              string                                       // root url for custom oauth2 server
+	WithLoginPage    bool                                         // redirect to login html page if true
+	LoginPageHandler func(w http.ResponseWriter, r *http.Request) // handler for user-defined login page
+	OauthServer      *goauth2.Server                              // an instance of go-oauth2/oauth2 server
+
+	httpServer *http.Server
+	lock       sync.Mutex
 }
 
-// Run starts serving on custOauthPort
-func (c *CustomOauthServer) Run(ctx context.Context) {
-	c.Logf("[INFO] run local go-oauth2/oauth2 server on %s:%d", c.Domain, custOAuthPort)
+// Run starts serving on c.Port
+func (c *CustomServer) Run(ctx context.Context) {
+	c.Logf("[INFO] run local go-oauth2/oauth2 server on %s", c.URL)
 	c.lock.Lock()
 
+	u, err := url.Parse(c.URL)
+	if err != nil {
+		c.Logf("[ERROR] failed to parse service base URL=%s", c.URL)
+	}
+
+	_, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		c.Logf("[ERROR] failed to get port from URL=%s", c.URL)
+	}
+
 	c.httpServer = &http.Server{
-		Addr: fmt.Sprintf(":%d", custOAuthPort),
+		Addr: fmt.Sprintf(":%s", port),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.HasSuffix(r.URL.Path, "/authorize"):
@@ -74,11 +114,11 @@ func (c *CustomOauthServer) Run(ctx context.Context) {
 		c.Shutdown()
 	}()
 
-	err := c.httpServer.ListenAndServe()
+	err = c.httpServer.ListenAndServe()
 	c.Logf("[WARN] go-oauth2/oauth2 server terminated, %s", err)
 }
 
-func (c *CustomOauthServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+func (c *CustomServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	// called for first time, ask for username
 	if c.WithLoginPage || c.LoginPageHandler != nil {
 		if r.ParseForm() != nil || r.Form.Get("username") == "" {
@@ -109,7 +149,7 @@ func (c *CustomOauthServer) handleAuthorize(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (c *CustomOauthServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+func (c *CustomServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	ti, err := c.OauthServer.ValidationBearerToken(r)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -118,7 +158,7 @@ func (c *CustomOauthServer) handleUserInfo(w http.ResponseWriter, r *http.Reques
 	userID := ti.GetUserID()
 
 	p := bluemonday.UGCPolicy()
-	ava := p.Sanitize(fmt.Sprintf(c.Domain+":%d/avatar?user=%s", custOAuthPort, userID))
+	ava := p.Sanitize(fmt.Sprintf(c.URL+"/avatar?user=%s", userID))
 	res := fmt.Sprintf(`{
 					"id": "%s",
 					"name":"%s",
@@ -132,7 +172,7 @@ func (c *CustomOauthServer) handleUserInfo(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (c *CustomOauthServer) handleAvatar(w http.ResponseWriter, r *http.Request) {
+func (c *CustomServer) handleAvatar(w http.ResponseWriter, r *http.Request) {
 	user := r.URL.Query().Get("user")
 	b, err := avatar.GenerateAvatar(user)
 	if err != nil {
@@ -146,7 +186,7 @@ func (c *CustomOauthServer) handleAvatar(w http.ResponseWriter, r *http.Request)
 }
 
 // Shutdown go-oauth2/oauth2 server
-func (c *CustomOauthServer) Shutdown() {
+func (c *CustomServer) Shutdown() {
 	c.Logf("[WARN] shutdown go-oauth2/oauth2 server")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -161,29 +201,27 @@ func (c *CustomOauthServer) Shutdown() {
 }
 
 // NewCustHandler creates a handler for go-oauth2/oauth2 server
-func NewCustHandler(p Params) Oauth2Handler {
-	d, err := p.RetrieveDomain()
-	if err != nil {
-		p.Logf("[ERROR] can't retrieve domain from service URL %s", p.URL)
+func NewCustHandler(name string, p Params, copts CustomProviderOpt) Oauth2Handler {
+	if copts.MapUserFn == nil {
+		copts.MapUserFn = defaultMapUserFn
 	}
 
 	return initOauth2Handler(p, Oauth2Handler{
-		name: "custom",
-		endpoint: oauth2.Endpoint{
-			AuthURL:  fmt.Sprintf(d+":%d/authorize", custOAuthPort),
-			TokenURL: fmt.Sprintf(d+":%d/access_token", custOAuthPort),
-		},
-		scopes:  []string{"user:email"},
-		infoURL: fmt.Sprintf(d+":%d/user", custOAuthPort),
-		mapUser: func(data userData, _ []byte) token.User {
-			userInfo := token.User{
-				ID:      data.value("id"),
-				Name:    data.value("name"),
-				Picture: data.value("picture"),
-			}
-			return userInfo
-		},
+		name:     name,
+		endpoint: copts.Endpoint,
+		scopes:   []string{"user:email"},
+		infoURL:  copts.InfoURL,
+		mapUser:  copts.MapUserFn,
 	})
+}
+
+func defaultMapUserFn(data userData, _ []byte) token.User {
+	userInfo := token.User{
+		ID:      data.value("id"),
+		Name:    data.value("name"),
+		Picture: data.value("picture"),
+	}
+	return userInfo
 }
 
 var defaultLoginTmpl = `
