@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,31 +81,4 @@ func TestProviders_NewYandex(t *testing.T) {
 	user = r.mapUser(udata, nil)
 	assert.Equal(t, token.User{Name: "vasya", ID: "yandex_01b307acba4f54f55aafc33bb06bbbf6ca803e9a",
 		Picture: "", IP: ""}, user, "got %+v", user)
-}
-
-func TestRetrieveDomain(t *testing.T) {
-	cases := []struct {
-		name     string
-		in       Params
-		expected string
-		willFail bool
-	}{
-		{"with scheme and port", Params{URL: "https://mydomain.com:8080"}, "https://mydomain.com", false},
-		{"with scheme and w/o port", Params{URL: "https://mysite.com"}, "https://mysite.com", false},
-		{"with scheme w/o port", Params{URL: "http://127.0.0.1"}, "http://127.0.0.1", false},
-		{"with scheme w/o port", Params{URL: "https://mydomain.com:8080:39"}, "https://mydomain.com", true},
-	}
-
-	for i := range cases {
-		c := cases[i]
-		got, err := c.in.RetrieveDomain()
-		if err != nil {
-			if !c.willFail {
-				assert.Fail(t, fmt.Sprintf("case %s failed, not expected error occured. %s", c.name, err))
-			}
-			continue
-		}
-
-		assert.Equal(t, c.expected, got)
-	}
 }
