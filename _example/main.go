@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -22,6 +21,7 @@ import (
 	"gopkg.in/oauth2.v3/manage"
 	"gopkg.in/oauth2.v3/models"
 	"gopkg.in/oauth2.v3/server"
+	goauth2 "gopkg.in/oauth2.v3/server"
 	"gopkg.in/oauth2.v3/store"
 
 	"github.com/go-pkgz/auth"
@@ -57,7 +57,10 @@ func main() {
 				if strings.HasPrefix(claims.User.ID, "github_") { // allow all users with github auth
 					return true
 				}
-				return strings.HasPrefix(claims.User.Name, "dev_") // non-guthub allow only dev_* names
+				if strings.HasPrefix(claims.User.Name, "dev_") { // non-guthub allow only dev_* names
+					return true
+				}
+				return strings.HasPrefix(claims.User.Name, "custom123_")
 			}
 			return false
 		}),
@@ -91,28 +94,23 @@ func main() {
 		devAuthServer.Run(context.Background())
 	}()
 
-	// setup go-oauth2/oauth2 server
-	srv := initCustomProvider()
-	copts := provider.CustomProviderOpt{
-		WithLoginPage: true,
+	// add go-oauth2/oauth2 server
+	srv := initGoauth2Srv()
+	sopts := provider.CustomServerOpts{
+		URL:           "http://127.0.0.1:9096",
 		Cid:           "cid",
-		// handle user-defined template
-		// if not set: default template will be rendered
-		LoginPageHandler: func(w http.ResponseWriter, r *http.Request) {
-			userLoginTmpl, err := template.New("page").Parse(customTemplate)
-			if err != nil {
-				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-			}
-
-			formData := struct{ Query string }{Query: r.URL.RawQuery}
-
-			if err := userLoginTmpl.Execute(w, formData); err != nil {
-				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-			}
-			return
-		},
+		L:             options.Logger,
+		WithLoginPage: true,
 	}
-	service.StartCustomServer(context.Background(), srv, copts)
+	// create custom provider and prepare params for handler
+	prov, copts := provider.NewCustomServer(srv, sopts)
+	copts.Cid = "cid"
+	copts.Csecret = "csecret"
+
+	// Start server
+	go prov.Run(context.Background())
+
+	service.AddCustomProvider("custom123", copts)
 
 	// retrieve auth middleware
 	m := service.Middleware()
@@ -205,7 +203,8 @@ func protectedDataHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, r, res)
 }
 
-func initCustomProvider() *server.Server {
+// initialize go-oauth2/oauth2 server
+func initGoauth2Srv() *goauth2.Server {
 	manager := manage.NewDefaultManager()
 	manager.SetAuthorizeCodeTokenCfg(manage.DefaultAuthorizeCodeTokenCfg)
 
@@ -220,7 +219,7 @@ func initCustomProvider() *server.Server {
 	clientStore.Set("cid", &models.Client{
 		ID:     "cid",
 		Secret: "csecret",
-		Domain: "http://127.0.0.1:8080", // GetDomain() should deliver the same domain as in redir url
+		Domain: "http://127.0.0.1:8080",
 	})
 	manager.MapClientStorage(clientStore)
 
@@ -230,7 +229,7 @@ func initCustomProvider() *server.Server {
 		if r.Form.Get("username") != "admin" || r.Form.Get("password") != "admin" {
 			return "", fmt.Errorf("Wrong creds. Use: admin admin")
 		}
-		return "admin", nil
+		return "custom123_admin", nil
 	})
 
 	srv.SetInternalErrorHandler(func(err error) (re *errors.Response) {
