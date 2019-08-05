@@ -223,7 +223,7 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 	s.authMiddleware.Providers = s.providers
 }
 
-//AddCustomProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3)
+// AddCustomProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3)
 func (s *Service) AddCustomProvider(name string, copts provider.CustomProviderOpt) {
 
 	p := provider.Params{

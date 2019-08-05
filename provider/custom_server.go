@@ -93,7 +93,7 @@ func (c *CustomServer) Run(ctx context.Context) {
 			case strings.HasSuffix(r.URL.Path, "/authorize"):
 				c.handleAuthorize(w, r)
 			case strings.HasSuffix(r.URL.Path, "/access_token"):
-				if err := c.OauthServer.HandleTokenRequest(w, r); err != nil {
+				if err = c.OauthServer.HandleTokenRequest(w, r); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 				}
 			case strings.HasPrefix(r.URL.Path, "/user"):
