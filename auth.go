@@ -2,7 +2,6 @@
 package auth
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/go-pkgz/rest"
 	"github.com/pkg/errors"
-	"gopkg.in/oauth2.v3/server"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -225,6 +223,23 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 	s.authMiddleware.Providers = s.providers
 }
 
+//AddCustomProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3)
+func (s *Service) AddCustomProvider(name string, copts provider.CustomProviderOpt) {
+
+	p := provider.Params{
+		URL:         s.opts.URL,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+		Cid:         copts.Cid,
+		Csecret:     copts.Csecret,
+		L:           s.logger,
+	}
+
+	s.providers = append(s.providers, provider.NewService(provider.NewCustHandler(name, p, copts)))
+	s.authMiddleware.Providers = s.providers
+}
+
 // AddDirectProvider adds provider with direct check against data store
 // it doesn't do any handshake and uses provided credChecker to verify user and password from the request
 func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecker) {
@@ -289,48 +304,4 @@ func (s *Service) TokenService() *token.Service {
 // AvatarProxy returns stored in service
 func (s *Service) AvatarProxy() *avatar.Proxy {
 	return s.avatarProxy
-}
-
-// StartCustomServer starts custom go-oauth2 server (s. https://github.com/go-oauth2/oauth2)
-func (s *Service) StartCustomServer(ctx context.Context, srv *server.Server, opts provider.CustomProviderOpt) error {
-	client, err := srv.Manager.GetClient(opts.Cid)
-	if err != nil {
-		return fmt.Errorf(`failed to retrieve client from custom ouath server 
-			(see https://github.com/go-oauth2/oauth2/blob/v3.10.1/manage/manager.go#L106", %s`, err)
-	}
-
-	if client.GetDomain() != s.opts.URL {
-		s.logger.Logf("[WARN] client domain=%s is different from service root url=%s", client.GetDomain(), s.opts.URL)
-	}
-
-	p := provider.Params{
-		URL:         s.opts.URL,
-		JwtService:  s.jwtService,
-		Issuer:      s.issuer,
-		AvatarSaver: s.avatarProxy,
-		Cid:         client.GetID(),
-		Csecret:     client.GetSecret(),
-		L:           s.logger,
-	}
-
-	handler := provider.NewCustHandler(p)
-	s.providers = append(s.providers, provider.NewService(handler))
-	s.authMiddleware.Providers = s.providers
-
-	// Start server
-	d, err := p.RetrieveDomain()
-	if err != nil {
-		s.logger.Logf("[ERROR] can't retrieve domain from service URL %s", s.opts.URL)
-	}
-
-	custSrv := &provider.CustomOauthServer{
-		L:                s.logger,
-		Domain:           d,
-		WithLoginPage:    true,
-		OauthServer:      srv,
-		LoginPageHandler: opts.LoginPageHandler,
-	}
-	go custSrv.Run(ctx)
-
-	return nil
 }
