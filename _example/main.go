@@ -20,7 +20,6 @@ import (
 	"gopkg.in/oauth2.v3/generates"
 	"gopkg.in/oauth2.v3/manage"
 	"gopkg.in/oauth2.v3/models"
-	"gopkg.in/oauth2.v3/server"
 	goauth2 "gopkg.in/oauth2.v3/server"
 	"gopkg.in/oauth2.v3/store"
 
@@ -172,7 +171,7 @@ func fileServer(r chi.Router, path string, root http.FileSystem) {
 	fs := http.StripPrefix(path, http.FileServer(root))
 
 	if path != "/" && path[len(path)-1] != '/' {
-		r.Get(path, http.RedirectHandler(path+"/", 301).ServeHTTP)
+		r.Get(path, http.RedirectHandler(path+"/", http.StatusMovedPermanently).ServeHTTP)
 		path += "/"
 	}
 	path += "*"
@@ -216,18 +215,21 @@ func initGoauth2Srv() *goauth2.Server {
 
 	// client memory store
 	clientStore := store.NewClientStore()
-	clientStore.Set("cid", &models.Client{
+	err := clientStore.Set("cid", &models.Client{
 		ID:     "cid",
 		Secret: "csecret",
 		Domain: "http://127.0.0.1:8080",
 	})
+	if err != nil {
+		log.Printf("failed to set up a client store for go-oauth2/oauth2 server, %s", err)
+	}
 	manager.MapClientStorage(clientStore)
 
-	srv := server.NewServer(server.NewConfig(), manager)
+	srv := goauth2.NewServer(goauth2.NewConfig(), manager)
 
 	srv.SetUserAuthorizationHandler(func(w http.ResponseWriter, r *http.Request) (string, error) {
 		if r.Form.Get("username") != "admin" || r.Form.Get("password") != "admin" {
-			return "", fmt.Errorf("Wrong creds. Use: admin admin")
+			return "", fmt.Errorf("wrong creds. Use: admin admin")
 		}
 		return "custom123_admin", nil
 	})
@@ -243,37 +245,3 @@ func initGoauth2Srv() *goauth2.Server {
 
 	return srv
 }
-
-var customTemplate = `
-			<html>
-			<head>
-			<title>Dev OAuth</title>
-			</head>
-			<body>
-			<form action="/login/oauth/authorize?{{.Query}}" method="POST">
-			<label>
-				<span class="username-label">Username</span>
-				<input
-					class="username-input"
-					type="text"
-					name="username"
-					value=""
-					autofocus
-				/>
-			</label>
-			<br>
-			<label>
-			<span class="username-label">Password</span>
-			<input
-				class="username-input"
-				type="password"
-				name="password"
-				value=""
-				autofocus
-			/>
-			</label>
-			<br>
-			<input type="submit" class="form-submit" value="Authorize" />
-			<p class="notice"></p>
-		</form>
-		</body>`

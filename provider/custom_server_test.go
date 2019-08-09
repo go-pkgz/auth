@@ -21,13 +21,12 @@ import (
 	"gopkg.in/oauth2.v3/generates"
 	"gopkg.in/oauth2.v3/manage"
 	"gopkg.in/oauth2.v3/models"
-	"gopkg.in/oauth2.v3/server"
 	goauth2 "gopkg.in/oauth2.v3/server"
 	"gopkg.in/oauth2.v3/store"
 )
 
 func TestCustomProvider(t *testing.T) {
-	srv := initGoauth2Srv()
+	srv := initGoauth2Srv(t)
 
 	params := Params{
 		URL: "http://127.0.0.1:8080",
@@ -66,6 +65,9 @@ func TestCustomProvider(t *testing.T) {
 			form.Add("password", "pwd1234")
 
 			req, err := http.NewRequest("POST", "", strings.NewReader(form.Encode()))
+			if err != nil {
+				assert.Fail(t, "failed to simulate POST request in login page ,%s", err)
+			}
 			req.URL = u
 			req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
@@ -143,7 +145,7 @@ func TestCustomProvider(t *testing.T) {
 }
 
 func TestCustProviderCancel(t *testing.T) {
-	srv := initGoauth2Srv()
+	srv := initGoauth2Srv(t)
 	prov := CustomServer{
 		OauthServer:   srv,
 		URL:           "http://127.0.0.1:9096",
@@ -166,7 +168,7 @@ func TestCustProviderCancel(t *testing.T) {
 	}
 }
 
-func initGoauth2Srv() *goauth2.Server {
+func initGoauth2Srv(t *testing.T) *goauth2.Server {
 	manager := manage.NewDefaultManager()
 	manager.SetAuthorizeCodeTokenCfg(manage.DefaultAuthorizeCodeTokenCfg)
 
@@ -178,14 +180,17 @@ func initGoauth2Srv() *goauth2.Server {
 
 	// client memory store
 	clientStore := store.NewClientStore()
-	clientStore.Set("cid", &models.Client{
+	err := clientStore.Set("cid", &models.Client{
 		ID:     "cid",
 		Secret: "csecret",
 		Domain: "http://127.0.0.1:8080",
 	})
+	if err != nil {
+		assert.Fail(t, "failed to set up a client store for go-oauth2/oauth2 server, %s", err)
+	}
 	manager.MapClientStorage(clientStore)
 
-	srv := server.NewServer(server.NewConfig(), manager)
+	srv := goauth2.NewServer(goauth2.NewConfig(), manager)
 
 	srv.SetUserAuthorizationHandler(func(w http.ResponseWriter, r *http.Request) (string, error) {
 		if r.ParseForm() != nil {
