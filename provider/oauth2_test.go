@@ -192,11 +192,11 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 		},
 		scopes:  []string{"user:email"},
 		infoURL: fmt.Sprintf("http://localhost:%d/user", authPort),
-		mapUser: func(data userData, _ []byte) token.User {
+		mapUser: func(data UserData, _ []byte) token.User {
 			userInfo := token.User{
-				ID:      "mock_" + data.value("id"),
-				Name:    data.value("name"),
-				Picture: data.value("picture"),
+				ID:      "mock_" + data.Value("id"),
+				Name:    data.Value("name"),
+				Picture: data.Value("picture"),
 			}
 			return userInfo
 		},

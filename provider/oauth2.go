@@ -26,7 +26,7 @@ type Oauth2Handler struct {
 	infoURL  string
 	endpoint oauth2.Endpoint
 	scopes   []string
-	mapUser  func(userData, []byte) token.User // map info from InfoURL to User
+	mapUser  func(UserData, []byte) token.User // map info from InfoURL to User
 	conf     oauth2.Config
 }
 
@@ -41,9 +41,11 @@ type Params struct {
 	AvatarSaver AvatarSaver
 }
 
-type userData map[string]interface{}
+// UserData is type for user information returned from oauth2 providers /info API method
+type UserData map[string]interface{}
 
-func (u userData) value(key string) string {
+// Value returns value for key or empty string if not found
+func (u UserData) Value(key string) string {
 	// json.Unmarshal converts json "null" value to go's "nil", in this case return empty string
 	if val, ok := u[key]; ok && val != nil {
 		return fmt.Sprintf("%v", val)
