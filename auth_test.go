@@ -366,7 +366,7 @@ func prepService(t *testing.T) (svc *Service, teardown func()) {
 	svc.AddProvider("github", "cid", "csec") // add github provider
 
 	// add go-oauth2/oauth2 provider
-	svc.AddCustomProvider("custom123", provider.CustomProviderOpt{})
+	svc.AddCustomProvider("custom123", Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
 
 	// add direct provider
 	svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
