@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
+	"golang.org/x/oauth2"
 	"gopkg.in/oauth2.v3/errors"
 	"gopkg.in/oauth2.v3/generates"
 	"gopkg.in/oauth2.v3/manage"
@@ -93,23 +95,42 @@ func main() {
 		devAuthServer.Run(context.Background())
 	}()
 
-	// add go-oauth2/oauth2 server
+	// Example: start custom oauth2 server, add to handlers
 	srv := initGoauth2Srv()
-	sopts := provider.CustomServerOpts{
+	sopts := provider.CustomServerOpt{
 		URL:           "http://127.0.0.1:9096",
-		Cid:           "cid",
 		L:             options.Logger,
 		WithLoginPage: true,
 	}
 	// create custom provider and prepare params for handler
-	prov, copts := provider.NewCustomServer(srv, sopts)
-	copts.Cid = "cid"
-	copts.Csecret = "csecret"
+	prov := provider.NewCustomServer(srv, sopts)
 
 	// Start server
 	go prov.Run(context.Background())
+	service.AddCustomProvider("custom123", auth.Client{Cid: "cid", Csecret: "csecret"}, prov.HandlerOpt)
 
-	service.AddCustomProvider("custom123", copts)
+	// Example: add different oauth2 provider
+	c := auth.Client{
+		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
+		Csecret: os.Getenv("AEXMPL_BITBUCKET_CSEC"),
+	}
+
+	service.AddCustomProvider("bitbucket", c, provider.CustomHandlerOpt{
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "https://bitbucket.org/site/oauth2/authorize",
+			TokenURL: "https://bitbucket.org/site/oauth2/access_token",
+		},
+		InfoURL: "https://api.bitbucket.org/2.0/user/",
+		MapUserFn: func(data provider.UserData, _ []byte) token.User {
+			userInfo := token.User{
+				ID: "bitbucket_" + token.HashID(sha1.New(),
+					data.Value("username")),
+				Name: data.Value("nickname"),
+			}
+			return userInfo
+		},
+		Scopes: []string{"account"},
+	})
 
 	// retrieve auth middleware
 	m := service.Middleware()
