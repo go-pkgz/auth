@@ -42,9 +42,8 @@ func TestCustomProvider(t *testing.T) {
 		L:       logger.Std,
 	}
 
-	sopts := CustomServerOpts{
+	sopts := CustomServerOpt{
 		URL:           "http://127.0.0.1:9096",
-		Cid:           "cid",
 		L:             logger.Std,
 		WithLoginPage: true,
 		LoginPageHandler: func(w http.ResponseWriter, r *http.Request) {
@@ -93,9 +92,9 @@ func TestCustomProvider(t *testing.T) {
 		},
 	}
 
-	prov, copts := NewCustomServer(srv, sopts)
+	prov := NewCustomServer(srv, sopts)
 
-	h := NewCustHandler("myprov", params, copts)
+	h := NewCustom("myprov", params, prov.HandlerOpt)
 	s := Service{Provider: h}
 
 	router := http.NewServeMux()

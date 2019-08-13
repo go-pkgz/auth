@@ -19,36 +19,26 @@ import (
 	goauth2 "gopkg.in/oauth2.v3/server"
 )
 
-// CustomProviderOpt are options to initialize a handler for custom go-oauth2/oauth2 server
-type CustomProviderOpt struct {
-	Cid       string
-	Csecret   string
+// CustomHandlerOpt are options to initialize a handler for oauth2 server
+type CustomHandlerOpt struct {
 	Endpoint  oauth2.Endpoint
 	InfoURL   string
-	MapUserFn func(userData, []byte) token.User
+	MapUserFn func(UserData, []byte) token.User
+	Scopes    []string
 }
 
-// CustomServerOpts are options to initialize a custom go-oauth2/oauth2 server
-type CustomServerOpts struct {
+// CustomServerOpt are options to initialize a custom go-oauth2/oauth2 server
+type CustomServerOpt struct {
 	logger.L
 	URL              string
-	Cid              string
 	WithLoginPage    bool
 	LoginPageHandler func(w http.ResponseWriter, r *http.Request)
 }
 
 // NewCustomServer is helper function to initiate a customer server and prefill
 // options needed for provider registration (see Service.AddCustomProvider)
-func NewCustomServer(srv *goauth2.Server, sopts CustomServerOpts) (*CustomServer, CustomProviderOpt) {
-	p := CustomServer{
-		L:                sopts.L,
-		URL:              sopts.URL,
-		WithLoginPage:    sopts.WithLoginPage,
-		LoginPageHandler: sopts.LoginPageHandler,
-		OauthServer:      srv,
-	}
-
-	copts := CustomProviderOpt{
+func NewCustomServer(srv *goauth2.Server, sopts CustomServerOpt) *CustomServer {
+	copts := CustomHandlerOpt{
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  sopts.URL + "/authorize",
 			TokenURL: sopts.URL + "/access_token",
@@ -56,7 +46,15 @@ func NewCustomServer(srv *goauth2.Server, sopts CustomServerOpts) (*CustomServer
 		InfoURL:   sopts.URL + "/user",
 		MapUserFn: defaultMapUserFn,
 	}
-	return &p, copts
+
+	return &CustomServer{
+		L:                sopts.L,
+		URL:              sopts.URL,
+		WithLoginPage:    sopts.WithLoginPage,
+		LoginPageHandler: sopts.LoginPageHandler,
+		OauthServer:      srv,
+		HandlerOpt:       copts,
+	}
 }
 
 // CustomServer is a wrapper over go-oauth2/oauth2 server running on its own port
@@ -66,9 +64,9 @@ type CustomServer struct {
 	WithLoginPage    bool                                         // redirect to login html page if true
 	LoginPageHandler func(w http.ResponseWriter, r *http.Request) // handler for user-defined login page
 	OauthServer      *goauth2.Server                              // an instance of go-oauth2/oauth2 server
-
-	httpServer *http.Server
-	lock       sync.Mutex
+	HandlerOpt       CustomHandlerOpt
+	httpServer       *http.Server
+	lock             sync.Mutex
 }
 
 // Run starts serving on c.Port
@@ -200,26 +198,22 @@ func (c *CustomServer) Shutdown() {
 	c.lock.Unlock()
 }
 
-// NewCustHandler creates a handler for go-oauth2/oauth2 server
-func NewCustHandler(name string, p Params, copts CustomProviderOpt) Oauth2Handler {
-	if copts.MapUserFn == nil {
-		copts.MapUserFn = defaultMapUserFn
-	}
-
+// NewCustom creates a handler for go-oauth2/oauth2 server
+func NewCustom(name string, p Params, copts CustomHandlerOpt) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
 		name:     name,
 		endpoint: copts.Endpoint,
-		scopes:   []string{"user:email"},
+		scopes:   copts.Scopes,
 		infoURL:  copts.InfoURL,
 		mapUser:  copts.MapUserFn,
 	})
 }
 
-func defaultMapUserFn(data userData, _ []byte) token.User {
+func defaultMapUserFn(data UserData, _ []byte) token.User {
 	userInfo := token.User{
-		ID:      data.value("id"),
-		Name:    data.value("name"),
-		Picture: data.value("picture"),
+		ID:      data.Value("id"),
+		Name:    data.Value("name"),
+		Picture: data.Value("picture"),
 	}
 	return userInfo
 }
