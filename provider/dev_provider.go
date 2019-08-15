@@ -158,11 +158,11 @@ func NewDev(p Params) Oauth2Handler {
 		},
 		scopes:  []string{"user:email"},
 		infoURL: fmt.Sprintf("http://127.0.0.1:%d/user", devAuthPort),
-		mapUser: func(data userData, _ []byte) token.User {
+		mapUser: func(data UserData, _ []byte) token.User {
 			userInfo := token.User{
-				ID:      data.value("id"),
-				Name:    data.value("name"),
-				Picture: data.value("picture"),
+				ID:      data.Value("id"),
+				Name:    data.Value("name"),
+				Picture: data.Value("picture"),
 			}
 			return userInfo
 		},

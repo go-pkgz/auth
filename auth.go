@@ -17,6 +17,12 @@ import (
 	"github.com/go-pkgz/auth/token"
 )
 
+// Client is a type of auth client
+type Client struct {
+	Cid     string
+	Csecret string
+}
+
 // Service provides higher level wrapper allowing to construct everything and get back token middleware
 type Service struct {
 	logger         logger.L
@@ -220,6 +226,22 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 		return
 	}
 
+	s.authMiddleware.Providers = s.providers
+}
+
+// AddCustomProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3)
+func (s *Service) AddCustomProvider(name string, client Client, copts provider.CustomHandlerOpt) {
+	p := provider.Params{
+		URL:         s.opts.URL,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+		Cid:         client.Cid,
+		Csecret:     client.Csecret,
+		L:           s.logger,
+	}
+
+	s.providers = append(s.providers, provider.NewService(provider.NewCustom(name, p, copts)))
 	s.authMiddleware.Providers = s.providers
 }
 

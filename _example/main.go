@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,11 +11,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/go-chi/chi"
 	"github.com/go-pkgz/auth/provider"
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
+	"golang.org/x/oauth2"
+	"gopkg.in/oauth2.v3/errors"
+	"gopkg.in/oauth2.v3/generates"
+	"gopkg.in/oauth2.v3/manage"
+	"gopkg.in/oauth2.v3/models"
+	goauth2 "gopkg.in/oauth2.v3/server"
+	"gopkg.in/oauth2.v3/store"
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/auth/avatar"
@@ -30,9 +39,9 @@ func main() {
 		SecretReader: token.SecretFunc(func() (string, error) { // secret key for JWT
 			return "secret", nil
 		}),
-		TokenDuration:  time.Minute,    // short token, refreshed automatically
-		CookieDuration: time.Hour * 24, // cookie fine to keep for long time
-		// DisableXSRF:       true,                                     // don't disable XSRF in real-life applications!
+		TokenDuration:     time.Minute,                                 // short token, refreshed automatically
+		CookieDuration:    time.Hour * 24,                              // cookie fine to keep for long time
+		DisableXSRF:       true,                                        // don't disable XSRF in real-life applications!
 		Issuer:            "my-demo-service",                           // part of token, just informational
 		URL:               "http://127.0.0.1:8080",                     // base url of the protected service
 		AvatarStore:       avatar.NewLocalFS("/tmp/demo-auth-service"), // stores avatars locally
@@ -49,7 +58,10 @@ func main() {
 				if strings.HasPrefix(claims.User.ID, "github_") { // allow all users with github auth
 					return true
 				}
-				return strings.HasPrefix(claims.User.Name, "dev_") // non-guthub allow only dev_* names
+				if strings.HasPrefix(claims.User.Name, "dev_") { // non-guthub allow only dev_* names
+					return true
+				}
+				return strings.HasPrefix(claims.User.Name, "custom123_")
 			}
 			return false
 		}),
@@ -82,6 +94,43 @@ func main() {
 		}
 		devAuthServer.Run(context.Background())
 	}()
+
+	// Example: start custom oauth2 server, add to handlers
+	srv := initGoauth2Srv()
+	sopts := provider.CustomServerOpt{
+		URL:           "http://127.0.0.1:9096",
+		L:             options.Logger,
+		WithLoginPage: true,
+	}
+	// create custom provider and prepare params for handler
+	prov := provider.NewCustomServer(srv, sopts)
+
+	// Start server
+	go prov.Run(context.Background())
+	service.AddCustomProvider("custom123", auth.Client{Cid: "cid", Csecret: "csecret"}, prov.HandlerOpt)
+
+	// Example: add different oauth2 provider
+	c := auth.Client{
+		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
+		Csecret: os.Getenv("AEXMPL_BITBUCKET_CSEC"),
+	}
+
+	service.AddCustomProvider("bitbucket", c, provider.CustomHandlerOpt{
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "https://bitbucket.org/site/oauth2/authorize",
+			TokenURL: "https://bitbucket.org/site/oauth2/access_token",
+		},
+		InfoURL: "https://api.bitbucket.org/2.0/user/",
+		MapUserFn: func(data provider.UserData, _ []byte) token.User {
+			userInfo := token.User{
+				ID: "bitbucket_" + token.HashID(sha1.New(),
+					data.Value("username")),
+				Name: data.Value("nickname"),
+			}
+			return userInfo
+		},
+		Scopes: []string{"account"},
+	})
 
 	// retrieve auth middleware
 	m := service.Middleware()
@@ -143,7 +192,7 @@ func fileServer(r chi.Router, path string, root http.FileSystem) {
 	fs := http.StripPrefix(path, http.FileServer(root))
 
 	if path != "/" && path[len(path)-1] != '/' {
-		r.Get(path, http.RedirectHandler(path+"/", 301).ServeHTTP)
+		r.Get(path, http.RedirectHandler(path+"/", http.StatusMovedPermanently).ServeHTTP)
 		path += "/"
 	}
 	path += "*"
@@ -172,4 +221,48 @@ func protectedDataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rest.RenderJSON(w, r, res)
+}
+
+// initialize go-oauth2/oauth2 server
+func initGoauth2Srv() *goauth2.Server {
+	manager := manage.NewDefaultManager()
+	manager.SetAuthorizeCodeTokenCfg(manage.DefaultAuthorizeCodeTokenCfg)
+
+	// token store
+	manager.MustTokenStorage(store.NewMemoryTokenStore())
+
+	// generate jwt access token
+	manager.MapAccessGenerate(generates.NewJWTAccessGenerate([]byte("00000000"), jwt.SigningMethodHS512))
+
+	// client memory store
+	clientStore := store.NewClientStore()
+	err := clientStore.Set("cid", &models.Client{
+		ID:     "cid",
+		Secret: "csecret",
+		Domain: "http://127.0.0.1:8080",
+	})
+	if err != nil {
+		log.Printf("failed to set up a client store for go-oauth2/oauth2 server, %s", err)
+	}
+	manager.MapClientStorage(clientStore)
+
+	srv := goauth2.NewServer(goauth2.NewConfig(), manager)
+
+	srv.SetUserAuthorizationHandler(func(w http.ResponseWriter, r *http.Request) (string, error) {
+		if r.Form.Get("username") != "admin" || r.Form.Get("password") != "admin" {
+			return "", fmt.Errorf("wrong creds. Use: admin admin")
+		}
+		return "custom123_admin", nil
+	})
+
+	srv.SetInternalErrorHandler(func(err error) (re *errors.Response) {
+		log.Printf("Internal Error: %s", err.Error())
+		return
+	})
+
+	srv.SetResponseErrorHandler(func(re *errors.Response) {
+		log.Printf("Response Error: %s", re.Error.Error())
+	})
+
+	return srv
 }

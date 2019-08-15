@@ -170,7 +170,7 @@ func TestIntegrationList(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, `["dev","github","direct","email"]`+"\n", string(b))
+	assert.Equal(t, `["dev","github","custom123","direct","email"]`+"\n", string(b))
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
@@ -364,6 +364,9 @@ func prepService(t *testing.T) (svc *Service, teardown func()) {
 	svc = NewService(options)
 	svc.AddProvider("dev", "", "")           // add dev provider
 	svc.AddProvider("github", "cid", "csec") // add github provider
+
+	// add go-oauth2/oauth2 provider
+	svc.AddCustomProvider("custom123", Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
 
 	// add direct provider
 	svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
