@@ -10,6 +10,7 @@ This library provides "social login" with Github, Google, Facebook and Yandex as
 - Minimal scopes with user name, id and picture (avatar) only
 - Direct authentication with user's provided credential checker
 - Verified authentication with user's provided sender (email, im, etc)
+- Custom oauth2 server and ability to use any third party provider
 - Integrated avatar proxy with FS, boltdb and gridfs storage
 - Support of user-defined storage for avatars
 - Identicon for default avatars  
@@ -183,6 +184,13 @@ The API for this provider:
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
   
+### Custom oauth2
+
+This provider brings two extra functions:
+
+- Adds ability to use any third-party oauth2 providers in addition to the list of directly supported. Included [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L113) demonstrates how to do it for bitbucket.
+- Adds local oauth2 server user can fully customize. It uses [`gopkg.in/oauth2.v3`](https://github.com/go-oauth2/oauth2) library and example shows how [to initialize](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L227) the server and [setup a provider](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L100).
+
 ### Customization
 
 There are several ways to adjust functionality of the library:
