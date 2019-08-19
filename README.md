@@ -196,7 +196,7 @@ In order to add a new oauth2 provider following input are required:
 	* `InfoURL` - oauth2 provider API method to read information of logged in user. This method could be found in documentation of oauth2 provider (e.g. for bitbucket https://developer.atlassian.com/bitbucket/api/2/reference/resource/user)
 	* `MapUserFn` - function to convert the responce from `InfoURL` to `token.User` (s. example below)
 	* `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
-```go
+	```go
 	c := auth.Client{
 		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
 		Csecret: os.Getenv("AEXMPL_BITBUCKET_CSEC"),
@@ -218,7 +218,7 @@ In order to add a new oauth2 provider following input are required:
 		},
 		Scopes: []string{"account"},
 	})
-```
+	```
 2.  Adds local oauth2 server user can fully customize. It uses [`gopkg.in/oauth2.v3`](https://github.com/go-oauth2/oauth2) library and example shows how [to initialize](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L227) the server and [setup a provider](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L100).
 	*  to start local oauth2 server following options are requiered: 
 		* `URL` - url of oauth2 server with port
