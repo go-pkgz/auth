@@ -69,7 +69,7 @@ type CustomServer struct {
 	lock             sync.Mutex
 }
 
-// Run starts serving on c.Port
+// Run starts serving on port from c.URL
 func (c *CustomServer) Run(ctx context.Context) {
 	c.Logf("[INFO] run local go-oauth2/oauth2 server on %s", c.URL)
 	c.lock.Lock()
