@@ -188,23 +188,20 @@ The provider acts like any other, i.e. will be registered as `/auth/email/login`
 
 This provider brings two extra functions:
 
-- Adds ability to use any third-party oauth2 providers in addition to the list of directly supported. Included [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L113) demonstrates how to do it for bitbucket.
+1. Adds ability to use any third-party oauth2 providers in addition to the list of directly supported. Included [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L113) demonstrates how to do it for bitbucket.
 In order to add a new oauth2 provider following input are required:
-1) `Name` - any name is allowed except the names from list of supported providers. It is possible to register more than one client for one given oauth2 provider (for example using diffrent names `bitbucket_dev` and `bitbucket_prod`)
-2) `Client` - ID and secret of client
-3) `Endpoint` - auth URL and token URL. This information could be obtained from auth2 provider page
-4) `InfoURL` - oauth2 provider API method to read information of logged in user. This method could be found in documentation of oauth2 provider (e.g. for bitbucket https://developer.atlassian.com/bitbucket/api/2/reference/resource/user)
-5) `MapUserFn` - function to convert the responce from `InfoURL` to `token.User` (s. example below)
-6) `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
+	* `Name` - any name is allowed except the names from list of supported providers. It is possible to register more than one client for one given oauth2 provider (for example using diffrent names `bitbucket_dev` and `bitbucket_prod`)
+	* `Client` - ID and secret of client
+	* `Endpoint` - auth URL and token URL. This information could be obtained from auth2 provider page
+	* `InfoURL` - oauth2 provider API method to read information of logged in user. This method could be found in documentation of oauth2 provider (e.g. for bitbucket https://developer.atlassian.com/bitbucket/api/2/reference/resource/user)
+	* `MapUserFn` - function to convert the responce from `InfoURL` to `token.User` (s. example below)
+	* `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
 ```go
-	// client ID and secret
 	c := auth.Client{
 		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
 		Csecret: os.Getenv("AEXMPL_BITBUCKET_CSEC"),
 	}
 
-	// Input:
-	// 1) name of oauth2 provider (e.g.)
 	service.AddCustomProvider("bitbucket", c, provider.CustomHandlerOpt{
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  "https://bitbucket.org/site/oauth2/authorize",
@@ -222,7 +219,29 @@ In order to add a new oauth2 provider following input are required:
 		Scopes: []string{"account"},
 	})
 ```
-- Adds local oauth2 server user can fully customize. It uses [`gopkg.in/oauth2.v3`](https://github.com/go-oauth2/oauth2) library and example shows how [to initialize](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L227) the server and [setup a provider](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L100).
+2.  Adds local oauth2 server user can fully customize. It uses [`gopkg.in/oauth2.v3`](https://github.com/go-oauth2/oauth2) library and example shows how [to initialize](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L227) the server and [setup a provider](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L100).
+	*  to start local oauth2 server following options are requiered: 
+		* `URL` - url of oauth2 server with port
+		* `WithLoginPage` - flag to define whether login page should be shown
+		* `LoginPageHandler` - function to handle login request. If not specified default login page will be shown
+		```go
+		sopts := provider.CustomServerOpt{
+			URL:           "http://127.0.0.1:9096",
+			L:             options.Logger,
+			WithLoginPage: true,
+		}
+		prov := provider.NewCustomServer(srv, sopts)
+		
+		// Start server
+		go prov.Run(context.Background())
+		```
+	* to register handler for local oauth2 following option are required:
+		* `Name` - any name except the names from list of supported providers
+		* `Client` - ID and secret of client
+		* `HandlerOpt` - handler options of custom oauth provider
+		```go
+		service.AddCustomProvider("custom123", auth.Client{Cid: "cid", Csecret: "csecret"}, prov.HandlerOpt)
+		```
 
 ### Customization
 
