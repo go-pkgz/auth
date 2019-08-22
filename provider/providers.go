@@ -10,6 +10,8 @@ import (
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/yandex"
 
+	"github.com/dghubble/oauth1"
+	"github.com/dghubble/oauth1/twitter"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -116,6 +118,28 @@ func NewYandex(p Params) Oauth2Handler {
 
 			if data.Value("default_avatar_id") != "" {
 				userInfo.Picture = fmt.Sprintf("https://avatars.yandex.net/get-yapic/%s/islands-200", data.Value("default_avatar_id"))
+			}
+			return userInfo
+		},
+	})
+}
+
+// NewTwitter makes twitter oauth2 provider
+func NewTwitter(p Params) Oauth1Handler {
+	return initOauth1Handler(p, Oauth1Handler{
+		name: "twitter",
+		conf: oauth1.Config{
+			Endpoint: twitter.AuthorizeEndpoint,
+		},
+		infoURL: "https://api.twitter.com/1.1/account/verify_credentials.json",
+		mapUser: func(data UserData, _ []byte) token.User {
+			userInfo := token.User{
+				ID:      "twitter_" + token.HashID(sha1.New(), data.Value("id_str")),
+				Name:    data.Value("screen_name"),
+				Picture: data.Value("profile_image_url_https"),
+			}
+			if userInfo.Name == "" {
+				userInfo.Name = data.Value("name")
 			}
 			return userInfo
 		},

@@ -82,3 +82,37 @@ func TestProviders_NewYandex(t *testing.T) {
 	assert.Equal(t, token.User{Name: "vasya", ID: "yandex_01b307acba4f54f55aafc33bb06bbbf6ca803e9a",
 		Picture: "", IP: ""}, user, "got %+v", user)
 }
+
+func TestProviders_NewTwitter(t *testing.T) {
+	r := NewTwitter(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+	assert.Equal(t, "twitter", r.Name())
+
+	cases := []struct {
+		udata    UserData
+		uopts    []byte
+		expected token.User
+	}{
+		{udata: UserData{"id_str": "myid", "name": "test user", "profile_image_url_https": "https://demo.remark42.com/blah.png"},
+			uopts: []byte(``),
+			expected: token.User{Name: "test user", ID: "twitter_6e34471f84557e1713012d64a7477c71bfdac631",
+				Picture: "https://demo.remark42.com/blah.png", IP: ""},
+		},
+		{udata: UserData{"id_str": "124381237", "screen_name": "Bob", "name": "Robert Downey Jr.", "profile_image_url_https": ""},
+			uopts: []byte(``),
+			expected: token.User{Name: "Bob", ID: "twitter_63a6b20b6e17fb5e17f6c58b6223e3b760ad510e",
+				Picture: "", IP: ""},
+		},
+		{udata: UserData{"id_str": "124381237", "name": "Robert Downey Jr.", "profile_image_url_https": "https://demo.remark42.com/blah.png"},
+			uopts: []byte(``),
+			expected: token.User{Name: "Robert Downey Jr.", ID: "twitter_63a6b20b6e17fb5e17f6c58b6223e3b760ad510e",
+				Picture: "https://demo.remark42.com/blah.png", IP: ""},
+		},
+	}
+
+	for i := range cases {
+		c := cases[i]
+		got := r.mapUser(c.udata, c.uopts)
+		assert.Equal(t, c.expected, got, "got %+v", got)
+	}
+
+}

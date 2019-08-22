@@ -220,6 +220,8 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 		s.providers = append(s.providers, provider.NewService(provider.NewFacebook(p)))
 	case "yandex":
 		s.providers = append(s.providers, provider.NewService(provider.NewYandex(p)))
+	case "twitter":
+		s.providers = append(s.providers, provider.NewService(provider.NewTwitter(p)))
 	case "dev":
 		s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
 	default:
