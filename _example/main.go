@@ -73,6 +73,7 @@ func main() {
 	service := auth.NewService(options)
 	service.AddProvider("dev", "", "")                                                             // add dev provider
 	service.AddProvider("github", os.Getenv("AEXMPL_GITHUB_CID"), os.Getenv("AEXMPL_GITHUB_CSEC")) // add github provider
+	service.AddProvider("twitter", os.Getenv("AEXMPL_TWITTER_APIKEY"), os.Getenv("AEXMPL_TWITTER_APISEC"))
 
 	// allow anonymous user via custom (direct) provider
 	service.AddDirectProvider("anonymous", anonymousAuthProvider())
