@@ -113,7 +113,7 @@ func TestOauth1LoginSessionOnly(t *testing.T) {
 
 func TestOauth1Logout(t *testing.T) {
 
-	teardown := prepOauth2Test(t, loginPort, authPort)
+	teardown := prepOauth1Test(t, loginPort, authPort)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
