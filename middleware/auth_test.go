@@ -34,7 +34,9 @@ func TestAuthJWTCookie(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		u, err := token.GetUserInfo(r)
 		assert.NoError(t, err)
-		assert.Equal(t, token.User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1", Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, u)
+		assert.Equal(t, token.User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png",
+			IP: "127.0.0.1", Email: "me@example.com", Audience: "test_sys",
+			Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, u)
 		w.WriteHeader(201)
 	}
 	mux.Handle("/auth", a.Auth(http.HandlerFunc(handler)))

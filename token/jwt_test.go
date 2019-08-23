@@ -264,7 +264,8 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	assert.Equal(t, testJwtValid, token)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
-		Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
+		Email: "me@example.com", Audience: "test_sys",
+		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
 	assert.Equal(t, "remark42", claims.Issuer)
 
 	req = httptest.NewRequest("GET", "/", nil)
@@ -295,7 +296,8 @@ func TestJWT_GetFromQuery(t *testing.T) {
 	assert.Equal(t, testJwtValid, token)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
-		Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
+		Email: "me@example.com", Audience: "test_sys",
+		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
 	assert.Equal(t, "remark42", claims.Issuer)
 
 	req = httptest.NewRequest("GET", "/blah?token="+testJwtExpired, nil)
@@ -349,7 +351,8 @@ func TestJWT_SetAndGetWithCookies(t *testing.T) {
 	r, _, err := j.Get(req)
 	assert.Nil(t, err)
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
-		Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, r.User)
+		Email: "me@example.com", Audience: "test_sys",
+		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, r.User)
 	assert.Equal(t, "remark42", claims.Issuer)
 	assert.Equal(t, true, claims.SessionOnly)
 	t.Log(resp.Cookies())
