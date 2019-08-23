@@ -3,7 +3,7 @@
 
 
 
-This library provides "social login" with Github, Google, Facebook and Yandex as well as custom auth providers and email verification.  
+This library provides "social login" with Github, Google, Facebook, Twitter and Yandex as well as custom auth providers and email verification.  
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
