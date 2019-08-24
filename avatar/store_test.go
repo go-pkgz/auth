@@ -64,9 +64,8 @@ func TestStore_NewStore(t *testing.T) {
 		{"/tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
 		{"file:///tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
 		{"bolt:///tmp/ava_tmp", "boltdb, path=/tmp/ava_tmp", nil},
-		{"mongodb://mongo:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), conn=mongo:[mongo:27017]test, db:db1, collection:coll1", nil},
-		{"mongodb://127.0.0.2:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), conn=mongo:[mongo:27017]test, db:db1, " +
-			"collection:coll1", errors.New("failed to make mongo server: can't connect to mongo, no reachable servers")},
+		{"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), conn=mongo:[127.0.0.1:27017]test, db:db1, collection:coll1", nil},
+		{"mongodb://127.0.0.2:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), conn=mongo:[127.0.0.1:27017]test, db:db1,collection:coll1", errors.New("failed to make mongo server: can't connect to mongo, no reachable servers")},
 		{"blah:///tmp/ava_tmp", "", errors.New("can't parse store url blah:///tmp/ava_tmp")},
 	}
 
