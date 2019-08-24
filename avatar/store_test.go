@@ -1,9 +1,11 @@
 package avatar
 
 import (
+	"errors"
 	"io/ioutil"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -51,4 +53,62 @@ func TestAvatarStore_Migrate(t *testing.T) {
 	data, err := ioutil.ReadAll(r)
 	assert.Nil(t, err)
 	assert.Equal(t, "some picture bin data 3", string(data))
+}
+
+func TestStore_NewStore(t *testing.T) {
+	tbl := []struct {
+		uri string
+		res string
+		err error
+	}{
+		{"/tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
+		{"file:///tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
+		{"bolt:///tmp/ava_tmp", "boltdb, path=/tmp/ava_tmp", nil},
+		{"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), conn=mongo:[127.0.0.1:27017]test, db:db1, collection:coll1", nil},
+		{"mongodb://127.0.0.2:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), conn=mongo:[127.0.0.1:27017]test, db:db1,collection:coll1", errors.New("failed to make mongo server: can't connect to mongo, no reachable servers")},
+		{"blah:///tmp/ava_tmp", "", errors.New("can't parse store url blah:///tmp/ava_tmp")},
+	}
+
+	for i, tt := range tbl {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			res, err := NewStore(tt.uri)
+			if tt.err != nil {
+				assert.EqualError(t, err, tt.err.Error())
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.res, res.String())
+		})
+	}
+}
+
+func TestStore_parseExtMongoURI(t *testing.T) {
+	tbl := []struct {
+		name        string
+		inp         string
+		db, coll, u string
+		err         error
+	}{
+		{"simple", "blah", "test", "avatars_fs", "blah", nil},
+		{"both", "mongodb://user:password@127.0.0.1:27017/test?ssl=true&ava_db=db1&ava_coll=coll1", "db1", "coll1",
+			"mongodb://user:password@127.0.0.1:27017/test?ssl=true", nil},
+		{"default_both", "mongodb://user:password@127.0.0.1:27017/test?ssl=true&xyz=123", "test", "avatars_fs",
+			"mongodb://user:password@127.0.0.1:27017/test?ssl=true&xyz=123", nil},
+		{"default_db", "mongodb://user:password@127.0.0.1:27017/test?ssl=true&xyz=123&ava_coll=coll1", "test", "coll1",
+			"mongodb://user:password@127.0.0.1:27017/test?ssl=true&xyz=123", nil},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			db, coll, u, err := parseExtMongoURI(tt.inp)
+			if tt.err != nil {
+				assert.EqualError(t, err, tt.err.Error())
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.db, db)
+			assert.Equal(t, tt.coll, coll)
+			assert.Equal(t, tt.u, u)
+		})
+	}
 }
