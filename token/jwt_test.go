@@ -398,7 +398,8 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
 	c, _, err := j.Get(req)
-	require.Nil(t, err, "xsrf mismatch, but ignored")
+	require.NoError(t, err, "xsrf mismatch, but ignored")
+	claims.User.Audience = c.Audience // set aud to user because we don't do the normal Get call
 	assert.Equal(t, claims, c)
 }
 

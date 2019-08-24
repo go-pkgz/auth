@@ -205,7 +205,7 @@ func TestIntegrationUserInfo(t *testing.T) {
 	err = json.NewDecoder(resp.Body).Decode(&u)
 	require.NoError(t, err)
 
-	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user",
+	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user", Audience: "my-test-site",
 		Picture: "http://127.0.0.1:8080/api/v1/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image"}, u)
 }
 
