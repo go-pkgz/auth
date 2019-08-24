@@ -34,7 +34,7 @@ Example with chi router:
 ```go
 
 func main() {
-	/// define options
+	// define options
 	options := auth.Opts{
 		SecretReader: token.SecretFunc(func(id string) (string, error) { // secret key for JWT
 			return "secret", nil
