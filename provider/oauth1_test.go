@@ -57,7 +57,7 @@ func TestOauth1Login(t *testing.T) {
 	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31})
 
-	claims, err := jwtSvc.Parse(tk)
+	claims, err := jwtSvc.Parse(tk, "")
 	require.NoError(t, err)
 	t.Log(claims)
 	assert.Equal(t, "remark42", claims.Issuer)

@@ -88,11 +88,15 @@ func TestJWT_Token(t *testing.T) {
 	assert.EqualError(t, err, "can't get secret: err blah")
 
 	j.SecretReader = SecretFunc(mockKeyStore)
-	j.AudienceReader = AudienceFunc(func() ([]string, error) { return []string{"a1", "aa2"}, nil })
+	j.AudienceReader = AudienceFunc(func() (map[string]string, error) {
+		return map[string]string{"a1": "secret-to-a1", "aa2": "secret-to-aa2"}, nil
+	})
 	_, err = j.Token(claims)
 	assert.EqualError(t, err, `aud rejected: aud "test_sys" not allowed`)
 
-	j.AudienceReader = AudienceFunc(func() ([]string, error) { return []string{"a1", "test_sys", "aa2"}, nil })
+	j.AudienceReader = AudienceFunc(func() (map[string]string, error) {
+		return map[string]string{"a1": "secret-to-a1", "test_sys": "", "aa2": "secret-to-aa2"}, nil
+	})
 	_, err = j.Token(claims)
 	assert.NoError(t, err, "aud test_sys allowed")
 
@@ -100,38 +104,38 @@ func TestJWT_Token(t *testing.T) {
 
 func TestJWT_Parse(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore)})
-	claims, err := j.Parse(testJwtValid)
+	claims, err := j.Parse(testJwtValid, "")
 	assert.NoError(t, err)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
 		Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
 
-	claims, err = j.Parse(testJwtExpired)
+	claims, err = j.Parse(testJwtExpired, "")
 	assert.NoError(t, err)
 	assert.True(t, j.IsExpired(claims))
 
-	_, err = j.Parse(testJwtNbf)
+	_, err = j.Parse(testJwtNbf, "")
 	assert.EqualError(t, err, "token is not valid yet")
 
-	_, err = j.Parse("bad")
+	_, err = j.Parse("bad", "")
 	assert.NotNil(t, err, "bad token")
 
-	_, err = j.Parse(testJwtBadSign)
+	_, err = j.Parse(testJwtBadSign, "")
 	assert.EqualError(t, err, "can't parse token: signature is invalid")
 
-	_, err = j.Parse(testJwtNoneAlg)
+	_, err = j.Parse(testJwtNoneAlg, "")
 	assert.EqualError(t, err, "can't parse token: unexpected signing method: none")
 
 	j = NewService(Opts{
 		SecretReader: SecretFunc(func() (string, error) { return "bad 12345", nil }),
 	})
-	_, err = j.Parse(testJwtValid)
+	_, err = j.Parse(testJwtValid, "")
 	assert.NotNil(t, err, "bad token", "valid token parsed with wrong secret")
 
 	j = NewService(Opts{
 		SecretReader: SecretFunc(func() (string, error) { return "", errors.New("err blah") }),
 	})
-	_, err = j.Parse(testJwtValid)
+	_, err = j.Parse(testJwtValid, "")
 	assert.EqualError(t, err, "can't get secret: err blah")
 
 }
@@ -212,7 +216,7 @@ func TestJWT_SetProlonged(t *testing.T) {
 	t.Log(cookies)
 	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 
-	cc, err := j.Parse(cookies[0].Value)
+	cc, err := j.Parse(cookies[0].Value, "")
 	assert.NoError(t, err)
 	assert.True(t, cc.ExpiresAt > time.Now().Unix())
 }
@@ -240,7 +244,7 @@ func TestJWT_NoIssuer(t *testing.T) {
 	t.Log(cookies)
 	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 
-	cc, err := j.Parse(cookies[0].Value)
+	cc, err := j.Parse(cookies[0].Value, "")
 	assert.NoError(t, err)
 	assert.Equal(t, "xyz", cc.Issuer)
 }
@@ -499,10 +503,14 @@ func TestAudience(t *testing.T) {
 
 	assert.NoError(t, j.checkAuds(&c, nil), "any aud allowed")
 
-	err := j.checkAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy"}, nil }))
+	err := j.checkAuds(&c, AudienceFunc(func() (map[string]string, error) {
+		return map[string]string{"xxx": "", "yyy": ""}, nil
+	}))
 	assert.EqualError(t, err, `aud "au1" not allowed`)
 
-	err = j.checkAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy", "au1"}, nil }))
+	err = j.checkAuds(&c, AudienceFunc(func() (map[string]string, error) {
+		return map[string]string{"xxx": "psw1", "yyy": "psw2", "au1": "psw3"}, nil
+	}))
 	assert.Nil(t, err, `au1 allowed`)
 }
 

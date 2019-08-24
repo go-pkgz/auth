@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -34,6 +33,7 @@ type Handshake struct {
 
 const (
 	// default names for cookies and headers
+	defaultAudCookieName  = "AUD-TOKEN"
 	defaultJWTCookieName  = "JWT"
 	defaultJWTHeaderKey   = "X-JWT"
 	defaultXSRFCookieName = "XSRF-TOKEN"
@@ -49,14 +49,16 @@ const (
 
 // Opts holds constructor params
 type Opts struct {
-	SecretReader   Secret
-	ClaimsUpd      ClaimsUpdater
-	SecureCookies  bool
-	TokenDuration  time.Duration
-	CookieDuration time.Duration
-	DisableXSRF    bool
-	DisableIAT     bool // disable IssuedAt claim
+	AudSecretReader Secret
+	SecretReader    Secret
+	ClaimsUpd       ClaimsUpdater
+	SecureCookies   bool
+	TokenDuration   time.Duration
+	CookieDuration  time.Duration
+	DisableXSRF     bool
+	DisableIAT      bool // disable IssuedAt claim
 	// optional (custom) names for cookies and headers
+	AudCookieName  string
 	JWTCookieName  string
 	JWTHeaderKey   string
 	XSRFCookieName string
@@ -76,6 +78,7 @@ func NewService(opts Opts) *Service {
 		}
 	}
 
+	setDefault(&res.AudCookieName, defaultAudCookieName)
 	setDefault(&res.JWTCookieName, defaultJWTCookieName)
 	setDefault(&res.JWTHeaderKey, defaultJWTHeaderKey)
 	setDefault(&res.XSRFCookieName, defaultXSRFCookieName)
@@ -119,6 +122,14 @@ func (j *Service) Token(claims Claims) (string, error) {
 		return "", errors.Wrap(err, "can't get secret")
 	}
 
+	// if audience specified try to use audiens specific secret
+	if claims.Audience != "" {
+		audSecret, cerr := j.AudienceReader.GetAudSecret(claims.Audience)
+		if cerr == nil {
+			secret = audSecret
+		}
+	}
+
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
 		return "", errors.Wrap(err, "can't sign token")
@@ -127,7 +138,7 @@ func (j *Service) Token(claims Claims) (string, error) {
 }
 
 // Parse token string and verify. Not checking for expiration
-func (j *Service) Parse(tokenString string) (Claims, error) {
+func (j *Service) Parse(tokenString, aud string) (Claims, error) {
 	parser := jwt.Parser{SkipClaimsValidation: true} // allow parsing of expired tokens
 
 	if j.SecretReader == nil {
@@ -137,6 +148,13 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 	secret, err := j.SecretReader.Get()
 	if err != nil {
 		return Claims{}, errors.Wrap(err, "can't get secret")
+	}
+
+	if aud != "" {
+		audSecret, cerr := j.AudienceReader.GetAudSecret(aud)
+		if cerr == nil {
+			secret = audSecret
+		}
 	}
 
 	token, err := parser.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
@@ -202,6 +220,15 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 		cookieExpiration = int(j.CookieDuration.Seconds())
 	}
 
+	audToken, err := j.getAudToken(jwt.StandardClaims{Audience: claims.Audience})
+	if err != nil {
+		return Claims{}, errors.Wrap(err, "failed to set Audience token")
+	}
+
+	audCookie := http.Cookie{Name: j.AudCookieName, Value: audToken, HttpOnly: true, Path: "/",
+		MaxAge: cookieExpiration, Secure: j.SecureCookies}
+	http.SetCookie(w, &audCookie)
+
 	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: tokenString, HttpOnly: true, Path: "/",
 		MaxAge: cookieExpiration, Secure: j.SecureCookies}
 	http.SetCookie(w, &jwtCookie)
@@ -240,7 +267,18 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 		tokenString = jc.Value
 	}
 
-	claims, err := j.Parse(tokenString)
+	// Get Audince token
+	ac, err := r.Cookie(j.AudCookieName)
+	if err != nil {
+		return Claims{}, "", errors.Wrap(err, "aud token cookie was not presented")
+	}
+
+	aud, err := j.parseAudToken(ac.Value)
+	if err != nil {
+		return Claims{}, "", errors.Wrap(err, "failed to parse aud token")
+	}
+
+	claims, err := j.Parse(tokenString, aud)
 	if err != nil {
 		return Claims{}, "", errors.Wrap(err, "failed to get token")
 	}
@@ -281,6 +319,51 @@ func (j *Service) Reset(w http.ResponseWriter) {
 	http.SetCookie(w, &xsrfCookie)
 }
 
+func (j *Service) getAudToken(claim jwt.StandardClaims) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claim)
+
+	if j.SecretReader == nil {
+		return "", errors.New("secret reader not defined")
+	}
+
+	secret, err := j.SecretReader.Get() // get secret via consumer defined SecretReader
+	if err != nil {
+		return "", errors.Wrap(err, "can't get secret")
+	}
+
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		return "", errors.Wrap(err, "can't sign token")
+	}
+	return tokenString, nil
+}
+
+func (j *Service) parseAudToken(token string) (string, error) {
+	parser := jwt.Parser{SkipClaimsValidation: true} // allow parsing of expired tokens
+	if j.SecretReader == nil {
+		return "", errors.New("secret reader not defined")
+	}
+
+	secret, err := j.SecretReader.Get()
+	if err != nil {
+		return "", errors.Wrap(err, "can't get secret")
+	}
+
+	audToken, err := parser.ParseWithClaims(token, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(secret), nil
+	})
+
+	claims, ok := audToken.Claims.(*jwt.StandardClaims)
+	if !ok {
+		return "", errors.New("invalid aud token")
+	}
+
+	return claims.Audience, err
+}
+
 // checkAuds verifies if claims.Audience in the list of allowed by audReader
 func (j *Service) checkAuds(claims *Claims, audReader Audience) error {
 	if audReader == nil { // lack of any allowed means any
@@ -290,11 +373,11 @@ func (j *Service) checkAuds(claims *Claims, audReader Audience) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to get auds")
 	}
-	for _, a := range auds {
-		if strings.EqualFold(a, claims.Audience) {
-			return nil
-		}
+
+	if _, ok := auds[claims.Audience]; ok {
+		return nil
 	}
+
 	return errors.Errorf("aud %q not allowed", claims.Audience)
 }
 
@@ -351,13 +434,28 @@ func (f ValidatorFunc) Validate(token string, claims Claims) bool {
 
 // Audience defines interface returning list of allowed audiences
 type Audience interface {
-	Get() ([]string, error)
+	Get() (map[string]string, error)
+	GetAudSecret(string) (string, error)
 }
 
 // AudienceFunc type is an adapter to allow the use of ordinary functions as Audience.
-type AudienceFunc func() ([]string, error)
+type AudienceFunc func() (map[string]string, error)
 
 // Get calls f()
-func (f AudienceFunc) Get() ([]string, error) {
+func (f AudienceFunc) Get() (map[string]string, error) {
 	return f()
+}
+
+// GetAudSecret returns a secret for given audience
+func (f AudienceFunc) GetAudSecret(aud string) (string, error) {
+	auds, err := f()
+	if err != nil {
+		return "", fmt.Errorf("no audience found")
+	}
+
+	secret, ok := auds[aud]
+	if !ok {
+		return "", fmt.Errorf("secret for audience %s not found", aud)
+	}
+	return secret, nil
 }

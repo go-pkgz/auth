@@ -83,7 +83,7 @@ func TestCustomProvider(t *testing.T) {
 			assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 			assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
-			claims, err := params.JwtService.Parse(resp.Cookies()[0].Value)
+			claims, err := params.JwtService.Parse(resp.Cookies()[0].Value, "")
 			assert.Nil(t, err)
 
 			assert.Equal(t, token.User{Name: "admin", ID: "admin",

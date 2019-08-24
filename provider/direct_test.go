@@ -40,7 +40,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 	request := &http.Request{Header: http.Header{"Cookie": rr.Header()["Set-Cookie"]}}
 	c, err := request.Cookie("JWT")
 	require.NoError(t, err)
-	claims, err := d.TokenService.Parse(c.Value)
+	claims, err := d.TokenService.Parse(c.Value, "")
 	require.NoError(t, err)
 	t.Logf("%+v", claims)
 	assert.Equal(t, "xyz123", claims.Audience)

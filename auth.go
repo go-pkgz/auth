@@ -47,6 +47,7 @@ type Opts struct {
 	DisableIAT  bool // disable IssuedAt claim
 
 	// optional (custom) names for cookies and headers
+	AudCookieName  string // default "AUD-TOKEN"
 	JWTCookieName  string // default "JWT"
 	JWTHeaderKey   string // default "X-JWT"
 	XSRFCookieName string // default "XSRF-TOKEN"
@@ -100,6 +101,7 @@ func NewService(opts Opts) (res *Service) {
 		CookieDuration: opts.CookieDuration,
 		DisableXSRF:    opts.DisableXSRF,
 		DisableIAT:     opts.DisableIAT,
+		AudCookieName:  opts.AudCookieName,
 		JWTCookieName:  opts.JWTCookieName,
 		JWTHeaderKey:   opts.JWTHeaderKey,
 		XSRFCookieName: opts.XSRFCookieName,

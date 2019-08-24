@@ -125,7 +125,7 @@ func TestAuthJWTRefresh(t *testing.T) {
 	t.Log(resp.Cookies()[0].Value)
 	assert.True(t, resp.Cookies()[0].Value != testJwtExpired, "jwt token changed")
 
-	claims, err := a.JWTService.Parse(resp.Cookies()[0].Value)
+	claims, err := a.JWTService.Parse(resp.Cookies()[0].Value, "")
 	assert.NoError(t, err)
 	ts := time.Unix(claims.ExpiresAt, 0)
 	assert.True(t, ts.After(time.Now()), "expiration in the future")
@@ -170,7 +170,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&refreshCount), "should make one refresh only")
 
 	// make another expired token
-	c, err := a.JWTService.Parse(testJwtExpired)
+	c, err := a.JWTService.Parse(testJwtExpired, "")
 	require.NoError(t, err)
 	c.User.ID = "other ID"
 	tkSvc := a.JWTService.(*token.Service)

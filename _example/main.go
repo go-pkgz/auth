@@ -67,6 +67,13 @@ func main() {
 		}),
 		Logger:      log.Default(), // optional logger for auth library
 		UseGravatar: true,          // for verified provider use gravatar service
+		AudienceReader: token.AudienceFunc(func() (map[string]string, error) {
+			return map[string]string{
+				"admins":     "admins-secret",
+				"powerusers": "pu-secret",
+				"users":      "users",
+			}, nil
+		}),
 	}
 
 	// create auth service

@@ -32,7 +32,7 @@ type RefreshCache interface {
 
 // TokenService defines interface accessing tokens
 type TokenService interface {
-	Parse(tokenString string) (claims token.Claims, err error)
+	Parse(tokenString, aud string) (claims token.Claims, err error)
 	Set(w http.ResponseWriter, claims token.Claims) (token.Claims, error)
 	Get(r *http.Request) (claims token.Claims, token string, err error)
 	IsExpired(claims token.Claims) bool

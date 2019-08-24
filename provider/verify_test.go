@@ -50,7 +50,7 @@ func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 	assert.Contains(t, emailer.text, "test123 blah@user.com remark42 token:")
 
 	tknStr := strings.Split(emailer.text, " token:")[1]
-	tkn, err := e.TokenService.Parse(tknStr)
+	tkn, err := e.TokenService.Parse(tknStr, "")
 	assert.NoError(t, err)
 	t.Logf("%s %+v", tknStr, tkn)
 	assert.Equal(t, "test123::blah@user.com", tkn.Handshake.ID)
@@ -83,7 +83,7 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	request := &http.Request{Header: http.Header{"Cookie": rr.Header()["Set-Cookie"]}}
 	c, err := request.Cookie("JWT")
 	require.NoError(t, err)
-	claims, err := e.TokenService.Parse(c.Value)
+	claims, err := e.TokenService.Parse(c.Value, "")
 	require.NoError(t, err)
 	t.Logf("%+v", claims)
 	assert.Equal(t, "remark42", claims.Audience)
