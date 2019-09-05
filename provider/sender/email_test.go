@@ -46,7 +46,10 @@ func TestEmail_buildMessage(t *testing.T) {
 	e := Email{L: logger.Std, EmailParams: p}
 
 	msg := e.buildMessage("this is a test\n12345", "to@example.com")
-	assert.Equal(t, "From: from@example.com\nTo: to@example.com\nSubject: subj\n\nthis is a test\n12345", msg)
+	assert.Contains(t, msg, "From: from@example.com\nTo: to@example.com\nSubject: subj\n", msg)
+	assert.Contains(t, msg, "\n\nthis is a test\n12345", msg)
+	assert.Contains(t, msg, "Date: ", msg)
+	assert.Contains(t, msg, "Message-Id: <", msg)
 }
 
 func TestEmail_buildMessageWithMIME(t *testing.T) {
@@ -55,8 +58,10 @@ func TestEmail_buildMessageWithMIME(t *testing.T) {
 	e := Email{L: logger.Std, EmailParams: p}
 
 	msg := e.buildMessage("this is a test\n12345", "to@example.com")
-	assert.Equal(t, "From: from@example.com\nTo: to@example.com\nSubject: subj\nMIME-version: 1."+
-		"0;\nContent-Type: text/html; charset=\"UTF-8\"\n\nthis is a test\n12345", msg)
+	assert.Contains(t, msg, "From: from@example.com\nTo: to@example.com\nSubject: subj\nMIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\"", msg)
+	assert.Contains(t, msg, "\n\nthis is a test\n12345", msg)
+	assert.Contains(t, msg, "Date: ", msg)
+	assert.Contains(t, msg, "Message-Id: <", msg)
 }
 
 func TestEmail_New(t *testing.T) {
@@ -75,8 +80,12 @@ func TestEmail_Send(t *testing.T) {
 
 	assert.Equal(t, "from@example.com", fakeSMTP.mail)
 	assert.Equal(t, "to@example.com", fakeSMTP.rcpt)
-	assert.Equal(t, "From: from@example.com\nTo: to@example.com\nSubject: subj\n"+
-		"MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\"\n\nsome text", fakeSMTP.buff.String())
+	assert.Contains(t, fakeSMTP.buff.String(), "From: from@example.com\nTo: to@example.com\nSubject: subj\n"+
+		"MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\"\n", fakeSMTP.buff.String())
+	assert.Contains(t, fakeSMTP.buff.String(), "\n\nsome text", fakeSMTP.buff.String())
+	assert.Contains(t, fakeSMTP.buff.String(), "Date: ", fakeSMTP.buff.String())
+	assert.Contains(t, fakeSMTP.buff.String(), "Message-Id: <", fakeSMTP.buff.String())
+
 	assert.True(t, fakeSMTP.auth)
 	assert.True(t, fakeSMTP.quit)
 	assert.False(t, fakeSMTP.close)

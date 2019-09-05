@@ -2,11 +2,15 @@ package sender
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/tls"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"net"
 	"net/smtp"
+	"os"
 	"time"
 
 	"github.com/pkg/errors"
@@ -143,9 +147,43 @@ func (em *Email) buildMessage(msg, to string) (message string) {
 	message += fmt.Sprintf("From: %s\n", em.From)
 	message += fmt.Sprintf("To: %s\n", to)
 	message += fmt.Sprintf("Subject: %s\n", em.Subject)
+
 	if em.ContentType != "" {
 		message += fmt.Sprintf("MIME-version: 1.0;\nContent-Type: %s; charset=\"UTF-8\"\n", em.ContentType)
 	}
+	message += fmt.Sprintf("Date: %s\n", time.Now().Format(time.RFC1123Z))
+	if msgID, err := generateMessageID(); err == nil {
+		message += fmt.Sprintf("Message-Id: %s\n", msgID)
+	}
+
 	message += "\n" + msg
 	return message
+}
+
+var maxBigInt = big.NewInt(math.MaxInt64)
+
+// generateMessageID generates and returns a string suitable for an RFC 2822
+// compliant Message-ID, e.g.:
+// <1444789264909237300.3464.1819418242800517193@DESKTOP01>
+//
+// The following parameters are used to generate a Message-ID:
+// - The nanoseconds since Epoch
+// - The calling PID
+// - A cryptographically random int64
+// - The sending hostname
+// source: https://github.com/jordan-wright/email/blob/master/email.go#L623
+func generateMessageID() (string, error) {
+	t := time.Now().UnixNano()
+	pid := os.Getpid()
+	rint, err := rand.Int(rand.Reader, maxBigInt)
+	if err != nil {
+		return "", err
+	}
+	h, err := os.Hostname()
+	// If we can't get the hostname, we'll use localhost
+	if err != nil {
+		h = "localhost.localdomain"
+	}
+	msgid := fmt.Sprintf("<%d.%d.%d@%s>", t, pid, rint, h)
+	return msgid, nil
 }
