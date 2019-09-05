@@ -50,7 +50,6 @@ func TestEmail_buildMessage(t *testing.T) {
 	assert.Contains(t, msg, "From: from@example.com\nTo: to@example.com\nSubject: subj\n", msg)
 	assert.Contains(t, msg, "this is a test\r\n12345", msg)
 	assert.Contains(t, msg, "Date: ", msg)
-	assert.Contains(t, msg, "Message-Id: <", msg)
 	assert.Contains(t, msg, "Content-Transfer-Encoding: quoted-printable", msg)
 }
 
@@ -64,7 +63,6 @@ func TestEmail_buildMessageWithMIME(t *testing.T) {
 	assert.Contains(t, msg, "From: from@example.com\nTo: to@example.com\nSubject: subj\nContent-Transfer-Encoding: quoted-printable\nMIME-version: 1.0\nContent-Type: text/html; charset=\"UTF-8\"", msg)
 	assert.Contains(t, msg, "\n\nthis is a test\r\n12345", msg)
 	assert.Contains(t, msg, "Date: ", msg)
-	assert.Contains(t, msg, "Message-Id: <", msg)
 }
 
 func TestEmail_New(t *testing.T) {
@@ -89,7 +87,6 @@ func TestEmail_Send(t *testing.T) {
 		"0\nContent-Type: text/html; charset=\"UTF-8\"", msg)
 	assert.Contains(t, msg, "\n\nsome text", msg)
 	assert.Contains(t, msg, "Date: ", msg)
-	assert.Contains(t, msg, "Message-Id: <", msg)
 
 	assert.True(t, fakeSMTP.auth)
 	assert.True(t, fakeSMTP.quit)
