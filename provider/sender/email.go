@@ -144,7 +144,7 @@ func (em *Email) buildMessage(msg, to string) (message string) {
 	message += fmt.Sprintf("To: %s\n", to)
 	message += fmt.Sprintf("Subject: %s\n", em.Subject)
 	if em.ContentType != "" {
-		message += fmt.Sprintf("MIME-version: 1.0;\nContent-Type: %s; charset=\"UTF-8\";\n", em.ContentType)
+		message += fmt.Sprintf("MIME-version: 1.0;\nContent-Type: %s; charset=\"UTF-8\"\n", em.ContentType)
 	}
 	message += "\n" + msg
 	return message
