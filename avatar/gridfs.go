@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"time"
 
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
@@ -16,8 +17,8 @@ import (
 )
 
 // NewGridFS makes gridfs (mongo) avatar store
-func NewGridFS(client *mongo.Client, dbName string, bucketName string) *GridFS {
-	return &GridFS{client: client, db: client.Database(dbName), bucketName: bucketName}
+func NewGridFS(client *mongo.Client, dbName, bucketName string, timeout time.Duration) *GridFS {
+	return &GridFS{client: client, db: client.Database(dbName), bucketName: bucketName, timeout: timeout}
 }
 
 // GridFS implements Store for GridFS
@@ -25,6 +26,7 @@ type GridFS struct {
 	client     *mongo.Client
 	db         *mongo.Database
 	bucketName string
+	timeout    time.Duration
 }
 
 // Put avatar to gridfs object, try to resize
@@ -77,7 +79,10 @@ func (gf *GridFS) ID(avatar string) (id string) {
 	if err != nil {
 		return encodeID(avatar)
 	}
-	if found := cursor.Next(context.TODO()); found {
+
+	ctx, cancel := context.WithTimeout(context.Background(), gf.timeout)
+	defer cancel()
+	if found := cursor.Next(ctx); found {
 		if err = cursor.Decode(&finfo); err != nil {
 			return encodeID(avatar)
 		}
@@ -100,8 +105,10 @@ func (gf *GridFS) Remove(avatar string) error {
 	r := struct {
 		ID primitive.ObjectID `bson:"_id"`
 	}{}
-	if found := cursor.Next(context.TODO()); found {
-		if err = cursor.Decode(&r); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), gf.timeout)
+	defer cancel()
+	if found := cursor.Next(ctx); found {
+		if err := cursor.Decode(&r); err != nil {
 			return err
 		}
 		return bucket.Delete(r.ID)
@@ -124,8 +131,10 @@ func (gf *GridFS) List() (ids []string, err error) {
 	if err != nil {
 		return nil, err
 	}
-	for cursor.Next(context.TODO()) {
-		if err = cursor.Decode(&gfsFile); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), gf.timeout)
+	defer cancel()
+	for cursor.Next(ctx) {
+		if err := cursor.Decode(&gfsFile); err != nil {
 			return nil, err
 		}
 		ids = append(ids, gfsFile.Filename)
@@ -135,7 +144,9 @@ func (gf *GridFS) List() (ids []string, err error) {
 
 // Close gridfs does nothing but satisfies interface
 func (gf *GridFS) Close() error {
-	return gf.client.Disconnect(context.TODO())
+	ctx, cancel := context.WithTimeout(context.Background(), gf.timeout)
+	defer cancel()
+	return gf.client.Disconnect(ctx)
 }
 
 func (gf *GridFS) String() string {

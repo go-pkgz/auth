@@ -65,7 +65,7 @@ func NewStore(uri string) (Store, error) {
 		if err = client.Ping(ctx, nil); err != nil {
 			return nil, errors.Wrap(err, "failed to connect to mongo server")
 		}
-		return NewGridFS(client, db, bucketName), nil
+		return NewGridFS(client, db, bucketName, time.Second*5), nil
 	case strings.HasPrefix(uri, "bolt://"):
 		return NewBoltDB(strings.TrimPrefix(uri, "bolt://"), bolt.Options{})
 	}

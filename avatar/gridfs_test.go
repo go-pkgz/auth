@@ -84,5 +84,5 @@ func prepGFStore(t *testing.T) *GridFS {
 	_ = client.Database("test").Collection("ava_fs.chunks").Drop(ctx)
 	_ = client.Database("test").Collection("ava_fs.files").Drop(ctx)
 
-	return NewGridFS(client, "test", "ava_fs")
+	return NewGridFS(client, "test", "ava_fs", time.Second)
 }
