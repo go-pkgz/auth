@@ -21,10 +21,7 @@ func TestAvatarStore_Migrate(t *testing.T) {
 	defer os.RemoveAll("/tmp/avatars.test")
 
 	// prep gridfs
-	pgfs, skip := prepGFStore(t)
-	if skip {
-		return
-	}
+	pgfs := prepGFStore(t)
 
 	// write to localfs
 	_, err = plocal.Put("user1", strings.NewReader("some picture bin data 1"))
@@ -64,8 +61,8 @@ func TestStore_NewStore(t *testing.T) {
 		{"/tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
 		{"file:///tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
 		{"bolt:///tmp/ava_tmp", "boltdb, path=/tmp/ava_tmp", nil},
-		{"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), conn=mongo:[127.0.0.1:27017]test, db:db1, collection:coll1", nil},
-		{"mongodb://127.0.0.2:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), conn=mongo:[127.0.0.1:27017]test, db:db1,collection:coll1", errors.New("failed to make mongo server: can't connect to mongo, no reachable servers")},
+		{"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), db=db1, bucket=coll1", nil},
+		{"mongodb://127.0.0.2:27017/test?ava_db=db1&ava_coll=coll1", "", errors.New("failed to connect to mongo server: context deadline exceeded")},
 		{"blah:///tmp/ava_tmp", "", errors.New("can't parse store url blah:///tmp/ava_tmp")},
 	}
 
@@ -73,7 +70,7 @@ func TestStore_NewStore(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			res, err := NewStore(tt.uri)
 			if tt.err != nil {
-				assert.EqualError(t, err, tt.err.Error())
+				require.EqualError(t, err, tt.err.Error())
 				return
 			}
 			require.NoError(t, err)
