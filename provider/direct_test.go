@@ -31,7 +31,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 
 	handler := http.HandlerFunc(d.LoginHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", nil)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
