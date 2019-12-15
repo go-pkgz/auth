@@ -65,6 +65,7 @@ type Opts struct {
 
 	AdminPasswd    string                  // if presented, allows basic auth with user admin and given password
 	AudienceReader token.Audience          // list of allowed aud values, default (empty) allows any
+	AudSecrets     bool                    // allow multiple secrets (secret per aud)
 	Logger         logger.L                // logger interface, default is no logging at all
 	RefreshCache   middleware.RefreshCache // optional cache to keep refreshed tokens
 }
@@ -107,10 +108,11 @@ func NewService(opts Opts) (res *Service) {
 		JWTQuery:       opts.JWTQuery,
 		Issuer:         res.issuer,
 		AudienceReader: opts.AudienceReader,
+		AudSecrets:     opts.AudSecrets,
 	})
 
 	if opts.SecretReader == nil {
-		jwtService.SecretReader = token.SecretFunc(func() (string, error) {
+		jwtService.SecretReader = token.SecretFunc(func(string) (string, error) {
 			return "", errors.New("secrets reader not available")
 		})
 		res.logger.Logf("[WARN] no secret reader defined")

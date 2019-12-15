@@ -25,7 +25,7 @@ import (
 func TestNewService(t *testing.T) {
 
 	options := Opts{
-		SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 		TokenDuration:  time.Hour,
 		CookieDuration: time.Hour * 24,
 		Issuer:         "my-test-app",
@@ -42,7 +42,7 @@ func TestNewService(t *testing.T) {
 
 func TestProvider(t *testing.T) {
 	options := Opts{
-		SecretReader: token.SecretFunc(func() (string, error) { return "secret", nil }),
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 		URL:          "http://127.0.0.1:8080",
 		Logger:       logger.Std,
 	}
@@ -344,7 +344,7 @@ func TestVerifProvider(t *testing.T) {
 func prepService(t *testing.T) (svc *Service, teardown func()) {
 
 	options := Opts{
-		SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 		TokenDuration:  time.Hour,
 		CookieDuration: time.Hour * 24,
 		Issuer:         "my-test-app",

@@ -379,7 +379,7 @@ func makeTestMux(_ *testing.T, a *Authenticator, required bool) http.Handler {
 
 func makeTestAuth(_ *testing.T) Authenticator {
 	j := token.NewService(token.Opts{
-		SecretReader:   token.SecretFunc(func() (string, error) { return "xyz 12345", nil }),
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
 		SecureCookies:  false,
 		TokenDuration:  time.Second,
 		CookieDuration: time.Hour * 24 * 31,

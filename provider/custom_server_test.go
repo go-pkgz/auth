@@ -31,7 +31,7 @@ func TestCustomProvider(t *testing.T) {
 	params := Params{
 		URL: "http://127.0.0.1:8080",
 		JwtService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 			DisableIAT:     true,
