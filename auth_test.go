@@ -341,7 +341,7 @@ func TestVerifProvider(t *testing.T) {
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 }
 
-func prepService(t *testing.T) (svc *Service, teardown func()) {
+func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unparam
 
 	options := Opts{
 		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),

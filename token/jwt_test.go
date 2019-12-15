@@ -524,10 +524,10 @@ func TestAudReader(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test_sys", a)
 
-	a, err = j.aud(testJwtNoAud)
+	_, err = j.aud(testJwtNoAud)
 	assert.EqualError(t, err, "empty aud")
 
-	a, err = j.aud("blah bad bad")
+	_, err = j.aud("blah bad bad")
 	assert.EqualError(t, err, "can't pre-parse token: token contains an invalid number of segments")
 }
 
