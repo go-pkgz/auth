@@ -29,7 +29,7 @@ const imgSfx = ".image"
 
 var reValidAvatarID = regexp.MustCompile(`^[a-fA-F0-9]{40}\.image$`)
 
-// Store defines interface to store and and load avatars
+// Store defines interface to store and load avatars
 type Store interface {
 	fmt.Stringer
 	Put(userID string, reader io.Reader) (avatarID string, err error) // save avatar data from the reader and return base name
