@@ -171,6 +171,8 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 	return *claims, j.validate(claims)
 }
 
+// aud pre-parse token and extracts aud from the claim
+// important! this step ignores token verification, should not be used for any validations
 func (j *Service) aud(tokenString string) (string, error) {
 	parser := jwt.Parser{}
 	token, _, err := parser.ParseUnverified(tokenString, &Claims{})
@@ -338,7 +340,7 @@ func (c Claims) String() string {
 
 // Secret defines interface returning secret key for given id (aud)
 type Secret interface {
-	Get(aud string) (string, error)
+	Get(aud string) (string, error) // aud matching is optional. Implementation may decide if supported or ignored
 }
 
 // SecretFunc type is an adapter to allow the use of ordinary functions as Secret. If f is a function
