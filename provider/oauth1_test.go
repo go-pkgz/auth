@@ -183,7 +183,7 @@ func TestOauth1MakeRedirURL(t *testing.T) {
 	}
 }
 
-func prepOauth1Test(t *testing.T, loginPort, authPort int) func() {
+func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 
 	provider := Oauth1Handler{
 		name: "mock",
@@ -231,6 +231,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() {
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
 
+	// nolint
 	var (
 		requestToken  = "sdjasd09AfdkzztyRadrdR"
 		requestSecret = "asd34q129sjdklAJJAs"

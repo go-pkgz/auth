@@ -143,6 +143,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	a.RefreshCache = newTestRefreshCache()
 	wg.Add(100)
 	for i := 0; i < 100; i++ {
+		time.Sleep(1 * time.Millisecond) // TODO! not sure how testRefreshCache may have misses without this delay
 		go func() {
 			defer wg.Done()
 			jar, err := cookiejar.New(nil)
@@ -167,6 +168,8 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	assert.Equal(t, int32(1), a.RefreshCache.(*testRefreshCache).misses, "1 cache miss")
+	assert.Equal(t, int32(99), a.RefreshCache.(*testRefreshCache).hits, "99 cache hits")
 	assert.Equal(t, int32(1), atomic.LoadInt32(&refreshCount), "should make one refresh only")
 
 	// make another expired token
@@ -379,7 +382,7 @@ func makeTestMux(_ *testing.T, a *Authenticator, required bool) http.Handler {
 
 func makeTestAuth(_ *testing.T) Authenticator {
 	j := token.NewService(token.Opts{
-		SecretReader:   token.SecretFunc(func() (string, error) { return "xyz 12345", nil }),
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
 		SecureCookies:  false,
 		TokenDuration:  time.Second,
 		CookieDuration: time.Hour * 24 * 31,
@@ -400,7 +403,8 @@ func makeTestAuth(_ *testing.T) Authenticator {
 
 type testRefreshCache struct {
 	data map[interface{}]interface{}
-	sync.Mutex
+	sync.RWMutex
+	hits, misses int32
 }
 
 func newTestRefreshCache() *testRefreshCache {
@@ -408,9 +412,14 @@ func newTestRefreshCache() *testRefreshCache {
 }
 
 func (c *testRefreshCache) Get(key interface{}) (value interface{}, ok bool) {
-	c.Lock()
-	defer c.Unlock()
+	c.RLock()
+	defer c.RUnlock()
 	value, ok = c.data[key]
+	if ok {
+		atomic.AddInt32(&c.hits, 1)
+	} else {
+		atomic.AddInt32(&c.misses, 1)
+	}
 	return value, ok
 }
 

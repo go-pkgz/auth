@@ -18,7 +18,7 @@ import (
 func TestDevProvider(t *testing.T) {
 	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std,
 		JwtService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 			DisableIAT:     true,
@@ -81,7 +81,7 @@ func TestDevProvider(t *testing.T) {
 func TestDevProviderCancel(t *testing.T) {
 	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std,
 		JwtService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 			DisableIAT:     true,

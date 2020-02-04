@@ -30,7 +30,7 @@ func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 	e := VerifyHandler{
 		ProviderName: "test",
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
@@ -64,7 +64,7 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	e := VerifyHandler{
 		ProviderName: "test",
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
@@ -98,7 +98,7 @@ func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 		ProviderName: "test",
 		UseGravatar:  true,
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
@@ -120,7 +120,7 @@ func TestVerifyHandler_LoginAcceptConfirmWithGrAvatarDisabled(t *testing.T) {
 		ProviderName: "test",
 		UseGravatar:  false,
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
@@ -143,7 +143,7 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 		ProviderName: "test",
 		Sender:       &emailer,
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
@@ -206,7 +206,7 @@ func TestVerifyHandler_LoginHandlerAvatarFailed(t *testing.T) {
 		ProviderName: "test",
 		Sender:       &emailer,
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
@@ -238,7 +238,7 @@ func TestVerifyHandler_Logout(t *testing.T) {
 	d := VerifyHandler{
 		ProviderName: "test",
 		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),

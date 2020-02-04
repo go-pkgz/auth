@@ -25,7 +25,7 @@ import (
 func TestNewService(t *testing.T) {
 
 	options := Opts{
-		SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 		TokenDuration:  time.Hour,
 		CookieDuration: time.Hour * 24,
 		Issuer:         "my-test-app",
@@ -42,7 +42,7 @@ func TestNewService(t *testing.T) {
 
 func TestProvider(t *testing.T) {
 	options := Opts{
-		SecretReader: token.SecretFunc(func() (string, error) { return "secret", nil }),
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 		URL:          "http://127.0.0.1:8080",
 		Logger:       logger.Std,
 	}
@@ -341,10 +341,10 @@ func TestVerifProvider(t *testing.T) {
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 }
 
-func prepService(t *testing.T) (svc *Service, teardown func()) {
+func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unparam
 
 	options := Opts{
-		SecretReader:   token.SecretFunc(func() (string, error) { return "secret", nil }),
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 		TokenDuration:  time.Hour,
 		CookieDuration: time.Hour * 24,
 		Issuer:         "my-test-app",

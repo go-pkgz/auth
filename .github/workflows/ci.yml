@@ -1,0 +1,48 @@
+name: build
+
+on:
+  push:
+    branches:
+    tags:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: set up go 1.13
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.13
+        id: go
+
+      - name: launch mongodb
+        uses: wbari/start-mongoDB@v0.2
+        with:
+          mongoDBVersion: "4.0"
+
+      - name: checkout
+        uses: actions/checkout@v1
+
+      - name: build and test
+        run: |
+          export GO111MODULE=on
+          export TZ="America/Chicago"
+          export MONGO_TEST=mongodb://127.0.0.1:27017
+          go get -v
+          go test -timeout=60s -v -covermode=count -coverprofile=$GITHUB_WORKSPACE/profile.cov_tmp
+          cat $GITHUB_WORKSPACE/profile.cov_tmp | grep -v "_mock.go" > $GITHUB_WORKSPACE/profile.cov
+
+      - name: install golangci-lint and goveralls
+        run: |
+          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $GITHUB_WORKSPACE v1.20.0
+          GO111MODULE=off go get -u -v github.com/mattn/goveralls
+
+      - name: run linters
+        run: $GITHUB_WORKSPACE/golangci-lint run
+
+      - name: submit coverage
+        run: $(go env GOPATH)/bin/goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+        env:
+          COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}

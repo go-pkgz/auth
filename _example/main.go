@@ -36,7 +36,7 @@ func main() {
 
 	// define auth options
 	options := auth.Opts{
-		SecretReader: token.SecretFunc(func() (string, error) { // secret key for JWT
+		SecretReader: token.SecretFunc(func(_ string) (string, error) { // secret key for JWT, ignores aud
 			return "secret", nil
 		}),
 		TokenDuration:     time.Minute,                                 // short token, refreshed automatically
