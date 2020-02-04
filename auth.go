@@ -58,7 +58,7 @@ type Opts struct {
 	URL       string          // root url for the rest service, i.e. http://blah.example.com, required
 	Validator token.Validator // validator allows to reject some valid tokens with user-defined logic
 
-	AvatarStore       avatar.Store // store to save/load avatars, required
+	AvatarStore       avatar.Store // store to save/load avatars, required (use avatar.NoOp to disable avatars support)
 	AvatarResizeLimit int          // resize avatar's limit in pixels
 	AvatarRoutePath   string       // avatar routing prefix, i.e. "/api/v1/avatar", default `/avatar`
 	UseGravatar       bool         // for email based auth (verified provider) use gravatar service
