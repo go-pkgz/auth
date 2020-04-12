@@ -13,7 +13,6 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-chi/chi"
-	"github.com/go-pkgz/auth/provider"
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
@@ -27,6 +26,7 @@ import (
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/auth/avatar"
+	"github.com/go-pkgz/auth/provider"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -167,7 +167,7 @@ func anonymousAuthProvider() provider.CredCheckerFunc {
 	log.Printf("[WARN] anonymous access enabled")
 	var isValidAnonName = regexp.MustCompile(`^[a-zA-Z][\w ]+$`).MatchString
 
-	return provider.CredCheckerFunc(func(user, _ string) (ok bool, err error) {
+	return func(user, _ string) (ok bool, err error) {
 		user = strings.TrimSpace(user)
 		if len(user) < 3 {
 			log.Printf("[WARN] name %q is too short, should be at least 3 characters", user)
@@ -179,7 +179,7 @@ func anonymousAuthProvider() provider.CredCheckerFunc {
 			return false, nil
 		}
 		return true, nil
-	})
+	}
 }
 
 // FileServer conveniently sets up a http.FileServer handler to serve static files from a http.FileSystem.
@@ -198,9 +198,9 @@ func fileServer(r chi.Router, path string, root http.FileSystem) {
 	}
 	path += "*"
 
-	r.Get(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.Get(path, func(w http.ResponseWriter, r *http.Request) {
 		fs.ServeHTTP(w, r)
-	}))
+	})
 }
 
 // GET /open returns a page available without authorization

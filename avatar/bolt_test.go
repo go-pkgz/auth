@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	bolt "github.com/coreos/bbolt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	bolt "go.etcd.io/bbolt"
 )
 
 var testDb = "/tmp/test-remark-avatars.db"

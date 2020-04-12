@@ -127,7 +127,7 @@ func TestOauth2Logout(t *testing.T) {
 
 	req, err = http.NewRequest("GET", "http://localhost:8691/logout", nil)
 	require.NoError(t, err)
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err = client.Do(req)

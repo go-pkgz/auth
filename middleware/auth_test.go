@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
 	"github.com/pkg/errors"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/token"
 )
 
 var testJwtValid = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19fQ.OWPdibrSSSHuOV3DzzLH5soO6kUcERELL7_GLf7Ja_E"
@@ -43,7 +43,7 @@ func TestAuthJWTCookie(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
@@ -111,7 +111,7 @@ func TestAuthJWTRefresh(t *testing.T) {
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
 
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 
@@ -152,7 +152,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 			req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 			require.NoError(t, err)
 
-			expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
+			expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 			req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
 				MaxAge: expiration, Secure: false})
 			req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -185,7 +185,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: tkn, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err := client.Do(req)
@@ -221,7 +221,7 @@ func TestAuthJWTRefreshFailed(t *testing.T) {
 	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
 	require.NoError(t, err)
 
-	expiration := int(time.Duration(365 * 24 * time.Hour).Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
 		MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
