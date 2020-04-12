@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/oauth2.v3/errors"
@@ -23,6 +21,9 @@ import (
 	"gopkg.in/oauth2.v3/models"
 	goauth2 "gopkg.in/oauth2.v3/server"
 	"gopkg.in/oauth2.v3/store"
+
+	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/token"
 )
 
 func TestCustomProvider(t *testing.T) {

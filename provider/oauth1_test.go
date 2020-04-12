@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"github.com/dghubble/oauth1"
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/token"
 )
 
 const (

@@ -13,7 +13,6 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-chi/chi"
-	"github.com/go-pkgz/auth/provider"
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
@@ -27,6 +26,7 @@ import (
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/auth/avatar"
+	"github.com/go-pkgz/auth/provider"
 	"github.com/go-pkgz/auth/token"
 )
 

@@ -17,11 +17,12 @@ import (
 	"strings"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
-	"github.com/go-pkgz/auth/token"
 	"github.com/pkg/errors"
+	bolt "go.etcd.io/bbolt"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/go-pkgz/auth/token"
 )
 
 // imgSfx for avatars
