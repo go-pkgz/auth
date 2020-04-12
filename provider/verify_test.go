@@ -160,7 +160,7 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 	assert.Equal(t, `{"error":"can't get user and address"}`+"\n", rr.Body.String())
 
 	d.Sender = &mockSender{err: errors.New("some err")}
-	handler = http.HandlerFunc(d.LoginHandler)
+	handler = d.LoginHandler
 	rr = httptest.NewRecorder()
 	req, err = http.NewRequest("GET", "/login?user=myuser&address=pppp&aud=xyz123", nil)
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 
 	d.Template = `{{.Blah}}`
 	d.Sender = &mockSender{}
-	handler = http.HandlerFunc(d.LoginHandler)
+	handler = d.LoginHandler
 	rr = httptest.NewRecorder()
 	req, err = http.NewRequest("GET", "/login?user=myuser&address=pppp&aud=xyz123", nil)
 	require.NoError(t, err)
