@@ -12,8 +12,7 @@ function req(endpoint, data = {}) {
   const token = cookies["XSRF-TOKEN"];
 
   if (cloneData.hasOwnProperty("headers")) {
-    const headersClone = new Headers(cloneData.headers);
-    cloneData.headers = headersClone;
+    cloneData.headers = new Headers(cloneData.headers);
   } else {
     cloneData.headers = new Headers();
   }
@@ -65,9 +64,9 @@ function login(prov) {
           resolve();
           win.close();
           clearInterval(interval);
-          return;
         }
-      } catch (e) {}
+      } catch (e) {
+      }
     }, 100);
   });
 }
@@ -275,7 +274,8 @@ function errorHandler(err) {
           console.error(data.error);
           return;
         }
-      } catch {}
+      } catch {
+      }
       status.textContent = text;
       console.error(text);
     });
@@ -286,7 +286,8 @@ function errorHandler(err) {
 }
 
 function getLoginLinks() {
-  let formSwitcher = () => {};
+  let formSwitcher = () => {
+  };
 
   return getProviders().then(providers =>
     providers.map(prov => {
@@ -311,7 +312,8 @@ function getLoginLinks() {
             form.querySelector(".anon-form__input").focus();
           } else {
             form.style.display = "none";
-            formSwitcher = () => {};
+            formSwitcher = () => {
+            };
           }
         });
 
@@ -349,7 +351,8 @@ function getLoginLinks() {
           } else {
             formStage1.style.display = "none";
             formStage2.style.display = "none";
-            formSwitcher = () => {};
+            formSwitcher = () => {
+            };
           }
         });
 
