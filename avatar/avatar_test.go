@@ -231,6 +231,7 @@ func TestAvatar_GetGravatarURL(t *testing.T) {
 	}
 
 	for i, tt := range tbl {
+		tt := tt
 		t.Run("test-"+strconv.Itoa(i), func(t *testing.T) {
 			url, err := GetGravatarURL(tt.email)
 			if tt.err != nil {

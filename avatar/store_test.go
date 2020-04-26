@@ -67,6 +67,7 @@ func TestStore_NewStore(t *testing.T) {
 	}
 
 	for i, tt := range tbl {
+		tt := tt
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			res, err := NewStore(tt.uri)
 			if tt.err != nil {
@@ -96,6 +97,7 @@ func TestStore_parseExtMongoURI(t *testing.T) {
 	}
 
 	for _, tt := range tbl {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			db, coll, u, err := parseExtMongoURI(tt.inp)
 			if tt.err != nil {
