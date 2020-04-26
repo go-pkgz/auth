@@ -144,7 +144,7 @@ func TestCustomProvider(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 }
 
-func TestCustProviderCancel(t *testing.T) {
+func TestCustomProviderCancel(t *testing.T) {
 	srv := initGoauth2Srv(t)
 	prov := CustomServer{
 		OauthServer:   srv,
