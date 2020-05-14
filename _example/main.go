@@ -211,14 +211,22 @@ func openRouteHandler(w http.ResponseWriter, _ *http.Request) {
 // GET /private_data returns json with user info and ts
 func protectedDataHandler(w http.ResponseWriter, r *http.Request) {
 
+	userInfo, err := token.GetUserInfo(r)
+	if err != nil {
+		log.Printf("failed to get user info, %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	res := struct {
-		TS     time.Time `json:"ts"`
-		Field1 string    `json:"fld1"`
-		Field2 int       `json:"fld2"`
+		TS     time.Time  `json:"ts"`
+		Field1 string     `json:"fld1"`
+		Field2 int        `json:"fld2"`
+		User   token.User `json:"userInfo"`
 	}{
 		TS:     time.Now(),
 		Field1: "some private thing",
 		Field2: 42,
+		User:   userInfo,
 	}
 
 	rest.RenderJSON(w, r, res)
