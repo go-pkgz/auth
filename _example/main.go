@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"fmt"
+	"github.com/go-pkgz/auth/middleware"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -144,6 +145,10 @@ func main() {
 	router.Get("/open", openRouteHandler)                                                               // open page
 	router.Group(func(r chi.Router) {
 		r.Use(m.Auth)
+		r.Use(m.UpdateUser(middleware.UserUpdFunc(func(user token.User) token.User {
+			user.SetStrAttr("some_attribute", "attribute value")
+			return user
+		})))
 		r.Get("/private_data", protectedDataHandler) // protected api
 	})
 

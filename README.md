@@ -78,6 +78,8 @@ func main() {
 - `middleware.Admin` - requires authenticated admin user
 - `middleware.Trace` - doesn't require authenticated user, but adds user info to request
 
+Also, there is a special middleware `middleware.UpdateUser` for population and modifying UserInfo in every request. See "Customization" for more details.
+
 ## Details
 
 Generally, adding support of `auth` includes a few relatively simple steps:
@@ -249,10 +251,11 @@ In order to add a new oauth2 provider following input is required:
 There are several ways to adjust functionality of the library:
 
 1. `SecretReader` - interface with a single method `Get(aud string) string` to return the secret used for JWT signing and verification
-2. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status and so on.
-3. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on **each request** wrapped with `Auth` middleware. This will be the place for special logic to reject some tokens or users.
+1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status and so on.
+1. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on **each request** wrapped with `Auth` middleware. This will be the place for special logic to reject some tokens or users.
+1. `UserUpdater` - interface with `Update(claims token.User) token.User` method.  This method will be called on **each request** wrapped with `UpdateUser` middleware. This will be the place for special logic modify User Info in request context. [Example of usage.]((https://github.com/go-pkgz/auth/blob/master/_example/main.go#L148))
 
-All of the interfaces above have corresponding Func adapters - `SecretFunc`, `ClaimsUpdFunc` and `ValidatorFunc`.
+All of the interfaces above have corresponding Func adapters - `SecretFunc`, `ClaimsUpdFunc`, `ValidatorFunc` and `UserUpdFunc`.
 
 ### Implementing black list logic or some other filters
 
