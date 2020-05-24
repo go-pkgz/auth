@@ -49,8 +49,7 @@ func TestUserUpdate_WithoutAuth(t *testing.T) {
 		w.WriteHeader(201)
 	})
 	upd := UserUpdFunc(func(user token.User) token.User {
-		// this method should not be called because there is no user info in request context
-		assert.True(t, false)
+		t.Fatal("should not be called without auth")
 		return user
 	})
 	updateUserHandler := a.UpdateUser(upd)(handler)
