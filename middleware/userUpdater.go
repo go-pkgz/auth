@@ -24,8 +24,8 @@ func (f UserUpdFunc) Update(user token.User) token.User {
 func (a *Authenticator) UpdateUser(upd UserUpdater) func(http.Handler) http.Handler {
 	f := func(h http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
-			user, err := token.GetUserInfo(r)
-			if err == nil {
+			// call update only if user info exists, otherwise do nothing
+			if user, err := token.GetUserInfo(r); err == nil {
 				r = token.SetUserInfo(r, upd.Update(user))
 			}
 
