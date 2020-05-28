@@ -1,13 +1,15 @@
 package middleware
 
 import (
-	"github.com/go-pkgz/auth/token"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/go-pkgz/auth/token"
 )
 
 func TestUserUpdate(t *testing.T) {
