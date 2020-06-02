@@ -14,6 +14,9 @@ import (
 )
 
 func TestAvatarStore_Migrate(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
 	// prep localfs
 	plocal := NewLocalFS("/tmp/avatars.test")
 	err := os.MkdirAll("/tmp/avatars.test", 0700)
@@ -69,6 +72,11 @@ func TestStore_NewStore(t *testing.T) {
 	for i, tt := range tbl {
 		tt := tt
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			if strings.Contains(tt.uri, "mongodb://") && tt.err == nil {
+				if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+					t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+				}
+			}
 			res, err := NewStore(tt.uri)
 			if tt.err != nil {
 				require.EqualError(t, err, tt.err.Error())
