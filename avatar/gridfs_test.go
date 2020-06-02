@@ -3,6 +3,7 @@ package avatar
 import (
 	"context"
 	"io/ioutil"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -15,6 +16,9 @@ import (
 )
 
 func TestGridFS_PutAndGet(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
 	p := prepGFStore(t)
 	avatar, err := p.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
@@ -39,6 +43,9 @@ func TestGridFS_PutAndGet(t *testing.T) {
 }
 
 func TestGridFS_Remove(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
 	p := prepGFStore(t)
 	assert.NotNil(t, p.Remove("no-such-thing.image"))
 	avatar, err := p.Put("user1", strings.NewReader("some picture bin data"))
@@ -49,6 +56,9 @@ func TestGridFS_Remove(t *testing.T) {
 }
 
 func TestGridFS_List(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
 	p := prepGFStore(t)
 
 	// write some avatars

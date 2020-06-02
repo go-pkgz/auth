@@ -34,7 +34,7 @@ jobs:
         env:
           GO111MODULE: "on"
           TZ: "America/Chicago"
-          MONGO_TEST: "mongodb://127.0.0.1:27017"
+          ENABLE_MONGO_TESTS: "true"
 
       - name: install golangci-lint and goveralls
         run: |
