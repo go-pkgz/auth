@@ -1,7 +1,7 @@
 # auth - authentication via oauth2, direct and email
 [![Build Status](https://github.com/go-pkgz/auth/workflows/build/badge.svg)](https://github.com/go-pkgz/auth/actions) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth?status.svg)](https://pkg.go.dev/github.com/go-pkgz/auth?tab=doc)
 
-This library provides "social login" with Github, Google, Facebook, Twitter and Yandex as well as custom auth providers and email verification.
+This library provides "social login" with Github, Google, Facebook, Twitter, Yandex and Battle.net as well as custom auth providers and email verification.
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
@@ -363,6 +363,13 @@ _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://githu
 1.  Take note of the **ID** and **Password**
 
 For more details refer to [Yandex OAuth](https://tech.yandex.com/oauth/doc/dg/concepts/about-docpage/) and [Yandex.Passport](https://tech.yandex.com/passport/doc/dg/index-docpage/) API documentation.
+
+##### Battle.net Auth Provider
+
+1.  Create a new **client**: https://develop.battle.net/access/clients/create
+
+For more details refer to [Complete Guide of Battle.net OAuth API and Login Button](https://hakanu.net/oauth/2017/01/26/complete-guide-of-battle-net-oauth-api-and-login-button/)
+
 
 #### Twitter Auth Provider
 1.	Create a new twitter application https://developer.twitter.com/en/apps
