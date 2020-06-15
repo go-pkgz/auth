@@ -56,6 +56,7 @@ func TestProvider(t *testing.T) {
 	svc.AddProvider("google", "cid", "csecret")
 	svc.AddProvider("facebook", "cid", "csecret")
 	svc.AddProvider("yandex", "cid", "csecret")
+	svc.AddProvider("battlenet", "cid", "csecret")
 	svc.AddProvider("bad", "cid", "csecret")
 
 	p, err := svc.Provider("dev")
