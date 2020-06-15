@@ -73,7 +73,7 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "github", op.Name())
 
 	pp := svc.Providers()
-	assert.Equal(t, 5, len(pp))
+	assert.Equal(t, 6, len(pp))
 }
 
 func TestIntegrationProtected(t *testing.T) {
