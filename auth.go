@@ -282,6 +282,17 @@ func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender)
 	s.authMiddleware.Providers = s.providers
 }
 
+func (s *Service) AddTelegram(token string) {
+	p := provider.Params{
+		URL:         s.opts.URL,
+		L:           s.logger,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+	}
+	s.providers = append(s.providers, provider.NewService(provider.NewTelegram(p, token)))
+}
+
 // DevAuth makes dev oauth2 server, for testing and development only!
 func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
 	p, err := s.Provider("dev") // peak dev provider

@@ -170,3 +170,7 @@ func NewBattlenet(p Params) Oauth2Handler {
 		},
 	})
 }
+
+func NewTelegram(p Params, token string) TelegramHandler {
+	return initTelegramAuthHandler(p, token)
+}

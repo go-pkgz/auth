@@ -88,6 +88,9 @@ func main() {
 		}),
 	)
 
+	// test telegram login
+	service.AddTelegram(os.Getenv("AEXMPL_TELEGRAM_TOKEN"))
+
 	// run dev/test oauth2 server on :8084
 	go func() {
 		devAuthServer, err := service.DevAuth() // peak dev oauth2 server
