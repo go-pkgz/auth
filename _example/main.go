@@ -59,6 +59,9 @@ func main() {
 				if strings.HasPrefix(claims.User.ID, "github_") { // allow all users with github auth
 					return true
 				}
+				if strings.HasPrefix(claims.User.ID, "microsoft_") { // allow all users with ms auth
+					return true
+				}
 				if strings.HasPrefix(claims.User.Name, "dev_") { // non-guthub allow only dev_* names
 					return true
 				}

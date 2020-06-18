@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-pkgz/rest"
+	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth/logger"
@@ -22,12 +25,13 @@ type Oauth2Handler struct {
 	Params
 
 	// all of these fields specific to particular oauth2 provider
-	name     string
-	infoURL  string
-	endpoint oauth2.Endpoint
-	scopes   []string
-	mapUser  func(UserData, []byte) token.User // map info from InfoURL to User
-	conf     oauth2.Config
+	name      string
+	infoURL   string
+	avatarURL string
+	endpoint  oauth2.Endpoint
+	scopes    []string
+	mapUser   func(UserData, []byte) token.User // map info from InfoURL to User
+	conf      oauth2.Config
 }
 
 // Params to make initialized and ready to use provider
@@ -178,6 +182,15 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	p.Logf("[DEBUG] got raw user info %+v", jData)
 
 	u := p.mapUser(jData, data)
+
+	// some providers needs a separate (authorized) call to get avatar. In this case avatarURL contains the url.
+	// loadedAvatar will make the call and provide a temporary, one-time url for avatar service
+	if p.avatarURL != "" {
+		if ava, err := p.loadedAvatar(client); err == nil {
+			u.Picture = ava
+		}
+	}
+
 	u, err = setAvatar(p.AvatarSaver, u)
 	if err != nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
@@ -228,4 +241,26 @@ func (p Oauth2Handler) makeRedirURL(path string) string {
 	newPath := strings.Join(elems[:len(elems)-1], "/")
 
 	return strings.TrimRight(p.URL, "/") + strings.TrimRight(newPath, "/") + urlCallbackSuffix
+}
+
+// loadedAvatar gets avatar via authorized client and proxy it with one-time server, returns url to this avatar
+func (p Oauth2Handler) loadedAvatar(client *http.Client) (string, error) {
+	ainfo, err := client.Get(p.avatarURL)
+	if err != nil {
+		return "", errors.Wrapf(err, "can't get avatar from %s", p.avatarURL)
+	}
+
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return "", errors.Wrap(err, "can't make one-time avatar loader proxy")
+	}
+
+	go func() {
+		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.Copy(w, ainfo.Body)
+			_ = listener.Close()
+		}))
+	}()
+
+	return fmt.Sprintf("http://localhost:%d/", listener.Addr().(*net.TCPAddr).Port), nil
 }

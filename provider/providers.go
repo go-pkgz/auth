@@ -179,12 +179,14 @@ func NewMicrosoft(p Params) Oauth2Handler {
 		endpoint: microsoft.AzureADEndpoint("consumers"),
 		scopes:   []string{"User.Read"},
 		infoURL:  "https://graph.microsoft.com/v1.0/me",
+		// non-beta doesn't provide photo for consumers yet
+		// see https://github.com/microsoftgraph/microsoft-graph-docs/issues/3990
+		avatarURL: "https://graph.microsoft.com/beta/me/photo/$value",
 		mapUser: func(data UserData, b []byte) token.User {
 			userInfo := token.User{
 				ID:   "microsoft_" + token.HashID(sha1.New(), data.Value("id")),
 				Name: data.Value("displayName"),
 			}
-
 			return userInfo
 		},
 	})
