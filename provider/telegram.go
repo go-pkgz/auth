@@ -35,33 +35,29 @@ const iframeTemplate = `
 
 const telegramAPIGetMe = "https://api.telegram.org/bot%s/getMe"
 
-// TelgramBotBasicInfo represents data returned from getMe API call
+// TelegramBotBasicInfo represents data returned from getMe API call
 type TelegramBotBasicInfo struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 }
 
+// TelegramHandler implements /login, /callback and /logout in telegram login flow
 type TelegramHandler struct {
 	Params
-	Token string
-	// Website domain linked to the bot (using BotFather bot https://core.telegram.org/widgets/login#linking-your-domain-to-the-bot)
+	Token    string
 	BotInfo  TelegramBotBasicInfo
 	RedirURL string
 }
 
+// Name returns provider name (telegram bot username)
 func (t TelegramHandler) Name() string {
 	return t.BotInfo.Username
 }
 
+// LoginHandler renders telegram login iframe
 func (t TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	t.Logf("[DEBUG] login with telegram bot %s", t.Name())
 
-	// make state (random) and store in session
-	state, err := randToken()
-	if err != nil {
-		rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to make oauth2 state")
-		return
-	}
 	cid, err := randToken()
 	if err != nil {
 		rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to make claim's id")
@@ -70,8 +66,8 @@ func (t TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims{
 		Handshake: &token.Handshake{
-			State: state,
-			From:  r.URL.Query().Get("from"),
+			// State: state,
+			From: r.URL.Query().Get("from"),
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
 		StandardClaims: jwt.StandardClaims{
@@ -82,7 +78,7 @@ func (t TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if _, err := t.JwtService.Set(w, claims); err != nil {
+	if _, err = t.JwtService.Set(w, claims); err != nil {
 		rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to set token")
 		return
 	}
@@ -98,9 +94,10 @@ func (t TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to execute template for iframe with telegram login")
 	}
 
-	return
+	// return
 }
 
+// AuthHandler fills user info and redirects to "from" url. This is callback url redirected locally by browser
 func (t TelegramHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	oauthClaims, _, err := t.JwtService.Get(r)
 	if err != nil {
@@ -116,18 +113,21 @@ func (t TelegramHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	// instead of state check hash received from telegram
 	// check hash with bot token (https://core.telegram.org/widgets/login#checking-authorization)
 	hash := r.URL.Query().Get("hash")
-	var params []string
+	params := make([]string, 0, len(r.URL.Query())-1)
 	for key, vals := range r.URL.Query() {
 		if key == "hash" {
 			continue
 		}
 		params = append(params, strings.Join(append([]string{key}, vals...), "="))
 	}
-	sort.Sort(sort.StringSlice(params))
+	sort.Strings(params)
 	dataCheckString := strings.Join(params, "\n")
 	secretKey := sha256.Sum256([]byte(t.Token))
 	mac := hmac.New(sha256.New, secretKey[:])
-	mac.Write([]byte(dataCheckString))
+	if _, err = mac.Write([]byte(dataCheckString)); err != nil {
+		rest.SendErrorJSON(w, r, t.L, http.StatusForbidden, nil, "data integrity failure: failed build data-check-string")
+		return
+	}
 
 	if hex.EncodeToString(mac.Sum(nil)) != hash {
 		rest.SendErrorJSON(w, r, t.L, http.StatusForbidden, nil, "data integrity failure: hash doesn't match data-check-string")
@@ -176,6 +176,7 @@ func (t TelegramHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, r, &u)
 }
 
+// LogoutHandler - GET /logout
 func (t TelegramHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	if _, _, err := t.JwtService.Get(r); err != nil {
 		rest.SendErrorJSON(w, r, t.L, http.StatusForbidden, err, "logout not allowed")
@@ -184,19 +185,18 @@ func (t TelegramHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	t.JwtService.Reset(w)
 }
 
-func initTelegramAuthHandler(p Params, token string) TelegramHandler {
+func initTelegramAuthHandler(p Params, botToken string) TelegramHandler {
 	if p.L == nil {
 		p.L = logger.NoOp
 	}
 
 	th := TelegramHandler{Params: p}
-	th.Token = token
+	th.Token = botToken
 
 	var err error
-	th.BotInfo, err = getBotDetails(token)
+	th.BotInfo, err = getBotDetails(botToken)
 	if err != nil {
 		th.L.Logf("[WARN] failed to get bot details using token: %s", err.Error())
-		// th.L.Logf("[WARN] check bot")
 	}
 
 	p.Logf("[DEBUG] created %s auth handler for Telegram Bot username=%s (id=%s), redir=%s",
@@ -205,11 +205,11 @@ func initTelegramAuthHandler(p Params, token string) TelegramHandler {
 	return th
 }
 
-func getBotDetails(token string) (TelegramBotBasicInfo, error) {
+func getBotDetails(botToken string) (TelegramBotBasicInfo, error) {
 
 	c := &http.Client{Timeout: 10 * time.Second}
 
-	resp, err := c.Get(fmt.Sprintf(telegramAPIGetMe, token))
+	resp, err := c.Get(fmt.Sprintf(telegramAPIGetMe, botToken))
 	if err != nil {
 		return TelegramBotBasicInfo{}, err
 	}
@@ -224,7 +224,7 @@ func getBotDetails(token string) (TelegramBotBasicInfo, error) {
 		Result TelegramBotBasicInfo `json:"result"`
 	}{}
 
-	if err = json.NewDecoder(resp.Body).Decode(&d); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
 		return TelegramBotBasicInfo{}, err
 	}
 

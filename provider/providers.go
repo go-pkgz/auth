@@ -171,6 +171,7 @@ func NewBattlenet(p Params) Oauth2Handler {
 	})
 }
 
-func NewTelegram(p Params, token string) TelegramHandler {
-	return initTelegramAuthHandler(p, token)
+// NewTelegram makes telegram auth provider
+func NewTelegram(p Params, botToken string) TelegramHandler {
+	return initTelegramAuthHandler(p, botToken)
 }
