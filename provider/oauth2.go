@@ -13,7 +13,6 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-pkgz/rest"
-	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth/logger"
@@ -186,9 +185,7 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	// some providers needs a separate (authorized) call to get avatar. In this case avatarURL contains the url.
 	// loadedAvatar will make the call and provide a temporary, one-time url for avatar service
 	if p.avatarURL != "" {
-		if ava, err := p.loadedAvatar(client); err == nil {
-			u.Picture = ava
-		}
+		u.Picture = p.loadedAvatar(u, client)
 	}
 
 	u, err = setAvatar(p.AvatarSaver, u)
@@ -244,15 +241,17 @@ func (p Oauth2Handler) makeRedirURL(path string) string {
 }
 
 // loadedAvatar gets avatar via authorized client and proxy it with one-time server, returns url to this avatar
-func (p Oauth2Handler) loadedAvatar(client *http.Client) (string, error) {
+func (p Oauth2Handler) loadedAvatar(user token.User, client *http.Client) string {
 	ainfo, err := client.Get(p.avatarURL)
 	if err != nil {
-		return "", errors.Wrapf(err, "can't get avatar from %s", p.avatarURL)
+		p.Logf("[WARN] can't get avatar from %s, %v", p.avatarURL, err)
+		return user.Picture
 	}
 
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
-		return "", errors.Wrap(err, "can't make one-time avatar loader proxy")
+		p.Logf("[WARN] can't make one-time avatar loader proxy, %v", err)
+		return user.Picture
 	}
 
 	go func() {
@@ -262,5 +261,5 @@ func (p Oauth2Handler) loadedAvatar(client *http.Client) (string, error) {
 		}))
 	}()
 
-	return fmt.Sprintf("http://localhost:%d/", listener.Addr().(*net.TCPAddr).Port), nil
+	return fmt.Sprintf("http://localhost:%d/", listener.Addr().(*net.TCPAddr).Port)
 }
