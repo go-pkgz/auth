@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,15 +59,16 @@ func TestRandToken(t *testing.T) {
 }
 
 func TestSetAvatar(t *testing.T) {
-	u, err := setAvatar(nil, token.User{Picture: "http://example.com/pic1.png"})
+	client := &http.Client{Timeout: time.Second}
+	u, err := setAvatar(nil, token.User{Picture: "http://example.com/pic1.png"}, client)
 	assert.NoError(t, err, "nil ava allowed")
 	assert.Equal(t, token.User{Picture: "http://example.com/pic1.png"}, u)
 
-	u, err = setAvatar(mockAva{true, "http://example.com/pic1px.png"}, token.User{Picture: "http://example.com/pic1.png"})
+	u, err = setAvatar(mockAva{true, "http://example.com/pic1px.png"}, token.User{Picture: "http://example.com/pic1.png"}, client)
 	assert.NoError(t, err)
 	assert.Equal(t, token.User{Picture: "http://example.com/pic1px.png"}, u)
 
-	_, err = setAvatar(mockAva{false, ""}, token.User{Picture: "http://example.com/pic1.png"})
+	_, err = setAvatar(mockAva{false, ""}, token.User{Picture: "http://example.com/pic1.png"}, client)
 	assert.Error(t, err, "some error")
 }
 
@@ -75,7 +77,7 @@ type mockAva struct {
 	res string
 }
 
-func (m mockAva) Put(u token.User) (avatarURL string, err error) {
+func (m mockAva) Put(u token.User, client *http.Client) (avatarURL string, err error) {
 	if !m.ok {
 		return "", errors.New("some error")
 	}

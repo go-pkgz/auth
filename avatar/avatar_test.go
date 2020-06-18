@@ -39,8 +39,9 @@ func TestAvatar_Put(t *testing.T) {
 	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0700))
 	defer os.RemoveAll("/tmp/avatars.test")
 
+	client := &http.Client{Timeout: time.Second}
 	u := token.User{ID: "user1", Name: "user1 name", Picture: ts.URL + "/pic.png"}
-	res, err := p.Put(u)
+	res, err := p.Put(u, client)
 	assert.NoError(t, err)
 	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", res)
 	fi, err := os.Stat("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
@@ -48,7 +49,7 @@ func TestAvatar_Put(t *testing.T) {
 	assert.Equal(t, int64(21), fi.Size())
 
 	u.ID = "user2"
-	res, err = p.Put(u)
+	res, err = p.Put(u, client)
 	assert.NoError(t, err)
 	assert.Equal(t, "http://localhost:8080/avatar/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image", res)
 	fi, err = os.Stat("/tmp/avatars.test/84/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image")
@@ -64,9 +65,10 @@ func TestAvatar_PutIdenticon(t *testing.T) {
 	defer ts.Close()
 
 	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
+	client := &http.Client{Timeout: time.Second}
 
 	u := token.User{ID: "user1", Name: "user1 name"}
-	res, err := p.Put(u)
+	res, err := p.Put(u, client)
 	assert.NoError(t, err)
 	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", res)
 	fi, err := os.Stat("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
@@ -84,14 +86,15 @@ func TestAvatar_PutFailed(t *testing.T) {
 	defer ts.Close()
 
 	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
+	client := &http.Client{Timeout: time.Second}
 
 	u := token.User{ID: "user1", Name: "user1 name", Picture: "http://127.0.0.1:22345/avater/pic"}
-	_, err := p.Put(u)
+	_, err := p.Put(u, client)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connect: connection refused")
 
 	u = token.User{ID: "user1", Name: "user1 name", Picture: ts.URL + "/avatar/pic"}
-	_, err = p.Put(u)
+	_, err = p.Put(u, client)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get avatar from the orig")
 }
@@ -113,9 +116,10 @@ func TestAvatar_Routes(t *testing.T) {
 	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
 	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0700))
 	defer os.RemoveAll("/tmp/avatars.test")
+	client := &http.Client{Timeout: time.Second}
 
 	u := token.User{ID: "user1", Name: "user1 name", Picture: ts.URL + "/pic.png"}
-	_, err := p.Put(u)
+	_, err := p.Put(u, client)
 	assert.NoError(t, err)
 
 	// status 400
