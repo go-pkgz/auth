@@ -56,6 +56,7 @@ func TestProvider(t *testing.T) {
 	svc.AddProvider("google", "cid", "csecret")
 	svc.AddProvider("facebook", "cid", "csecret")
 	svc.AddProvider("yandex", "cid", "csecret")
+	svc.AddProvider("microsoft", "cid", "csecret")
 	svc.AddProvider("battlenet", "cid", "csecret")
 	svc.AddProvider("bad", "cid", "csecret")
 
@@ -73,7 +74,7 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "github", op.Name())
 
 	pp := svc.Providers()
-	assert.Equal(t, 6, len(pp))
+	assert.Equal(t, 7, len(pp))
 }
 
 func TestIntegrationProtected(t *testing.T) {
