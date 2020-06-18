@@ -44,7 +44,7 @@ func main() {
 		CookieDuration:    time.Hour * 24,                              // cookie fine to keep for long time
 		DisableXSRF:       true,                                        // don't disable XSRF in real-life applications!
 		Issuer:            "my-demo-service",                           // part of token, just informational
-		URL:               "http://127.0.0.1:8080",                     // base url of the protected service
+		URL:               "http://localhost:8080",                     // base url of the protected service
 		AvatarStore:       avatar.NewLocalFS("/tmp/demo-auth-service"), // stores avatars locally
 		AvatarResizeLimit: 200,                                         // resizes avatars to 200x200
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims { // modify issued token
@@ -57,6 +57,9 @@ func main() {
 		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool { // rejects some tokens
 			if claims.User != nil {
 				if strings.HasPrefix(claims.User.ID, "github_") { // allow all users with github auth
+					return true
+				}
+				if strings.HasPrefix(claims.User.ID, "microsoft_") { // allow all users with ms auth
 					return true
 				}
 				if strings.HasPrefix(claims.User.Name, "dev_") { // non-guthub allow only dev_* names
@@ -75,6 +78,7 @@ func main() {
 	service.AddProvider("dev", "", "")                                                             // add dev provider
 	service.AddProvider("github", os.Getenv("AEXMPL_GITHUB_CID"), os.Getenv("AEXMPL_GITHUB_CSEC")) // add github provider
 	service.AddProvider("twitter", os.Getenv("AEXMPL_TWITTER_APIKEY"), os.Getenv("AEXMPL_TWITTER_APISEC"))
+	service.AddProvider("microsoft", os.Getenv("AEXMPL_MS_APIKEY"), os.Getenv("AEXMPL_MS_APISEC"))
 
 	// allow anonymous user via custom (direct) provider
 	service.AddDirectProvider("anonymous", anonymousAuthProvider())

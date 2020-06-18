@@ -283,6 +283,6 @@ func mockKeyStore(string) (string, error) { return "12345", nil }
 
 type mockAvatarSaver struct{}
 
-func (m *mockAvatarSaver) Put(u token.User) (avatarURL string, err error) {
+func (m *mockAvatarSaver) Put(u token.User, client *http.Client) (avatarURL string, err error) {
 	return "http://example.com/ava12345.png", nil
 }
