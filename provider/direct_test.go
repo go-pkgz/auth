@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,78 +17,172 @@ import (
 )
 
 func TestDirect_LoginHandler(t *testing.T) {
-	d := DirectHandler{
-		ProviderName: "test",
-		CredChecker:  &mockCredsChecker{ok: true},
-		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
-			TokenDuration:  time.Hour,
-			CookieDuration: time.Hour * 24 * 31,
-		}),
-		Issuer: "iss-test",
-		L:      logger.Std,
+	testCases := map[string]struct {
+		makeRequest func(t *testing.T) *http.Request
+	}{
+		"GET": {
+			makeRequest: func(t *testing.T) *http.Request {
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", nil)
+				require.NoError(t, err)
+				return req
+			},
+		},
+		"POST application/x-www-form-urlencoded": {
+			makeRequest: func(t *testing.T) *http.Request {
+				form := url.Values{
+					"user":   {"myuser"},
+					"passwd": {"pppp"},
+					"aud":    {"xyz123"},
+				}
+				req, err := http.NewRequest("POST", "/login?from=http://example.com", strings.NewReader(form.Encode()))
+				require.NoError(t, err)
+				req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+				return req
+			},
+		},
+		"POST application/json": {
+			makeRequest: func(t *testing.T) *http.Request {
+				jsonBody := `{"user":"myuser", "passwd":"pppp", "aud":"xyz123"}`
+				req, err := http.NewRequest("POST", "/login?from=http://example.com", strings.NewReader(jsonBody))
+				require.NoError(t, err)
+				req.Header.Add("Content-Type", "application/json")
+				return req
+			},
+		},
+		"POST application/json; charset=utf-8": {
+			makeRequest: func(t *testing.T) *http.Request {
+				jsonBody := `{"user":"myuser", "passwd":"pppp", "aud":"xyz123"}`
+				req, err := http.NewRequest("POST", "/login?from=http://example.com", strings.NewReader(jsonBody))
+				require.NoError(t, err)
+				req.Header.Add("Content-Type", "application/json")
+				return req
+			},
+		},
 	}
 
-	assert.Equal(t, "test", d.Name())
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			d := DirectHandler{
+				ProviderName: "test",
+				CredChecker:  &mockCredsChecker{ok: true},
+				TokenService: token.NewService(token.Opts{
+					SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+					TokenDuration:  time.Hour,
+					CookieDuration: time.Hour * 24 * 31,
+				}),
+				Issuer: "iss-test",
+				L:      logger.Std,
+			}
 
-	handler := http.HandlerFunc(d.LoginHandler)
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", nil)
-	require.NoError(t, err)
-	handler.ServeHTTP(rr, req)
-	assert.Equal(t, 200, rr.Code)
-	assert.Equal(t, `{"name":"myuser","id":"test_ed6307123e30cc7682328522d1d090d9c7525b32","picture":""}`+"\n", rr.Body.String())
+			assert.Equal(t, "test", d.Name())
+			handler := http.HandlerFunc(d.LoginHandler)
 
-	request := &http.Request{Header: http.Header{"Cookie": rr.Header()["Set-Cookie"]}}
-	c, err := request.Cookie("JWT")
-	require.NoError(t, err)
-	claims, err := d.TokenService.Parse(c.Value)
-	require.NoError(t, err)
-	t.Logf("%+v", claims)
-	assert.Equal(t, "xyz123", claims.Audience)
-	assert.Equal(t, "iss-test", claims.Issuer)
-	assert.True(t, claims.ExpiresAt > time.Now().Unix())
-	assert.Equal(t, "myuser", claims.User.Name)
+			rr := httptest.NewRecorder()
+			req := test.makeRequest(t)
+			handler.ServeHTTP(rr, req)
+			assert.Equal(t, 200, rr.Code)
+			assert.Equal(t, `{"name":"myuser","id":"test_ed6307123e30cc7682328522d1d090d9c7525b32","picture":""}`+"\n", rr.Body.String())
+
+			request := &http.Request{Header: http.Header{"Cookie": rr.Header()["Set-Cookie"]}}
+			c, err := request.Cookie("JWT")
+			require.NoError(t, err)
+			claims, err := d.TokenService.Parse(c.Value)
+			require.NoError(t, err)
+			t.Logf("%+v", claims)
+			assert.Equal(t, "xyz123", claims.Audience)
+			assert.Equal(t, "iss-test", claims.Issuer)
+			assert.True(t, claims.ExpiresAt > time.Now().Unix())
+			assert.Equal(t, "myuser", claims.User.Name)
+		})
+	}
 }
 
 func TestDirect_LoginHandlerFailed(t *testing.T) {
-	d := DirectHandler{
-		ProviderName: "test",
-		CredChecker:  nil,
-		TokenService: token.NewService(token.Opts{
-			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
-			TokenDuration:  time.Hour,
-			CookieDuration: time.Hour * 24 * 31,
-		}),
-		Issuer: "iss-test",
-		L:      logger.Std,
+	testCases := map[string]struct {
+		makeRequest func(t *testing.T) *http.Request
+		credChecker CredChecker
+		wantCode    int
+		wantBody    string
+	}{
+		"no credential checker": {
+			makeRequest: func(t *testing.T) *http.Request {
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+				require.NoError(t, err)
+				return req
+			},
+			credChecker: nil,
+			wantCode:    http.StatusInternalServerError,
+			wantBody:    `{"error":"no credential checker"}`,
+		},
+		"failed to check user credentials": {
+			makeRequest: func(t *testing.T) *http.Request {
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+				require.NoError(t, err)
+				return req
+			},
+			credChecker: &mockCredsChecker{err: errors.New("some err"), ok: false},
+			wantCode:    http.StatusInternalServerError,
+			wantBody:    `{"error":"failed to check user credentials"}`,
+		},
+		"incorrect user or password": {
+			makeRequest: func(t *testing.T) *http.Request {
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+				require.NoError(t, err)
+				return req
+			},
+			credChecker: &mockCredsChecker{err: nil, ok: false},
+			wantCode:    http.StatusForbidden,
+			wantBody:    `{"error":"incorrect user or password"}`,
+		},
+		"malformed json body": {
+			makeRequest: func(t *testing.T) *http.Request {
+				jsonBody := `{"user":"myuser"`
+				req, err := http.NewRequest("POST", "/login?from=http://example.com", strings.NewReader(jsonBody))
+				require.NoError(t, err)
+				req.Header.Add("Content-Type", "application/json")
+				return req
+			},
+			credChecker: &mockCredsChecker{err: nil, ok: true},
+			wantCode:    http.StatusBadRequest,
+			wantBody:    `{"error":"failed to parse credentials"}`,
+		},
+		"malformed application/x-www-form-urlencoded body": {
+			makeRequest: func(t *testing.T) *http.Request {
+				req, err := http.NewRequest("POST", "/login?from=http://example.com", nil)
+				require.NoError(t, err)
+				req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+				return req
+			},
+			credChecker: &mockCredsChecker{err: nil, ok: true},
+			wantCode:    http.StatusBadRequest,
+			wantBody:    `{"error":"failed to parse credentials"}`,
+		},
 	}
 
-	handler := http.HandlerFunc(d.LoginHandler)
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
-	require.NoError(t, err)
-	handler.ServeHTTP(rr, req)
-	assert.Equal(t, 500, rr.Code)
-	assert.Equal(t, `{"error":"no credential checker"}`+"\n", rr.Body.String())
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			d := DirectHandler{
+				ProviderName: "test",
+				CredChecker:  test.credChecker,
+				TokenService: token.NewService(token.Opts{
+					SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+					TokenDuration:  time.Hour,
+					CookieDuration: time.Hour * 24 * 31,
+				}),
+				Issuer: "iss-test",
+				L:      logger.Std,
+			}
 
-	d.CredChecker = &mockCredsChecker{err: errors.New("some err"), ok: false}
-	handler = d.LoginHandler
-	rr = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
-	require.NoError(t, err)
-	handler.ServeHTTP(rr, req)
-	assert.Equal(t, 500, rr.Code)
-	assert.Equal(t, `{"error":"failed to check user credentials"}`+"\n", rr.Body.String())
-
-	d.CredChecker = &mockCredsChecker{err: nil, ok: false}
-	handler = d.LoginHandler
-	rr = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
-	require.NoError(t, err)
-	handler.ServeHTTP(rr, req)
-	assert.Equal(t, 403, rr.Code)
-	assert.Equal(t, `{"error":"incorrect user or password"}`+"\n", rr.Body.String())
+			handler := http.HandlerFunc(d.LoginHandler)
+			rr := httptest.NewRecorder()
+			req := test.makeRequest(t)
+			handler.ServeHTTP(rr, req)
+			assert.Equal(t, test.wantCode, rr.Code)
+			assert.Equal(t, test.wantBody+"\n", rr.Body.String())
+		})
+	}
 }
 
 func TestDirect_Logout(t *testing.T) {
