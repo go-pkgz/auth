@@ -357,8 +357,8 @@ _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://githu
 
 #### Microsoft Auth Provider
 
-1 .Register a new application [using the Azure portal](https://docs.microsoft.com/en-us/graph/auth-register-app-v2).
-2.  Under **"Authentication/Platform configurations/Web"** enter the correct url constructed as domain + `/auth/microsoft/callback`. i.e. `https://example.mysite.com/auth/microsoft/callback`
+1. Register a new application [using the Azure portal](https://docs.microsoft.com/en-us/graph/auth-register-app-v2).
+2. Under **"Authentication/Platform configurations/Web"** enter the correct url constructed as domain + `/auth/microsoft/callback`. i.e. `https://example.mysite.com/auth/microsoft/callback`
 3. In "Overview" take note of the **Application (client) ID** 
 4. Choose the new project from the top right project dropdown (only if another project is selected)
 5.  Select "Certificates & secrets" and click on "+ New Client Secret". 
