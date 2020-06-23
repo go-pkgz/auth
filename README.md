@@ -148,7 +148,27 @@ In addition to oauth2 providers `auth.Service` allows to use direct user-defined
 
 Such provider acts like any other, i.e. will be registered as `/auth/local/login`.
 
-The API for this provider - `GET /auth/<name>/login?user=<user>&passwd=<password>&aud=<site_id>&session=[1|0]`
+The API for this provider supports both GET and POST requests:
+
+* GET request with user credentials provided as query params:
+  ```
+  GET /auth/<name>/login?user=<user>&passwd=<password>&aud=<site_id>&session=[1|0]
+  ```
+* POST request could be encoded as application/x-www-form-urlencoded or application/json:
+  ```
+  POST /auth/<name>/login?session=[1|0]
+  body: application/x-www-form-urlencoded
+  user=<user>&passwd=<password>&aud=<site_id>
+  ```
+  ```
+  POST /auth/<name>/login?session=[1|0]
+  body: application/json
+  {
+    "user": "name",
+    "passwd": "xyz",
+    "aud": "bar",
+  }
+  ```
 
 _note: password parameter doesn't have to be naked/real password and can be any kind of password hash prepared by caller._
 
