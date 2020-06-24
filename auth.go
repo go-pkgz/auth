@@ -284,6 +284,12 @@ func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender)
 	s.authMiddleware.Providers = s.providers
 }
 
+// AddCustomHandler adds user-defined self-implemented handler of auth provider
+func (s *Service) AddCustomHandler(handler provider.Provider) {
+	s.providers = append(s.providers, provider.NewService(handler))
+	s.authMiddleware.Providers = s.providers
+}
+
 // DevAuth makes dev oauth2 server, for testing and development only!
 func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
 	p, err := s.Provider("dev") // peak dev provider
