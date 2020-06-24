@@ -60,6 +60,9 @@ func TestProvider(t *testing.T) {
 	svc.AddProvider("battlenet", "cid", "csecret")
 	svc.AddProvider("bad", "cid", "csecret")
 
+	c := customHandler{}
+	svc.AddCustomHandler(c)
+
 	p, err := svc.Provider("dev")
 	assert.NoError(t, err)
 	op := p.Provider.(provider.Oauth2Handler)
@@ -74,7 +77,12 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "github", op.Name())
 
 	pp := svc.Providers()
-	assert.Equal(t, 7, len(pp))
+	assert.Equal(t, 8, len(pp))
+
+	ch, err := svc.Provider("telegramBotMySiteCom")
+	assert.NoError(t, err)
+	chp := ch.Provider.(provider.Provider)
+	assert.Equal(t, "telegramBotMySiteCom", chp.Name())
 }
 
 func TestIntegrationProtected(t *testing.T) {
@@ -429,3 +437,12 @@ func (m *mockSender) Send(to, text string) error {
 	m.text = text
 	return nil
 }
+
+type customHandler struct{}
+
+func (c customHandler) Name() string {
+	return "telegramBotMySiteCom"
+}
+func (c customHandler) LoginHandler(w http.ResponseWriter, r *http.Request)  {}
+func (c customHandler) AuthHandler(w http.ResponseWriter, r *http.Request)   {}
+func (c customHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {}
