@@ -266,6 +266,14 @@ In order to add a new oauth2 provider following input is required:
 		service.AddCustomProvider("custom123", auth.Client{Cid: "cid", Csecret: "csecret"}, prov.HandlerOpt)
 		```
 
+### Self-implemented auth handler
+Additionaly it is possible to implement own auth handler. It may be useful if auth provider is not supporting oauth standard (e.g. Telegram). Self-implemented handler has to implement `provider.Provider` interface.
+```go
+svc := NewService(options)
+c := customHandler{} // implements provider.Provider interface
+svc.AddCustomHandler(c)
+```
+
 ### Customization
 
 There are several ways to adjust functionality of the library:
