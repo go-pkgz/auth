@@ -267,11 +267,13 @@ In order to add a new oauth2 provider following input is required:
 		```
 
 ### Self-implemented auth handler
-Additionaly it is possible to implement own auth handler. It may be useful if auth provider is not supporting oauth standard (e.g. Telegram). Self-implemented handler has to implement `provider.Provider` interface.
+Additionally it is possible to implement own auth handler. It may be useful if auth provider does not conform to oauth standard. Self-implemented handler has to implement `provider.Provider` interface.
 ```go
-svc := NewService(options)
-c := customHandler{} // implements provider.Provider interface
-svc.AddCustomHandler(c)
+// customHandler implements provider.Provider interface
+c := customHandler{}
+
+// add customHandler to stack of auth handlers
+service.AddCustomHandler(c)
 ```
 
 ### Customization
