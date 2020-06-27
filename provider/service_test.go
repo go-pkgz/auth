@@ -23,10 +23,11 @@ func TestHandler(t *testing.T) {
 		resp   string
 	}{
 		{"GET", "/login", 200, "login"},
+		{"POST", "/login", 200, "login"},
 		{"GET", "/callback", 200, "callback"},
 		{"GET", "/logout", 200, "logout"},
 		{"GET", "/blah", 404, ""},
-		{"POST", "/login", 405, ""},
+		{"PUT", "/login", 405, ""},
 	}
 	svc := NewService(&mockHandler{})
 	handler := http.HandlerFunc(svc.Handler)
