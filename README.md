@@ -20,6 +20,7 @@ This library provides "social login" with Github, Google, Facebook, Microsoft, T
 - Pre-auth and post-auth hooks to handle custom use cases.
 - Middleware for easy integration into http routers
 - Wrappers to extract user info from the request
+- Role based access control
 
 ## Install
 
@@ -77,6 +78,7 @@ func main() {
 - `middleware.Auth` - requires authenticated user
 - `middleware.Admin` - requires authenticated admin user
 - `middleware.Trace` - doesn't require authenticated user, but adds user info to request
+- `middleware.RBAC` - requires authenticated user with passed role
 
 Also, there is a special middleware `middleware.UpdateUser` for population and modifying UserInfo in every request. See "Customization" for more details.
 
@@ -281,7 +283,7 @@ service.AddCustomHandler(c)
 There are several ways to adjust functionality of the library:
 
 1. `SecretReader` - interface with a single method `Get(aud string) string` to return the secret used for JWT signing and verification
-1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status and so on.
+1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status, roles and so on.
 1. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on **each request** wrapped with `Auth` middleware. This will be the place for special logic to reject some tokens or users.
 1. `UserUpdater` - interface with `Update(claims token.User) token.User` method.  This method will be called on **each request** wrapped with `UpdateUser` middleware. This will be the place for special logic modify User Info in request context. [Example of usage.]((https://github.com/go-pkgz/auth/blob/master/_example/main.go#L148))
 
