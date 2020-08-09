@@ -367,6 +367,49 @@ func TestAdminRequired(t *testing.T) {
 	assert.Equal(t, 401, resp.StatusCode, "not authorized")
 }
 
+func TestRBAC(t *testing.T) {
+	a := makeRBACTestAuth(t)
+
+	mux := http.NewServeMux()
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		u, err := token.GetUserInfo(r)
+		assert.NoError(t, err)
+		assert.Equal(t, token.User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png",
+			IP: "127.0.0.1", Email: "me@example.com", Audience: "test_sys",
+			Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"},
+			Role:       "employee"}, u)
+		w.WriteHeader(201)
+	}
+	mux.Handle("/authForEmployees", a.RBAC("employee", http.HandlerFunc(handler)))
+	mux.Handle("/authForExternals", a.RBAC("external", http.HandlerFunc(handler)))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
+	req, err := http.NewRequest("GET", server.URL+"/authForEmployees", nil)
+	require.Nil(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 201, resp.StatusCode, "valid token user")
+
+	req, err = http.NewRequest("GET", server.URL+"/authForExternals", nil)
+	require.Nil(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 403, resp.StatusCode)
+
+	data, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "Access denied\n", string(data))
+}
+
 func makeTestMux(_ *testing.T, a *Authenticator, required bool) http.Handler {
 	mux := http.NewServeMux()
 	authMiddleware := a.Auth
@@ -389,6 +432,28 @@ func makeTestAuth(_ *testing.T) Authenticator {
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
+			return claims
+		}),
+	})
+
+	return Authenticator{
+		AdminPasswd: "123456",
+		JWTService:  j,
+		Validator:   token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
+		L:           logger.Std,
+	}
+}
+
+func makeRBACTestAuth(_ *testing.T) Authenticator {
+	j := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
+		SecureCookies:  false,
+		TokenDuration:  time.Second,
+		CookieDuration: time.Hour * 24 * 31,
+		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
+			claims.User.SetStrAttr("stra", "stra-val")
+			claims.User.SetBoolAttr("boola", true)
+			claims.User.SetRole("employee")
 			return claims
 		}),
 	})
