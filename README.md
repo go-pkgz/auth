@@ -78,7 +78,7 @@ func main() {
 - `middleware.Auth` - requires authenticated user
 - `middleware.Admin` - requires authenticated admin user
 - `middleware.Trace` - doesn't require authenticated user, but adds user info to request
-- `middleware.RBAC` - requires authenticated user with passed role
+- `middleware.RBAC` - requires authenticated user with passed role(s)
 
 Also, there is a special middleware `middleware.UpdateUser` for population and modifying UserInfo in every request. See "Customization" for more details.
 
