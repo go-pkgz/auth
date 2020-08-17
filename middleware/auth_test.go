@@ -383,7 +383,7 @@ func TestRBAC(t *testing.T) {
 		w.WriteHeader(201)
 	})
 
-	mux.Handle("/authForEmployees", a.RBAC("employee")(handler))
+	mux.Handle("/authForEmployees", a.RBAC("someone", "employee")(handler))
 	mux.Handle("/authForExternals", a.RBAC("external")(handler))
 	server := httptest.NewServer(mux)
 	defer server.Close()

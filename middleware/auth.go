@@ -191,7 +191,7 @@ func (a *Authenticator) basicAdminUser(r *http.Request) bool {
 
 // RBAC middleware allows role based control for routes
 // this handler internally wrapped with auth(true) to avoid situation if RBAC defined without prior Auth
-func (a *Authenticator) RBAC(role string) func(http.Handler) http.Handler {
+func (a *Authenticator) RBAC(roles ...string) func(http.Handler) http.Handler {
 
 	f := func(h http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +201,14 @@ func (a *Authenticator) RBAC(role string) func(http.Handler) http.Handler {
 				return
 			}
 
-			if !strings.EqualFold(role, user.Role) {
+			var matched bool
+			for _, role := range roles {
+				if strings.EqualFold(role, user.Role) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
 				http.Error(w, "Access denied", http.StatusForbidden)
 				return
 			}
