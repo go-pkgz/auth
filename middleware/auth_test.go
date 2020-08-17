@@ -388,6 +388,7 @@ func TestRBAC(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
+	// employee route only, token with employee role
 	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req, err := http.NewRequest("GET", server.URL+"/authForEmployees", nil)
 	require.Nil(t, err)
@@ -400,6 +401,20 @@ func TestRBAC(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "valid token user")
 
+	// employee route only, token without employee role
+	expiration = int(365 * 24 * time.Hour.Seconds()) //nolint
+	req, err = http.NewRequest("GET", server.URL+"/authForEmployees", nil)
+	require.Nil(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/",
+		MaxAge: expiration, Secure: false})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+
+	client = &http.Client{Timeout: 5 * time.Second}
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode, "valid token user, incorrect role")
+
+	// external route only, token with employee role
 	req, err = http.NewRequest("GET", server.URL+"/authForExternals", nil)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtWithRole, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
