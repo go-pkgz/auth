@@ -27,6 +27,8 @@ var testJwtWithHandshake = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN
 
 var testJwtNoUser = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjI3ODkxOTE4MjIsImp0aSI6InJhbmRvbSBpZCIsImlzcyI6InJlbWFyazQyIiwibmJmIjoxNTI2ODg0MjIyfQ.sBpblkbBRzZsBSPPNrTWqA5h7h54solrw5L4IypJT_o"
 
+var testJwtWithRole = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn0sInJvbGUiOiJlbXBsb3llZSJ9fQ.VLW4_LUDZq_eFc9F1Zx1lbv2Whic2VHy6C0dJ5azL8A"
+
 func TestAuthJWTCookie(t *testing.T) {
 	a := makeTestAuth(t)
 
@@ -368,10 +370,10 @@ func TestAdminRequired(t *testing.T) {
 }
 
 func TestRBAC(t *testing.T) {
-	a := makeRBACTestAuth(t)
+	a := makeTestAuth(t)
 
 	mux := http.NewServeMux()
-	handler := func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, err := token.GetUserInfo(r)
 		assert.NoError(t, err)
 		assert.Equal(t, token.User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png",
@@ -379,16 +381,18 @@ func TestRBAC(t *testing.T) {
 			Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"},
 			Role:       "employee"}, u)
 		w.WriteHeader(201)
-	}
-	mux.Handle("/authForEmployees", a.RBAC("employee")(http.HandlerFunc(handler)))
-	mux.Handle("/authForExternals", a.RBAC("external")(http.HandlerFunc(handler)))
+	})
+
+	mux.Handle("/authForEmployees", a.RBAC("employee")(handler))
+	mux.Handle("/authForExternals", a.RBAC("external")(handler))
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req, err := http.NewRequest("GET", server.URL+"/authForEmployees", nil)
 	require.Nil(t, err)
-	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtWithRole, HttpOnly: true, Path: "/",
+		MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -398,7 +402,7 @@ func TestRBAC(t *testing.T) {
 
 	req, err = http.NewRequest("GET", server.URL+"/authForExternals", nil)
 	require.Nil(t, err)
-	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtWithRole, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err = client.Do(req)
 	require.NoError(t, err)
@@ -432,28 +436,6 @@ func makeTestAuth(_ *testing.T) Authenticator {
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
 			claims.User.SetStrAttr("stra", "stra-val")
 			claims.User.SetBoolAttr("boola", true)
-			return claims
-		}),
-	})
-
-	return Authenticator{
-		AdminPasswd: "123456",
-		JWTService:  j,
-		Validator:   token.ValidatorFunc(func(token string, claims token.Claims) bool { return true }),
-		L:           logger.Std,
-	}
-}
-
-func makeRBACTestAuth(_ *testing.T) Authenticator {
-	j := token.NewService(token.Opts{
-		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
-		SecureCookies:  false,
-		TokenDuration:  time.Second,
-		CookieDuration: time.Hour * 24 * 31,
-		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
-			claims.User.SetStrAttr("stra", "stra-val")
-			claims.User.SetBoolAttr("boola", true)
-			claims.User.SetRole("employee")
 			return claims
 		}),
 	})
