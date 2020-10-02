@@ -263,6 +263,32 @@ function getEmailTokenLoginForm(onSubmit) {
   return form;
 }
 
+async function getTelegramLoginForm() {
+  let token = await (await fetch("/auth/telegram/login")).text()
+
+  let form = document.createElement("div")
+  form.className = "anon-form login__anon-form"
+  form.style.display = "none"
+
+  let link = document.createElement("a")
+  link.href = `tg://resolve?domain=remarkauthbot&start=${token}`
+  link.innerHTML = "Click the link and press start"
+
+  // Poll login endpoint until user confirms login request
+  setInterval(() => {
+    fetch(`/auth/telegram/login?token=${token}`)
+      .then(resp => {
+        if (resp.status == 200) {
+          // Success
+          window.location.reload()
+        }
+      })
+  }, 1000);
+
+  form.appendChild(link)
+  return form
+}
+
 function errorHandler(err) {
   const status = document.querySelector(".status__label");
   if (err instanceof Response) {
@@ -384,6 +410,33 @@ function getLoginLinks() {
         formStage2.style.display = "none";
         formStage2.className = "email-form login__email-form hidden";
         a.appendChild(formStage2);
+      } else if (prov === "telegram") {
+        a = document.createElement("span");
+        a.dataset.provider = prov;
+        a.textContent = "Login with " + prov;
+        a.className = "pseudo login__prov";
+
+
+        getTelegramLoginForm()
+          .then((form) => {
+            a.addEventListener("click", e => {
+              const display = form.style.display;
+              formSwitcher();
+              if (display === "none") {
+                form.style.display = "block";
+                formSwitcher = () => {
+                  form.style.display = "none";
+                };
+
+              } else {
+                form.style.display = "none";
+                formSwitcher = () => { };
+              }
+            });
+
+            a.appendChild(form)
+          })
+          .catch(console.error)
       } else {
         a = document.createElement("span");
         a.dataset.provider = prov;
