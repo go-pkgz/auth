@@ -106,7 +106,7 @@ func main() {
 	go func() {
 		err := telegram.Run(context.Background())
 		if err != nil {
-			log.Fatalf("[PANIC] failed to start telegram", err)
+			log.Fatalf("[PANIC] failed to start telegram: %v", err)
 		}
 	}()
 

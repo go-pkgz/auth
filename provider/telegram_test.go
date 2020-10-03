@@ -71,7 +71,8 @@ func TestTelegramProvider(t *testing.T) {
 		} else if strings.Contains(r.URL.Path, "getUpdates") {
 			if servedToken != "" {
 				tmpl, _ := template.New("").Parse(responseTmpl)
-				tmpl.Execute(w, servedToken)
+				err := tmpl.Execute(w, servedToken)
+				assert.Nil(t, err)
 				return
 			}
 
@@ -107,7 +108,7 @@ func TestTelegramProvider(t *testing.T) {
 	go func() {
 		err := tg.Run(ctx)
 		if err != context.Canceled {
-			t.Fatal("Unexpected error: ", err)
+			t.Error("Unexpected error: ", err)
 		}
 	}()
 	time.Sleep(50 * time.Millisecond)
@@ -148,7 +149,8 @@ func TestTelegramProvider(t *testing.T) {
 		ID      string `id:"id"`
 		Picture string `json:"picture"`
 	}{}
-	json.NewDecoder(w.Body).Decode(&info)
+	err := json.NewDecoder(w.Body).Decode(&info)
+	assert.Nil(t, err)
 
 	assert.Equal(t, "Joe", info.Name)
 	assert.Contains(t, info.ID, "telegram_")

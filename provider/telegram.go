@@ -12,7 +12,7 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
+	authtoken "github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/rest"
 	"github.com/pkg/errors"
 )
@@ -52,7 +52,8 @@ func (t *TelegramHandler) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			break
+			ticker.Stop()
+			return ctx.Err()
 		case <-ticker.C:
 			var err error
 			offset, err = t.processUpdates(offset)
@@ -63,8 +64,6 @@ func (t *TelegramHandler) Run(ctx context.Context) error {
 		}
 	}
 
-	ticker.Stop()
-	return ctx.Err()
 }
 
 type telegramUpdate struct {
@@ -85,12 +84,12 @@ type telegramUpdate struct {
 // processUpdates processes a batch of updates from telegram servers
 // Returns offset for subsequest calls
 func (t *TelegramHandler) processUpdates(offset int) (int, error) {
-	url := fmt.Sprintf(`%s/bot%s/getUpdates?allowed_updates=["message"]`, t.TelegramURL, t.TelegramToken)
+	urlFormat := `%s/bot%s/getUpdates?allowed_updates=["message"]`
 	if offset != 0 {
-		url += fmt.Sprintf("&offset=%d", offset) // See core.telegram.org/bots/api#getupdates
+		urlFormat += fmt.Sprintf("&offset=%d", offset) // See core.telegram.org/bots/api#getupdates
 	}
 
-	resp, err := http.Get(url)
+	resp, err := http.Get(fmt.Sprintf(urlFormat, t.TelegramURL, t.TelegramToken))
 	if err != nil {
 		return offset, errors.Wrap(err, "can't initialize telegram notifications")
 	}
@@ -126,7 +125,10 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 		}
 
 		if !strings.HasPrefix(update.Message.Text, "/start ") {
-			t.send(update.Message.Chat.ID, t.ErrorMsg)
+			err := t.send(update.Message.Chat.ID, t.ErrorMsg)
+			if err != nil {
+				t.Logf("failed to notify telegram peer: ", err)
+			}
 			continue
 		}
 
@@ -135,7 +137,10 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 		t.mu.Lock()
 		if _, ok := t.tokens[token]; !ok { // No such token
 			t.mu.Unlock()
-			t.send(update.Message.Chat.ID, t.ErrorMsg)
+			err := t.send(update.Message.Chat.ID, t.ErrorMsg)
+			if err != nil {
+				t.Logf("failed to notify telegram peer: ", err)
+			}
 			continue
 		}
 
@@ -143,8 +148,12 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 			ID:   update.Message.Chat.ID,
 			Name: update.Message.Chat.Name,
 		}
-		t.send(update.Message.Chat.ID, t.SuccessMsg)
 		t.mu.Unlock()
+
+		err := t.send(update.Message.Chat.ID, t.SuccessMsg)
+		if err != nil {
+			t.Logf("failed to notify telegram peer: ", err)
+		}
 	}
 
 	return offset
@@ -152,8 +161,8 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 
 // Send a text message to a Telegram peer
 func (t *TelegramHandler) send(id int, msg string) error {
-	url := fmt.Sprintf(`%s/bot%s/sendMessage?chat_id=%d&text=%s`, t.TelegramURL, t.TelegramToken, id, msg)
-	resp, err := http.Get(url)
+	urlFormat := `%s/bot%s/sendMessage?chat_id=%d&text=%s`
+	resp, err := http.Get(fmt.Sprintf(urlFormat, t.TelegramURL, t.TelegramToken, id, msg))
 	if err != nil {
 		return errors.Wrap(err, "failed to send message")
 	}
@@ -162,24 +171,25 @@ func (t *TelegramHandler) send(id int, msg string) error {
 	return nil
 }
 
+// Name of the handler
 func (t *TelegramHandler) Name() string { return t.ProviderName }
 
+// LoginHandler generates and verifies login requests
 func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	queryToken := r.URL.Query().Get("token")
 	if queryToken == "" {
-		// GET /login
-		// Generate token and send token
+		// GET /login (No token supplied)
+		// Generate and send token
 		token, err := randToken()
 		if err != nil {
 			rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to generate code")
 		}
 
 		t.mu.Lock()
-		println(t.tokens == nil)
 		t.tokens[token] = nil // Mark token as not yet confirmed
 		t.mu.Unlock()
 
-		fmt.Fprintf(w, token)
+		fmt.Fprint(w, token)
 		return
 	}
 
@@ -193,12 +203,12 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u := token.User{
+	u := authtoken.User{
 		Name: userInfo.Name,
-		ID:   t.ProviderName + "_" + token.HashID(sha1.New(), fmt.Sprint(userInfo.ID)),
+		ID:   t.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(userInfo.ID)),
 	}
 
-	claims := token.Claims{
+	claims := authtoken.Claims{
 		User: &u,
 		StandardClaims: jwt.StandardClaims{
 			Id:     queryToken,
@@ -215,8 +225,10 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, r, claims.User)
 }
 
+// AuthHandler does nothing since we're don't have any callbacks
 func (t *TelegramHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {}
 
+// LogoutHandler - GET /logout
 func (t *TelegramHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	t.TokenService.Reset(w)
 }
