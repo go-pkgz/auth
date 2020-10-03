@@ -41,7 +41,10 @@ type userInfo struct {
 // Blocks caller
 func (t *TelegramHandler) Run(ctx context.Context) error {
 	// Initialization
+	t.mu.Lock()
 	t.tokens = make(map[string]*userInfo)
+	t.mu.Unlock()
+
 	if t.TelegramURL == "" {
 		t.TelegramURL = "https://api.telegram.org"
 	}
@@ -56,7 +59,7 @@ func (t *TelegramHandler) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			var err error
-			offset, err = t.processUpdates(offset)
+			offset, err = t.processUpdates(ctx, offset)
 			if err != nil {
 				t.Logf("Error while processing updates: %v", err)
 				continue
@@ -83,16 +86,22 @@ type telegramUpdate struct {
 
 // processUpdates processes a batch of updates from telegram servers
 // Returns offset for subsequest calls
-func (t *TelegramHandler) processUpdates(offset int) (int, error) {
-	urlFormat := `%s/bot%s/getUpdates?allowed_updates=["message"]`
+func (t *TelegramHandler) processUpdates(ctx context.Context, offset int) (int, error) {
+	url := fmt.Sprintf(`%s/bot%s/getUpdates?allowed_updates=["message"]`, t.TelegramURL, t.TelegramToken)
 	if offset != 0 {
-		urlFormat += fmt.Sprintf("&offset=%d", offset) // See core.telegram.org/bots/api#getupdates
+		url += fmt.Sprintf("&offset=%d", offset) // See core.telegram.org/bots/api#getupdates
 	}
 
-	resp, err := http.Get(fmt.Sprintf(urlFormat, t.TelegramURL, t.TelegramToken))
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return offset, errors.Wrap(err, "can't initialize telegram notifications")
+		return offset, errors.Wrap(err, "cannot create getUpdates request")
 	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return offset, errors.Wrap(err, "failed to fetch updates")
+	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -109,12 +118,12 @@ func (t *TelegramHandler) processUpdates(offset int) (int, error) {
 		return offset, errors.Errorf("apparently response is not ok")
 	}
 
-	offset = t.handleUpdates(upd, offset)
+	offset = t.handleUpdates(ctx, upd, offset)
 
 	return offset, nil
 }
 
-func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
+func (t *TelegramHandler) handleUpdates(ctx context.Context, upd telegramUpdate, offset int) int {
 	for _, update := range upd.Result {
 		if update.UpdateID >= offset {
 			offset = update.UpdateID + 1
@@ -125,7 +134,7 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 		}
 
 		if !strings.HasPrefix(update.Message.Text, "/start ") {
-			err := t.send(update.Message.Chat.ID, t.ErrorMsg)
+			err := t.send(ctx, update.Message.Chat.ID, t.ErrorMsg)
 			if err != nil {
 				t.Logf("failed to notify telegram peer: ", err)
 			}
@@ -137,7 +146,7 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 		t.mu.Lock()
 		if _, ok := t.tokens[token]; !ok { // No such token
 			t.mu.Unlock()
-			err := t.send(update.Message.Chat.ID, t.ErrorMsg)
+			err := t.send(ctx, update.Message.Chat.ID, t.ErrorMsg)
 			if err != nil {
 				t.Logf("failed to notify telegram peer: ", err)
 			}
@@ -150,7 +159,7 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 		}
 		t.mu.Unlock()
 
-		err := t.send(update.Message.Chat.ID, t.SuccessMsg)
+		err := t.send(ctx, update.Message.Chat.ID, t.SuccessMsg)
 		if err != nil {
 			t.Logf("failed to notify telegram peer: ", err)
 		}
@@ -160,9 +169,14 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 }
 
 // Send a text message to a Telegram peer
-func (t *TelegramHandler) send(id int, msg string) error {
-	urlFormat := `%s/bot%s/sendMessage?chat_id=%d&text=%s`
-	resp, err := http.Get(fmt.Sprintf(urlFormat, t.TelegramURL, t.TelegramToken, id, msg))
+func (t *TelegramHandler) send(ctx context.Context, id int, msg string) error {
+	url := fmt.Sprintf(`%s/bot%s/sendMessage?chat_id=%d&text=%s`, t.TelegramURL, t.TelegramToken, id, msg)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return errors.Wrap(err, "failed to create sendMessage request")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return errors.Wrap(err, "failed to send message")
 	}
