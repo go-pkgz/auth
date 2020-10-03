@@ -21,8 +21,10 @@ import (
 type TelegramHandler struct {
 	logger.L
 
-	ProviderName, TelegramToken string
-	ErrorMsg, SuccessMsg        string
+	ProviderName         string
+	TelegramToken        string
+	TelegramURL          string
+	ErrorMsg, SuccessMsg string
 
 	TokenService TokenService
 
@@ -40,6 +42,9 @@ type userInfo struct {
 func (t *TelegramHandler) Run(ctx context.Context) error {
 	// Initialization
 	t.tokens = make(map[string]*userInfo)
+	if t.TelegramURL == "" {
+		t.TelegramURL = "https://api.telegram.org"
+	}
 
 	ticker := time.NewTicker(time.Second)
 	offset := 0
@@ -62,8 +67,6 @@ func (t *TelegramHandler) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-const apiPrefix = "https://api.telegram.org/bot"
-
 type telegramUpdate struct {
 	OK     bool `json:"ok"`
 	Result []struct {
@@ -82,7 +85,7 @@ type telegramUpdate struct {
 // processUpdates processes a batch of updates from telegram servers
 // Returns offset for subsequest calls
 func (t *TelegramHandler) processUpdates(offset int) (int, error) {
-	url := fmt.Sprintf(`%s%s/getUpdates?allowed_updates=["message"]`, apiPrefix, t.TelegramToken)
+	url := fmt.Sprintf(`%s/bot%s/getUpdates?allowed_updates=["message"]`, t.TelegramURL, t.TelegramToken)
 	if offset != 0 {
 		url += fmt.Sprintf("&offset=%d", offset) // See core.telegram.org/bots/api#getupdates
 	}
@@ -149,7 +152,7 @@ func (t *TelegramHandler) handleUpdates(upd telegramUpdate, offset int) int {
 
 // Send a text message to a Telegram peer
 func (t *TelegramHandler) send(id int, msg string) error {
-	url := fmt.Sprintf(`%s%s/sendMessage?chat_id=%d&text=%s`, apiPrefix, t.TelegramToken, id, msg)
+	url := fmt.Sprintf(`%s/bot%s/sendMessage?chat_id=%d&text=%s`, t.TelegramURL, t.TelegramToken, id, msg)
 	resp, err := http.Get(url)
 	if err != nil {
 		return errors.Wrap(err, "failed to send message")
@@ -192,7 +195,7 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	u := token.User{
 		Name: userInfo.Name,
-		ID:   t.ProviderName + "_" + token.HashID(sha1.New(), string(userInfo.ID)),
+		ID:   t.ProviderName + "_" + token.HashID(sha1.New(), fmt.Sprint(userInfo.ID)),
 	}
 
 	claims := token.Claims{
