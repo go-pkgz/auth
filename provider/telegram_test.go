@@ -30,8 +30,8 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	assert.Equal(t, 200, w.Code, "request should succeed")
 	token := w.Body.String()
 
-	_ = respond("blah") // Simulate getUpdates with invalid user command
-	hr := respond("")   // Next request should be sendMessage
+	_ = respond("getUpdates", "blah") // Simulate getUpdates with invalid user command
+	hr := respond("sendMessage")      // Next request should be sendMessage
 	assert.Equal(t, "313131313", hr.URL.Query().Get("chat_id"))
 	assert.Equal(t, "error", hr.URL.Query().Get("text"))
 
@@ -59,8 +59,11 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.Equal(t, 200, w.Code, "request should succeed")
 	token := w.Body.String()
 
-	_ = respond(token) // Simulate an update where user send valid token
-	hr := respond("")  // Next request should be sendMessage
+	_ = respond("getUpdates", token)    // Simulate an update where user send valid token
+	_ = respond("getUserProfilePhotos") // Handler gets profile photos
+	_ = respond("getFile")              // Handler gets file url
+	hr := respond("sendMessage")        // Next request should be sendMessage
+
 	assert.Equal(t, "313131313", hr.URL.Query().Get("chat_id"))
 	assert.Equal(t, "success", hr.URL.Query().Get("text"))
 
@@ -81,7 +84,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 
 	assert.Equal(t, "Joe", info.Name)
 	assert.Contains(t, info.ID, "telegram_")
-	assert.Equal(t, "", info.Picture) // Not yet implemented
+	assert.Equal(t, "http://example.com/ava12345.png", info.Picture)
 }
 
 func TestTelegramLogout(t *testing.T) {
@@ -110,7 +113,7 @@ func TestTelegramLogout(t *testing.T) {
 	assert.Equal(t, time.Time{}, c.Expires)
 }
 
-const responseTmpl = `{
+const getUpdatesRespTmpl = `{
    "ok": true,
    "result": [
       {
@@ -144,35 +147,78 @@ const responseTmpl = `{
    ]
 }`
 
+const profilePhotosResp = `{
+   "ok": true,
+   "result": {
+      "total_count": 1,
+      "photos": [
+         [
+            {
+               "file_id": "1",
+               "file_unique_id": "A",
+               "file_size": 8900,
+               "width": 200,
+               "height": 200
+            }
+         ]
+      ]
+   }
+}`
+
+const getFileResp = `{
+   "ok": true,
+   "result": {
+      "file_id": "1",
+      "file_unique_id": "A",
+      "file_size": 8900,
+      "file_path": "photos/file_0.jpg"
+   }
+}`
+
 // setupServer initializes a mock Telegram server that captures incoming requests
-func setupServer(t *testing.T) (srv *httptest.Server, respond func(string) *http.Request) {
-	reqChan := make(chan string)
+func setupServer(t *testing.T) (srv *httptest.Server, respond func(...string) *http.Request) {
+	reqChan := make(chan []string)
 	respChan := make(chan *http.Request)
 
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := <-reqChan
+		args := <-reqChan
 		respChan <- r
 
 		assert.True(t, strings.Contains(r.URL.Path, "xxxsupersecretxxx"))
 
-		if strings.Contains(r.URL.Path, "sendMessage") {
-			return
-		}
+		errmsg := "request to mock server (%s) didn't contain expected path (%s)"
+		assert.Truef(t, strings.Contains(r.URL.Path, args[0]), errmsg, r.URL.Path, args[0])
 
-		if token != "" {
-			tmpl, _ := template.New("").Parse(responseTmpl)
-			err := tmpl.Execute(w, token)
-			assert.Nil(t, err)
-			return
+		switch {
+		case strings.Contains(r.URL.Path, "sendMessage"):
+			break
+
+		case strings.Contains(r.URL.Path, "getUserProfilePhotos"):
+			fmt.Fprint(w, profilePhotosResp)
+
+		case strings.Contains(r.URL.Path, "getFile"):
+			fmt.Fprint(w, getFileResp)
+
+		case strings.Contains(r.URL.Path, "getUpdates"):
+			token := args[1]
+			if token != "" {
+				tmpl, _ := template.New("").Parse(getUpdatesRespTmpl)
+				err := tmpl.Execute(w, token)
+				assert.Nil(t, err)
+				return
+			}
+
+		default:
+			t.Error("unknown endpoint")
 		}
 	}))
 
-	respond = func(token string) *http.Request {
-		reqChan <- token
+	respond = func(args ...string) *http.Request {
+		reqChan <- args
 		return <-respChan
 	}
 
-	return
+	return srv, respond
 }
 
 func setupHandler(t *testing.T, serverURL string) (tg *TelegramHandler, cleanup func()) {
@@ -189,6 +235,7 @@ func setupHandler(t *testing.T, serverURL string) (tg *TelegramHandler, cleanup 
 			TokenDuration:  time.Hour,
 			CookieDuration: time.Hour * 24 * 31,
 		}),
+		AvatarSaver: &mockAvatarSaver{},
 	}
 
 	assert.Equal(t, "telegram", tg.Name())

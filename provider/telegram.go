@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -27,14 +28,16 @@ type TelegramHandler struct {
 	ErrorMsg, SuccessMsg string
 
 	TokenService TokenService
+	AvatarSaver  AvatarSaver
 
 	mu     sync.Mutex           // Guard for the map below
 	tokens map[string]*userInfo // Tokens waiting for confirmation
 }
 
 type userInfo struct {
-	ID   int
-	Name string
+	ID     int
+	Name   string
+	Avatar string
 }
 
 // Run starts processing login requests sent in Telegram
@@ -70,7 +73,6 @@ func (t *TelegramHandler) Run(ctx context.Context) error {
 }
 
 type telegramUpdate struct {
-	OK     bool `json:"ok"`
 	Result []struct {
 		UpdateID int `json:"update_id"`
 		Message  struct {
@@ -91,36 +93,14 @@ func (t *TelegramHandler) processUpdates(ctx context.Context, offset int) (int, 
 	if offset != 0 {
 		url += fmt.Sprintf("&offset=%d", offset) // See core.telegram.org/bots/api#getupdates
 	}
+	var result telegramUpdate
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	err := requestTelegram(ctx, url, &result)
 	if err != nil {
-		return offset, errors.Wrap(err, "cannot create getUpdates request")
+		return offset, errors.Wrap(err, "failed to process update")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return offset, errors.Wrap(err, "failed to fetch updates")
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return offset, errors.Errorf("unexpected telegram status code %d", resp.StatusCode)
-	}
-
-	var upd telegramUpdate
-
-	if err = json.NewDecoder(resp.Body).Decode(&upd); err != nil {
-		return offset, errors.Wrap(err, "can't decode response")
-	}
-
-	if !upd.OK {
-		return offset, errors.Errorf("apparently response is not ok")
-	}
-
-	offset = t.handleUpdates(ctx, upd, offset)
-
-	return offset, nil
+	return t.handleUpdates(ctx, result, offset), nil
 }
 
 func (t *TelegramHandler) handleUpdates(ctx context.Context, upd telegramUpdate, offset int) int {
@@ -136,7 +116,7 @@ func (t *TelegramHandler) handleUpdates(ctx context.Context, upd telegramUpdate,
 		if !strings.HasPrefix(update.Message.Text, "/start ") {
 			err := t.send(ctx, update.Message.Chat.ID, t.ErrorMsg)
 			if err != nil {
-				t.Logf("failed to notify telegram peer: ", err)
+				t.Logf("failed to notify telegram peer: %v", err)
 			}
 			continue
 		}
@@ -148,20 +128,29 @@ func (t *TelegramHandler) handleUpdates(ctx context.Context, upd telegramUpdate,
 			t.mu.Unlock()
 			err := t.send(ctx, update.Message.Chat.ID, t.ErrorMsg)
 			if err != nil {
-				t.Logf("failed to notify telegram peer: ", err)
+				t.Logf("failed to notify telegram peer: %v", err)
 			}
 			continue
 		}
+		t.mu.Unlock()
 
+		avatarURL, err := t.getUserAvatar(ctx, update.Message.Chat.ID)
+		if err != nil {
+			t.Logf("failed to get user avatar: %v", err)
+			continue
+		}
+
+		t.mu.Lock()
 		t.tokens[token] = &userInfo{
-			ID:   update.Message.Chat.ID,
-			Name: update.Message.Chat.Name,
+			ID:     update.Message.Chat.ID,
+			Name:   update.Message.Chat.Name,
+			Avatar: avatarURL,
 		}
 		t.mu.Unlock()
 
-		err := t.send(ctx, update.Message.Chat.ID, t.SuccessMsg)
+		err = t.send(ctx, update.Message.Chat.ID, t.SuccessMsg)
 		if err != nil {
-			t.Logf("failed to notify telegram peer: ", err)
+			t.Logf("failed to notify telegram peer: %v", err)
 		}
 	}
 
@@ -183,6 +172,85 @@ func (t *TelegramHandler) send(ctx context.Context, id int, msg string) error {
 	defer resp.Body.Close()
 
 	return nil
+}
+
+func (t *TelegramHandler) getUserAvatar(ctx context.Context, id int) (string, error) {
+	// Get profile pictures
+	url := fmt.Sprintf(`%s/bot%s/getUserProfilePhotos?user_id=%d`, t.TelegramURL, t.TelegramToken, id)
+
+	var profilePhotos = struct {
+		Result struct {
+			Photos [][]struct {
+				ID string `json:"file_id"`
+			} `json:"photos"`
+		} `json:"result"`
+	}{}
+
+	err := requestTelegram(ctx, url, &profilePhotos)
+	if err != nil {
+		return "", err
+	}
+
+	// User does not have profile picture set or it is hidden in privacy settings
+	if len(profilePhotos.Result.Photos) == 0 {
+		return "", nil
+	}
+
+	// Get actual avatar url
+	last := len(profilePhotos.Result.Photos[0]) - 1
+	fileID := profilePhotos.Result.Photos[0][last].ID
+	url = fmt.Sprintf(`%s/bot%s/getFile?file_id=%s`, t.TelegramURL, t.TelegramToken, fileID)
+
+	var fileMetadata = struct {
+		Result struct {
+			Path string `json:"file_path"`
+		} `json:"result"`
+	}{}
+
+	err = requestTelegram(ctx, url, &fileMetadata)
+	if err != nil {
+		return "", err
+	}
+
+	avatarURL := fmt.Sprintf("%s/file/bot%s/%s", t.TelegramURL, t.TelegramToken, fileMetadata.Result.Path)
+
+	return avatarURL, nil
+}
+
+// little helper function to request telegram endpoints
+func requestTelegram(ctx context.Context, url string, data interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return errors.Wrap(err, "failed to create request")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "failed to send request")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return parseError(resp.Body)
+	}
+
+	if err = json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return errors.Wrap(err, "can't decode json response")
+	}
+
+	return nil
+}
+
+func parseError(r io.Reader) error {
+	var tgErr = struct {
+		Description string `json:"description"`
+	}{}
+
+	if err := json.NewDecoder(r).Decode(&tgErr); err != nil {
+		return errors.Wrap(err, "can't decode error")
+	}
+
+	return errors.Errorf("telegram returned error: %v", tgErr.Description)
 }
 
 // Name of the handler
@@ -218,8 +286,15 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	u := authtoken.User{
-		Name: userInfo.Name,
-		ID:   t.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(userInfo.ID)),
+		Name:    userInfo.Name,
+		ID:      t.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(userInfo.ID)),
+		Picture: userInfo.Avatar,
+	}
+
+	u, err := setAvatar(t.AvatarSaver, u, &http.Client{Timeout: 5 * time.Second})
+	if err != nil {
+		rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
+		return
 	}
 
 	claims := authtoken.Claims{

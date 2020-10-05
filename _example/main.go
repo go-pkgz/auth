@@ -101,6 +101,7 @@ func main() {
 
 		L:            log.Default(),
 		TokenService: service.TokenService(),
+		AvatarSaver:  service.AvatarProxy(),
 	}
 
 	go func() {
