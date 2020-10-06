@@ -191,6 +191,32 @@ func TestJWT_Set(t *testing.T) {
 	require.Equal(t, 2, len(cookies))
 	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 	assert.NotEqual(t, testJwtValidSess, cookies[0].Value, "iat changed the token")
+	assert.Equal(t, "", rr.Result().Header.Get(jwtCustomHeaderKey), "no JWT header set")
+}
+
+func TestJWT_SendJWTHeader(t *testing.T) {
+
+	j := NewService(Opts{
+		SecretReader:   SecretFunc(mockKeyStore),
+		SecureCookies:  false,
+		TokenDuration:  time.Hour,
+		CookieDuration: days31,
+		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
+			claims.User.SetStrAttr("stra", "stra-val")
+			claims.User.SetBoolAttr("boola", true)
+			return claims
+		}),
+		DisableIAT:    true,
+		SendJWTHeader: true,
+	})
+
+	rr := httptest.NewRecorder()
+	_, err := j.Set(rr, testClaims)
+	assert.Nil(t, err)
+	cookies := rr.Result().Cookies()
+	t.Log(cookies)
+	require.Equal(t, 0, len(cookies), "no cookies set")
+	assert.Equal(t, testJwtValid, rr.Result().Header.Get("X-JWT"))
 }
 
 func TestJWT_SetProlonged(t *testing.T) {
