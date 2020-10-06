@@ -29,7 +29,7 @@ func TestNewService(t *testing.T) {
 		TokenDuration:  time.Hour,
 		CookieDuration: time.Hour * 24,
 		Issuer:         "my-test-app",
-		URL:            "http://127.0.0.1:8080",
+		URL:            "http://127.0.0.1:8089",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
 		Logger:         logger.Std,
 	}
@@ -43,7 +43,7 @@ func TestNewService(t *testing.T) {
 func TestProvider(t *testing.T) {
 	options := Opts{
 		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
-		URL:          "http://127.0.0.1:8080",
+		URL:          "http://127.0.0.1:8089",
 		Logger:       logger.Std,
 	}
 	svc := NewService(options)
@@ -94,7 +94,7 @@ func TestIntegrationProtected(t *testing.T) {
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 
-	resp, err := client.Get("http://127.0.0.1:8080/private")
+	resp, err := client.Get("http://127.0.0.1:8089/private")
 	require.Nil(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 	defer resp.Body.Close()
@@ -103,7 +103,7 @@ func TestIntegrationProtected(t *testing.T) {
 	assert.Equal(t, "Unauthorized\n", string(body))
 
 	// check non-admin, permanent
-	resp, err = client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
+	resp, err = client.Get("http://127.0.0.1:8089/auth/dev/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
@@ -118,7 +118,7 @@ func TestIntegrationProtected(t *testing.T) {
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
-	resp, err = client.Get("http://127.0.0.1:8080/private")
+	resp, err = client.Get("http://127.0.0.1:8089/private")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
@@ -130,14 +130,14 @@ func TestIntegrationBasicAuth(t *testing.T) {
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", "http://127.0.0.1:8080/private", nil)
+	req, err := http.NewRequest("GET", "http://127.0.0.1:8089/private", nil)
 	require.Nil(t, err)
 	resp, err := client.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 	defer resp.Body.Close()
 
-	req, err = http.NewRequest("GET", "http://127.0.0.1:8080/private", nil)
+	req, err = http.NewRequest("GET", "http://127.0.0.1:8089/private", nil)
 	require.Nil(t, err)
 	req.SetBasicAuth("admin", "password")
 	resp, err = client.Do(req)
@@ -155,11 +155,11 @@ func TestIntegrationAvatar(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
+	resp, err := client.Get("http://127.0.0.1:8089/auth/dev/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	resp, err = http.Get("http://127.0.0.1:8080/api/v1/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image")
+	resp, err = http.Get("http://127.0.0.1:8089/api/v1/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, 200, resp.StatusCode)
@@ -173,7 +173,7 @@ func TestIntegrationList(t *testing.T) {
 	_, teardown := prepService(t)
 	defer teardown()
 
-	resp, err := http.Get("http://127.0.0.1:8080/auth/list")
+	resp, err := http.Get("http://127.0.0.1:8089/auth/list")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
@@ -187,7 +187,7 @@ func TestIntegrationUserInfo(t *testing.T) {
 	_, teardown := prepService(t)
 	defer teardown()
 
-	resp, err := http.Get("http://127.0.0.1:8080/auth/user")
+	resp, err := http.Get("http://127.0.0.1:8089/auth/user")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 401, resp.StatusCode)
@@ -197,13 +197,13 @@ func TestIntegrationUserInfo(t *testing.T) {
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 
 	// login
-	resp, err = client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
+	resp, err = client.Get("http://127.0.0.1:8089/auth/dev/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
 
 	// get user info
-	req, err := http.NewRequest("GET", "http://127.0.0.1:8080/auth/user", nil)
+	req, err := http.NewRequest("GET", "http://127.0.0.1:8089/auth/user", nil)
 	require.NoError(t, err)
 	t.Log(resp.Cookies())
 	resp, err = client.Do(req)
@@ -216,7 +216,7 @@ func TestIntegrationUserInfo(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user", Audience: "my-test-site",
-		Picture: "http://127.0.0.1:8080/api/v1/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image"}, u)
+		Picture: "http://127.0.0.1:8089/api/v1/avatar/ccfa2abd01667605b4e1fc4fcb91b1e1af323240.image"}, u)
 }
 
 func TestLogout(t *testing.T) {
@@ -227,17 +227,17 @@ func TestLogout(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:8080/auth/dev/login?site=my-test-site")
+	resp, err := client.Get("http://127.0.0.1:8089/auth/dev/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// logout
-	resp, err = client.Get("http://127.0.0.1:8080/auth/logout")
+	resp, err = client.Get("http://127.0.0.1:8089/auth/logout")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
 
-	resp, err = client.Get("http://127.0.0.1:8080/private")
+	resp, err = client.Get("http://127.0.0.1:8089/private")
 	require.Nil(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 	defer resp.Body.Close()
@@ -266,12 +266,12 @@ func TestBadRequests(t *testing.T) {
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:8080/auth/bad/login")
+	resp, err := client.Get("http://127.0.0.1:8089/auth/bad/login")
 	require.Nil(t, err)
 	assert.Equal(t, 400, resp.StatusCode)
 	defer resp.Body.Close()
 
-	resp, err = client.Get("http://127.0.0.1:8080/auth")
+	resp, err = client.Get("http://127.0.0.1:8089/auth")
 	require.Nil(t, err)
 	assert.Equal(t, 400, resp.StatusCode)
 	defer resp.Body.Close()
@@ -285,12 +285,12 @@ func TestDirectProvider(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:8080/auth/direct/login?user=dev_direct&passwd=bad")
+	resp, err := client.Get("http://127.0.0.1:8089/auth/direct/login?user=dev_direct&passwd=bad")
 	require.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 403, resp.StatusCode)
 
-	resp, err = client.Get("http://127.0.0.1:8080/auth/direct/login?user=dev_direct&passwd=password")
+	resp, err = client.Get("http://127.0.0.1:8089/auth/direct/login?user=dev_direct&passwd=password")
 	require.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
@@ -306,7 +306,7 @@ func TestDirectProvider(t *testing.T) {
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
-	resp, err = client.Get("http://127.0.0.1:8080/private")
+	resp, err = client.Get("http://127.0.0.1:8089/private")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
@@ -318,7 +318,7 @@ func TestVerifProvider(t *testing.T) {
 
 	// login
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:8080/auth/email/login?user=dev&address=xyz@gmail.com")
+	resp, err := client.Get("http://127.0.0.1:8089/auth/email/login?user=dev&address=xyz@gmail.com")
 	require.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
@@ -327,7 +327,7 @@ func TestVerifProvider(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 	client = &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	resp, err = client.Get("http://127.0.0.1:8080/auth/email/login?token=" + tkn)
+	resp, err = client.Get("http://127.0.0.1:8089/auth/email/login?token=" + tkn)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
@@ -341,7 +341,7 @@ func TestVerifProvider(t *testing.T) {
 	err = json.Unmarshal(body, &u)
 	require.NoError(t, err)
 	assert.Equal(t, token.User{Name: "dev", ID: "email_84714ea398a960df03e2619d1b850dfac25f585e",
-		Picture: "http://127.0.0.1:8080/api/v1/avatar/e8eb81cc51b1123059ab29575296cbfd8a6a1b6e.image"}, u)
+		Picture: "http://127.0.0.1:8089/api/v1/avatar/e8eb81cc51b1123059ab29575296cbfd8a6a1b6e.image"}, u)
 
 	require.Equal(t, 2, len(resp.Cookies()))
 	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
@@ -358,7 +358,7 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 		TokenDuration:  time.Hour,
 		CookieDuration: time.Hour * 24,
 		Issuer:         "my-test-app",
-		URL:            "http://127.0.0.1:8080",
+		URL:            "http://127.0.0.1:8089",
 		DisableXSRF:    true,
 		DisableIAT:     true,
 		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
@@ -406,7 +406,7 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 	mux.Handle("/auth/", authRoute)                                              // add token handlers
 	mux.Handle("/api/v1/avatar/", http.StripPrefix("/api/v1/avatar", avaRoutes)) // add avatar handler
 
-	l, err := net.Listen("tcp", "127.0.0.1:8080")
+	l, err := net.Listen("tcp", "127.0.0.1:8089")
 	require.Nil(t, err)
 	ts := httptest.NewUnstartedServer(mux)
 	assert.NoError(t, ts.Listener.Close())
