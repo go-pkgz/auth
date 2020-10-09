@@ -30,11 +30,11 @@ type TelegramHandler struct {
 	TokenService TokenService
 	AvatarSaver  AvatarSaver
 
-	mu           sync.Mutex             // Guard for the map below
-	authRequests map[string]authRequest // Tokens waiting for confirmation
+	mu           sync.Mutex                 // Guard for the map below
+	authRequests map[string]authRequestInfo // Tokens waiting for confirmation
 }
 
-type authRequest struct {
+type authRequestInfo struct {
 	confirmed bool // whether login request has been confirmed and userInfo set
 	expires   time.Time
 	user      *userInfo
@@ -51,7 +51,7 @@ type userInfo struct {
 func (t *TelegramHandler) Run(ctx context.Context) error {
 	// Initialization
 	t.mu.Lock()
-	t.authRequests = make(map[string]authRequest)
+	t.authRequests = make(map[string]authRequestInfo)
 	t.mu.Unlock()
 
 	if t.TelegramURL == "" {
@@ -290,7 +290,7 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		t.mu.Lock()
-		t.authRequests[token] = authRequest{
+		t.authRequests[token] = authRequestInfo{
 			expires: time.Now().Add(tokenLifetime),
 		}
 		t.mu.Unlock()

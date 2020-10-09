@@ -272,5 +272,5 @@ func setupHandler(t *testing.T, serverURL string) (tg *TelegramHandler, cleanup 
 	}()
 	time.Sleep(50 * time.Millisecond)
 
-	return
+	return tg, cleanup
 }
