@@ -3,12 +3,13 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
-	"text/template"
 	"time"
 
 	authtoken "github.com/go-pkgz/auth/token"
@@ -16,10 +17,12 @@ import (
 )
 
 func TestTelegramUnconfirmedRequest(t *testing.T) {
-	server, respond := setupServer(t)
-	defer server.Close()
+	m := &tgMock{
+		t:            t,
+		expectedText: "error",
+	}
 
-	tg, cleanup := setupHandler(t, server.URL)
+	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
 	// Get token
@@ -29,11 +32,6 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 
 	assert.Equal(t, 200, w.Code, "request should succeed")
 	token := w.Body.String()
-
-	respond("getUpdates", "blah") // Simulate getUpdates with invalid user command
-	hr := respond("sendMessage")  // Next request should be sendMessage
-	assert.Equal(t, "313131313", hr.URL.Query().Get("chat_id"))
-	assert.Equal(t, "error", hr.URL.Query().Get("text"))
 
 	// Make sure we get error without first confirming auth request
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
@@ -43,12 +41,9 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	assert.Equal(t, 404, w.Code, "response code should be 404")
 	assert.Equal(t, `{"error":"request not yet confirmed"}`+"\n", w.Body.String())
 
-	time.Sleep(time.Second)
+	time.Sleep(tokenLifetime)
 
-	respond("getUpdates", "blah")
-	respond("sendMessage")
-
-	// Confirm token expired
+	// Confirm auth request expired
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -58,10 +53,12 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 }
 
 func TestTelegramConfirmedRequest(t *testing.T) {
-	server, respond := setupServer(t)
-	defer server.Close()
+	m := &tgMock{
+		t:            t,
+		expectedText: "success",
+	}
 
-	tg, cleanup := setupHandler(t, server.URL)
+	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
 	// Get token
@@ -72,13 +69,10 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.Equal(t, 200, w.Code, "request should succeed")
 	token := w.Body.String()
 
-	_ = respond("getUpdates", token)    // Simulate an update where user send valid token
-	_ = respond("getUserProfilePhotos") // Handler gets profile photos
-	_ = respond("getFile")              // Handler gets file url
-	hr := respond("sendMessage")        // Next request should be sendMessage
-
-	assert.Equal(t, "313131313", hr.URL.Query().Get("chat_id"))
-	assert.Equal(t, "success", hr.URL.Query().Get("text"))
+	m.Lock()
+	m.token = token
+	m.Unlock()
+	time.Sleep(pollInterval * 2)
 
 	// The token should be confirmed by now
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
@@ -109,10 +103,9 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 }
 
 func TestTelegramLogout(t *testing.T) {
-	server, _ := setupServer(t)
-	defer server.Close()
+	m := &tgMock{t: t}
 
-	tg, cleanup := setupHandler(t, server.URL)
+	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
 	// Same TestVerifyHandler_Logout
@@ -134,7 +127,40 @@ func TestTelegramLogout(t *testing.T) {
 	assert.Equal(t, time.Time{}, c.Expires)
 }
 
-const getUpdatesRespTmpl = `{
+func setupHandler(t *testing.T, m *tgMock) (tg *TelegramHandler, cleanup func()) {
+	pollInterval = time.Millisecond * 10
+	tokenLifetime = time.Millisecond * 100
+
+	tg = &TelegramHandler{
+		ProviderName: "telegram",
+		ErrorMsg:     "error",
+		SuccessMsg:   "success",
+
+		L: t,
+		TokenService: authtoken.NewService(authtoken.Opts{
+			SecretReader:   authtoken.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		AvatarSaver: &mockAvatarSaver{},
+		Telegram:    m,
+	}
+
+	assert.Equal(t, "telegram", tg.Name())
+
+	ctx, cleanup := context.WithCancel(context.Background())
+	go func() {
+		err := tg.Run(ctx)
+		if err != context.Canceled {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	return tg, cleanup
+}
+
+const getUpdatesResp = `{
    "ok": true,
    "result": [
       {
@@ -155,7 +181,7 @@ const getUpdatesRespTmpl = `{
                "type": "private"
             },
             "date": 1601665548,
-            "text": "/start {{.}}",
+            "text": "/start %s",
             "entities": [
                {
                   "offset": 0,
@@ -167,6 +193,71 @@ const getUpdatesRespTmpl = `{
       }
    ]
 }`
+
+type tgMock struct {
+	t            *testing.T
+	expectedText string
+	token        string
+
+	sync.Mutex
+}
+
+func (m *tgMock) GetUpdates(ctx context.Context) (*telegramUpdate, error) {
+	m.Lock()
+	if m.token != "" {
+		m.Unlock()
+		var upd telegramUpdate
+		resp := fmt.Sprintf(getUpdatesResp, m.token)
+
+		err := json.Unmarshal([]byte(resp), &upd)
+		if err != nil {
+			m.t.Fatal(err)
+		}
+		return &upd, nil
+	}
+	m.Unlock()
+
+	return nil, errors.New("no updates")
+}
+
+func (m *tgMock) Avatar(ctx context.Context, userID int) (string, error) {
+	assert.Equal(m.t, userID, 313131313)
+	return "https://example.com/telegram/avatar.jpg", nil
+}
+
+func (m *tgMock) Send(ctx context.Context, userID int, text string) error {
+	assert.Equal(m.t, userID, 313131313)
+	assert.Equal(m.t, m.expectedText, text)
+	return nil
+}
+
+//
+func TestTgAPI_GetUpdates(t *testing.T) {
+	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "", r.URL.Query().Get("offset"))
+		fmt.Fprintf(w, getUpdatesResp, "token")
+	}))
+	defer cleanup()
+
+	upd, err := tg.GetUpdates(context.Background())
+	assert.Nil(t, err)
+
+	assert.Len(t, upd.Result, 1)
+
+	assert.Equal(t, 1001, tg.updateOffset)
+	assert.Equal(t, "/start token", upd.Result[0].Message.Text)
+}
+
+func TestTgAPI_Send(t *testing.T) {
+	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "123", r.URL.Query().Get("chat_id"))
+		assert.Equal(t, "hello there", r.URL.Query().Get("text"))
+	}))
+	defer cleanup()
+
+	err := tg.Send(context.Background(), 123, "hello there")
+	assert.Nil(t, err)
+}
 
 const profilePhotosResp = `{
    "ok": true,
@@ -196,81 +287,52 @@ const getFileResp = `{
    }
 }`
 
-// setupServer initializes a mock Telegram server that captures incoming requests
-func setupServer(t *testing.T) (srv *httptest.Server, respond func(...string) *http.Request) {
-	reqChan := make(chan []string)
-	respChan := make(chan *http.Request)
-
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		args := <-reqChan
-		respChan <- r
-
-		assert.True(t, strings.Contains(r.URL.Path, "xxxsupersecretxxx"))
-
-		errmsg := "request to mock server (%s) didn't contain expected path (%s)"
-		assert.Truef(t, strings.Contains(r.URL.Path, args[0]), errmsg, r.URL.Path, args[0])
-
-		switch {
-		case strings.Contains(r.URL.Path, "sendMessage"):
-			break
-
-		case strings.Contains(r.URL.Path, "getUserProfilePhotos"):
+func TestTgAPI_Avatar(t *testing.T) {
+	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.String(), "getUserProfilePhotos") {
+			assert.Equal(t, "123", r.URL.Query().Get("user_id"))
 			fmt.Fprint(w, profilePhotosResp)
-
-		case strings.Contains(r.URL.Path, "getFile"):
-			fmt.Fprint(w, getFileResp)
-
-		case strings.Contains(r.URL.Path, "getUpdates"):
-			token := args[1]
-			if token != "" {
-				tmpl, _ := template.New("").Parse(getUpdatesRespTmpl)
-				err := tmpl.Execute(w, token)
-				assert.Nil(t, err)
-				return
-			}
-
-		default:
-			t.Error("unknown endpoint")
+			return
 		}
+
+		assert.Equal(t, "1", r.URL.Query().Get("file_id"))
+		fmt.Fprint(w, getFileResp)
+
 	}))
+	defer cleanup()
 
-	respond = func(args ...string) *http.Request {
-		reqChan <- args
-		return <-respChan
-	}
+	url, err := tg.Avatar(context.Background(), 123)
+	assert.Nil(t, err)
 
-	return srv, respond
+	expected := fmt.Sprintf("%s/file/bot%s/photos/file_0.jpg", tg.endpoint, tg.token)
+	assert.Equal(t, expected, url)
 }
 
-func setupHandler(t *testing.T, serverURL string) (tg *TelegramHandler, cleanup func()) {
-	tokenLifetime = time.Second
+const errorResp = `{"ok":false,"error_code":400,"description":"Very bad request"}`
 
-	tg = &TelegramHandler{
-		ProviderName:  "telegram",
-		TelegramToken: "xxxsupersecretxxx",
-		TelegramURL:   serverURL,
-		ErrorMsg:      "error",
-		SuccessMsg:    "success",
+func TestTgAPI_Error(t *testing.T) {
+	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(400)
+		fmt.Fprint(w, errorResp)
+	}))
+	defer cleanup()
 
-		L: t,
-		TokenService: authtoken.NewService(authtoken.Opts{
-			SecretReader:   authtoken.SecretFunc(func(string) (string, error) { return "secret", nil }),
-			TokenDuration:  time.Hour,
-			CookieDuration: time.Hour * 24 * 31,
-		}),
-		AvatarSaver: &mockAvatarSaver{},
+	_, err := tg.GetUpdates(context.Background())
+	assert.NotNil(t, err)
+	assert.Equal(t, "failed to fetch updates: telegram returned error: Very bad request", err.Error())
+}
+
+func prepareTgAPI(t *testing.T, h http.HandlerFunc) (tg *tgAPI, cleanup func()) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Contains(t, r.URL.String(), "xxxsupersecretxxx")
+		h(w, r)
+	}))
+
+	tg = &tgAPI{
+		L:        t,
+		endpoint: srv.URL,
+		token:    "xxxsupersecretxxx",
 	}
 
-	assert.Equal(t, "telegram", tg.Name())
-
-	ctx, cleanup := context.WithCancel(context.Background())
-	go func() {
-		err := tg.Run(ctx)
-		if err != context.Canceled {
-			t.Errorf("Unexpected error: %v", err)
-		}
-	}()
-	time.Sleep(50 * time.Millisecond)
-
-	return tg, cleanup
+	return tg, srv.Close
 }

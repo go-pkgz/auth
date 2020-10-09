@@ -94,10 +94,10 @@ func main() {
 
 	// add telegram provider
 	telegram := provider.TelegramHandler{
-		ProviderName:  "telegram",
-		TelegramToken: os.Getenv("TELEGRAM_TOKEN"),
-		ErrorMsg:      "❌ Invalid auth request. Please try clicking link again.",
-		SuccessMsg:    "✅ You have successfully authenticated!",
+		ProviderName: "telegram",
+		ErrorMsg:     "❌ Invalid auth request. Please try clicking link again.",
+		SuccessMsg:   "✅ You have successfully authenticated!",
+		Telegram:     provider.NewTelegramAPI(os.Getenv("TELEGRAM_TOKEN"), log.Default()),
 
 		L:            log.Default(),
 		TokenService: service.TokenService(),
