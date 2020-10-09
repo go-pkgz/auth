@@ -30,8 +30,8 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	assert.Equal(t, 200, w.Code, "request should succeed")
 	token := w.Body.String()
 
-	_ = respond("getUpdates", "blah") // Simulate getUpdates with invalid user command
-	hr := respond("sendMessage")      // Next request should be sendMessage
+	respond("getUpdates", "blah") // Simulate getUpdates with invalid user command
+	hr := respond("sendMessage")  // Next request should be sendMessage
 	assert.Equal(t, "313131313", hr.URL.Query().Get("chat_id"))
 	assert.Equal(t, "error", hr.URL.Query().Get("text"))
 
@@ -41,7 +41,20 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	tg.LoginHandler(w, r)
 
 	assert.Equal(t, 404, w.Code, "response code should be 404")
-	assert.Equal(t, `{"error":"token not yet confirmed"}`+"\n", w.Body.String())
+	assert.Equal(t, `{"error":"request not yet confirmed"}`+"\n", w.Body.String())
+
+	time.Sleep(time.Second)
+
+	respond("getUpdates", "blah")
+	respond("sendMessage")
+
+	// Confirm token expired
+	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
+	w = httptest.NewRecorder()
+	tg.LoginHandler(w, r)
+
+	assert.Equal(t, 404, w.Code, "response code should be 404")
+	assert.Equal(t, `{"error":"request expired"}`+"\n", w.Body.String())
 }
 
 func TestTelegramConfirmedRequest(t *testing.T) {
@@ -85,6 +98,14 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.Equal(t, "Joe", info.Name)
 	assert.Contains(t, info.ID, "telegram_")
 	assert.Equal(t, "http://example.com/ava12345.png", info.Picture)
+
+	// Test request has been invalidated
+	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
+	w = httptest.NewRecorder()
+	tg.LoginHandler(w, r)
+
+	assert.Equal(t, 404, w.Code, "request should get revoked")
+	assert.Equal(t, `{"error":"request expired"}`+"\n", w.Body.String())
 }
 
 func TestTelegramLogout(t *testing.T) {
@@ -222,6 +243,8 @@ func setupServer(t *testing.T) (srv *httptest.Server, respond func(...string) *h
 }
 
 func setupHandler(t *testing.T, serverURL string) (tg *TelegramHandler, cleanup func()) {
+	tokenLifetime = time.Second
+
 	tg = &TelegramHandler{
 		ProviderName:  "telegram",
 		TelegramToken: "xxxsupersecretxxx",

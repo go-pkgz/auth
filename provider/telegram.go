@@ -30,8 +30,14 @@ type TelegramHandler struct {
 	TokenService TokenService
 	AvatarSaver  AvatarSaver
 
-	mu     sync.Mutex           // Guard for the map below
-	tokens map[string]*userInfo // Tokens waiting for confirmation
+	mu           sync.Mutex             // Guard for the map below
+	authRequests map[string]authRequest // Tokens waiting for confirmation
+}
+
+type authRequest struct {
+	confirmed bool // whether login request has been confirmed and userInfo set
+	expires   time.Time
+	user      *userInfo
 }
 
 type userInfo struct {
@@ -45,7 +51,7 @@ type userInfo struct {
 func (t *TelegramHandler) Run(ctx context.Context) error {
 	// Initialization
 	t.mu.Lock()
-	t.tokens = make(map[string]*userInfo)
+	t.authRequests = make(map[string]authRequest)
 	t.mu.Unlock()
 
 	if t.TelegramURL == "" {
@@ -67,9 +73,18 @@ func (t *TelegramHandler) Run(ctx context.Context) error {
 				t.Logf("Error while processing updates: %v", err)
 				continue
 			}
+
+			// Purge expired requests
+			now := time.Now()
+			t.mu.Lock()
+			for key, req := range t.authRequests {
+				if now.After(req.expires) {
+					delete(t.authRequests, key)
+				}
+			}
+			t.mu.Unlock()
 		}
 	}
-
 }
 
 type telegramUpdate struct {
@@ -124,7 +139,8 @@ func (t *TelegramHandler) handleUpdates(ctx context.Context, upd telegramUpdate,
 		token := strings.TrimPrefix(update.Message.Text, "/start ")
 
 		t.mu.Lock()
-		if _, ok := t.tokens[token]; !ok { // No such token
+		authRequest, ok := t.authRequests[token]
+		if !ok { // No such token
 			t.mu.Unlock()
 			err := t.send(ctx, update.Message.Chat.ID, t.ErrorMsg)
 			if err != nil {
@@ -140,12 +156,15 @@ func (t *TelegramHandler) handleUpdates(ctx context.Context, upd telegramUpdate,
 			continue
 		}
 
-		t.mu.Lock()
-		t.tokens[token] = &userInfo{
+		authRequest.confirmed = true
+		authRequest.user = &userInfo{
 			ID:     update.Message.Chat.ID,
 			Name:   update.Message.Chat.Name,
 			Avatar: avatarURL,
 		}
+
+		t.mu.Lock()
+		t.authRequests[token] = authRequest
 		t.mu.Unlock()
 
 		err = t.send(ctx, update.Message.Chat.ID, t.SuccessMsg)
@@ -256,6 +275,9 @@ func parseError(r io.Reader) error {
 // Name of the handler
 func (t *TelegramHandler) Name() string { return t.ProviderName }
 
+// changed in tests
+var tokenLifetime = time.Minute * 10
+
 // LoginHandler generates and verifies login requests
 func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	queryToken := r.URL.Query().Get("token")
@@ -268,7 +290,9 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		t.mu.Lock()
-		t.tokens[token] = nil // Mark token as not yet confirmed
+		t.authRequests[token] = authRequest{
+			expires: time.Now().Add(tokenLifetime),
+		}
 		t.mu.Unlock()
 
 		fmt.Fprint(w, token)
@@ -277,18 +301,24 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GET /login?token=blah
 	t.mu.Lock()
-	userInfo := t.tokens[queryToken]
+	authRequest, ok := t.authRequests[queryToken]
 	t.mu.Unlock()
 
-	if userInfo == nil {
-		rest.SendErrorJSON(w, r, nil, http.StatusNotFound, nil, "token not yet confirmed")
+	if !ok || time.Now().After(authRequest.expires) {
+		delete(t.authRequests, queryToken)
+		rest.SendErrorJSON(w, r, nil, http.StatusNotFound, nil, "request expired")
+		return
+	}
+
+	if !authRequest.confirmed {
+		rest.SendErrorJSON(w, r, nil, http.StatusNotFound, nil, "request not yet confirmed")
 		return
 	}
 
 	u := authtoken.User{
-		Name:    userInfo.Name,
-		ID:      t.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(userInfo.ID)),
-		Picture: userInfo.Avatar,
+		Name:    authRequest.user.Name,
+		ID:      t.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(authRequest.user.ID)),
+		Picture: authRequest.user.Avatar,
 	}
 
 	u, err := setAvatar(t.AvatarSaver, u, &http.Client{Timeout: 5 * time.Second})
@@ -312,6 +342,11 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rest.RenderJSON(w, r, claims.User)
+
+	// Delete request
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.authRequests, queryToken)
 }
 
 // AuthHandler does nothing since we're don't have any callbacks
