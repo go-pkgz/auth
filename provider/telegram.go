@@ -56,11 +56,11 @@ var tgPollInterval = time.Second
 
 // Run starts processing login requests sent in Telegram
 // Blocks caller
-func (t *TelegramHandler) Run(ctx context.Context) error {
+func (th *TelegramHandler) Run(ctx context.Context) error {
 	// Initialization
-	t.requests.Lock()
-	t.requests.data = make(map[string]tgAuthRequest)
-	t.requests.Unlock()
+	th.requests.Lock()
+	th.requests.data = make(map[string]tgAuthRequest)
+	th.requests.Unlock()
 
 	ticker := time.NewTicker(tgPollInterval)
 
@@ -70,21 +70,21 @@ func (t *TelegramHandler) Run(ctx context.Context) error {
 			ticker.Stop()
 			return ctx.Err()
 		case <-ticker.C:
-			err := t.processUpdates(ctx)
+			err := th.processUpdates(ctx)
 			if err != nil {
-				t.Logf("Error while processing updates: %v", err)
+				th.Logf("Error while processing updates: %v", err)
 				continue
 			}
 
 			// Purge expired requests
 			now := time.Now()
-			t.requests.Lock()
-			for key, req := range t.requests.data {
+			th.requests.Lock()
+			for key, req := range th.requests.data {
 				if now.After(req.expires) {
-					delete(t.requests.data, key)
+					delete(th.requests.data, key)
 				}
 			}
-			t.requests.Unlock()
+			th.requests.Unlock()
 		}
 	}
 }
@@ -105,8 +105,8 @@ type telegramUpdate struct {
 
 // processUpdates processes a batch of updates from telegram servers
 // Returns offset for subsequest calls
-func (t *TelegramHandler) processUpdates(ctx context.Context) error {
-	updates, err := t.Telegram.GetUpdates(ctx)
+func (th *TelegramHandler) processUpdates(ctx context.Context) error {
+	updates, err := th.Telegram.GetUpdates(ctx)
 	if err != nil {
 		return err
 	}
@@ -117,34 +117,34 @@ func (t *TelegramHandler) processUpdates(ctx context.Context) error {
 		}
 
 		if !strings.HasPrefix(update.Message.Text, "/start ") {
-			err := t.Telegram.Send(ctx, update.Message.Chat.ID, t.ErrorMsg)
+			err := th.Telegram.Send(ctx, update.Message.Chat.ID, th.ErrorMsg)
 			if err != nil {
-				t.Logf("failed to notify telegram peer: %v", err)
+				th.Logf("failed to notify telegram peer: %v", err)
 			}
 			continue
 		}
 
 		token := strings.TrimPrefix(update.Message.Text, "/start ")
 
-		t.requests.RLock()
-		authRequest, ok := t.requests.data[token]
+		th.requests.RLock()
+		authRequest, ok := th.requests.data[token]
 		if !ok { // No such token
-			t.requests.RUnlock()
-			err := t.Telegram.Send(ctx, update.Message.Chat.ID, t.ErrorMsg)
+			th.requests.RUnlock()
+			err := th.Telegram.Send(ctx, update.Message.Chat.ID, th.ErrorMsg)
 			if err != nil {
-				t.Logf("failed to notify telegram peer: %v", err)
+				th.Logf("failed to notify telegram peer: %v", err)
 			}
 			continue
 		}
-		t.requests.RUnlock()
+		th.requests.RUnlock()
 
-		avatarURL, err := t.Telegram.Avatar(ctx, update.Message.Chat.ID)
+		avatarURL, err := th.Telegram.Avatar(ctx, update.Message.Chat.ID)
 		if err != nil {
-			t.Logf("failed to get user avatar: %v", err)
+			th.Logf("failed to get user avatar: %v", err)
 			continue
 		}
 
-		id := t.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(update.Message.Chat.ID))
+		id := th.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(update.Message.Chat.ID))
 
 		authRequest.confirmed = true
 		authRequest.user = &authtoken.User{
@@ -153,13 +153,13 @@ func (t *TelegramHandler) processUpdates(ctx context.Context) error {
 			Picture: avatarURL,
 		}
 
-		t.requests.Lock()
-		t.requests.data[token] = authRequest
-		t.requests.Unlock()
+		th.requests.Lock()
+		th.requests.data[token] = authRequest
+		th.requests.Unlock()
 
-		err = t.Telegram.Send(ctx, update.Message.Chat.ID, t.SuccessMsg)
+		err = th.Telegram.Send(ctx, update.Message.Chat.ID, th.SuccessMsg)
 		if err != nil {
-			t.Logf("failed to notify telegram peer: %v", err)
+			th.Logf("failed to notify telegram peer: %v", err)
 		}
 	}
 
@@ -167,41 +167,41 @@ func (t *TelegramHandler) processUpdates(ctx context.Context) error {
 }
 
 // Name of the handler
-func (t *TelegramHandler) Name() string { return t.ProviderName }
+func (th *TelegramHandler) Name() string { return th.ProviderName }
 
 // Default token lifetime. Changed in tests
 var tgAuthRequestLifetime = time.Minute * 10
 
 // LoginHandler generates and verifies login requests
-func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	queryToken := r.URL.Query().Get("token")
 	if queryToken == "" {
 		// GET /login (No token supplied)
 		// Generate and send token
 		token, err := randToken()
 		if err != nil {
-			rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to generate code")
+			rest.SendErrorJSON(w, r, th.L, http.StatusInternalServerError, err, "failed to generate code")
 		}
 
-		t.requests.Lock()
-		t.requests.data[token] = tgAuthRequest{
+		th.requests.Lock()
+		th.requests.data[token] = tgAuthRequest{
 			expires: time.Now().Add(tgAuthRequestLifetime),
 		}
-		t.requests.Unlock()
+		th.requests.Unlock()
 
 		fmt.Fprint(w, token)
 		return
 	}
 
 	// GET /login?token=blah
-	t.requests.RLock()
-	authRequest, ok := t.requests.data[queryToken]
-	t.requests.RUnlock()
+	th.requests.RLock()
+	authRequest, ok := th.requests.data[queryToken]
+	th.requests.RUnlock()
 
 	if !ok || time.Now().After(authRequest.expires) {
-		t.requests.Lock()
-		delete(t.requests.data, queryToken)
-		t.requests.Unlock()
+		th.requests.Lock()
+		delete(th.requests.data, queryToken)
+		th.requests.Unlock()
 
 		rest.SendErrorJSON(w, r, nil, http.StatusNotFound, nil, "request expired")
 		return
@@ -212,9 +212,9 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := setAvatar(t.AvatarSaver, *authRequest.user, &http.Client{Timeout: 5 * time.Second})
+	u, err := setAvatar(th.AvatarSaver, *authRequest.user, &http.Client{Timeout: 5 * time.Second})
 	if err != nil {
-		rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
+		rest.SendErrorJSON(w, r, th.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
 		return
 	}
 
@@ -222,30 +222,30 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		User: &u,
 		StandardClaims: jwt.StandardClaims{
 			Id:     queryToken,
-			Issuer: t.ProviderName,
+			Issuer: th.ProviderName,
 		},
 		SessionOnly: false, // TODO
 	}
 
-	if _, err := t.TokenService.Set(w, claims); err != nil {
-		rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to set token")
+	if _, err := th.TokenService.Set(w, claims); err != nil {
+		rest.SendErrorJSON(w, r, th.L, http.StatusInternalServerError, err, "failed to set token")
 		return
 	}
 
 	rest.RenderJSON(w, r, claims.User)
 
 	// Delete request
-	t.requests.Lock()
-	defer t.requests.Unlock()
-	delete(t.requests.data, queryToken)
+	th.requests.Lock()
+	defer th.requests.Unlock()
+	delete(th.requests.data, queryToken)
 }
 
 // AuthHandler does nothing since we're don't have any callbacks
-func (t *TelegramHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {}
+func (th *TelegramHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {}
 
 // LogoutHandler - GET /logout
-func (t *TelegramHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	t.TokenService.Reset(w)
+func (th *TelegramHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	th.TokenService.Reset(w)
 }
 
 // tgAPI implements TelegramAPI
@@ -270,22 +270,22 @@ func NewTelegramAPI(token string, client *http.Client, l logger.L) TelegramAPI {
 }
 
 // GetUpdates fetches incoming updates
-func (t *tgAPI) GetUpdates(ctx context.Context) (*telegramUpdate, error) {
+func (tg *tgAPI) GetUpdates(ctx context.Context) (*telegramUpdate, error) {
 	url := `getUpdates?allowed_updates=["message"]`
-	if t.updateOffset != 0 {
-		url += fmt.Sprintf("&offset=%d", t.updateOffset)
+	if tg.updateOffset != 0 {
+		url += fmt.Sprintf("&offset=%d", tg.updateOffset)
 	}
 
 	var result telegramUpdate
 
-	err := t.request(ctx, url, &result)
+	err := tg.request(ctx, url, &result)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to fetch updates")
 	}
 
 	for _, u := range result.Result {
-		if u.UpdateID >= t.updateOffset {
-			t.updateOffset = u.UpdateID + 1
+		if u.UpdateID >= tg.updateOffset {
+			tg.updateOffset = u.UpdateID + 1
 		}
 	}
 
@@ -293,13 +293,13 @@ func (t *tgAPI) GetUpdates(ctx context.Context) (*telegramUpdate, error) {
 }
 
 // Send sends a message to telegram peer
-func (t *tgAPI) Send(ctx context.Context, id int, msg string) error {
+func (tg *tgAPI) Send(ctx context.Context, id int, msg string) error {
 	url := fmt.Sprintf("sendMessage?chat_id=%d&text=%s", id, neturl.PathEscape(msg))
-	return t.request(ctx, url, &struct{}{})
+	return tg.request(ctx, url, &struct{}{})
 }
 
 // Avatar returns URL to user avatar
-func (t *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
+func (tg *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 	// Get profile pictures
 	url := fmt.Sprintf(`getUserProfilePhotos?user_id=%d`, id)
 
@@ -311,7 +311,7 @@ func (t *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 		} `json:"result"`
 	}{}
 
-	if err := t.request(ctx, url, &profilePhotos); err != nil {
+	if err := tg.request(ctx, url, &profilePhotos); err != nil {
 		return "", err
 	}
 
@@ -331,31 +331,31 @@ func (t *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 		} `json:"result"`
 	}{}
 
-	if err := t.request(ctx, url, &fileMetadata); err != nil {
+	if err := tg.request(ctx, url, &fileMetadata); err != nil {
 		return "", err
 	}
 
-	avatarURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", t.token, fileMetadata.Result.Path)
+	avatarURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", tg.token, fileMetadata.Result.Path)
 
 	return avatarURL, nil
 }
 
-func (t *tgAPI) request(ctx context.Context, method string, data interface{}) error {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", t.token, method)
+func (tg *tgAPI) request(ctx context.Context, method string, data interface{}) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tg.token, method)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return errors.Wrap(err, "failed to create request")
 	}
 
-	resp, err := t.client.Do(req)
+	resp, err := tg.client.Do(req)
 	if err != nil {
 		return errors.Wrap(err, "failed to send request")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return t.parseError(resp.Body)
+		return tg.parseError(resp.Body)
 	}
 
 	if err = json.NewDecoder(resp.Body).Decode(data); err != nil {
@@ -365,7 +365,7 @@ func (t *tgAPI) request(ctx context.Context, method string, data interface{}) er
 	return nil
 }
 
-func (t *tgAPI) parseError(r io.Reader) error {
+func (tg *tgAPI) parseError(r io.Reader) error {
 	var tgErr = struct {
 		Description string `json:"description"`
 	}{}
