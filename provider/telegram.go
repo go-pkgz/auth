@@ -1,5 +1,7 @@
 package provider
 
+//go:generate moq -out telegram_moq_test.go . TelegramAPI
+
 import (
 	"context"
 	"crypto/sha1"

@@ -3,13 +3,11 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,9 +16,10 @@ import (
 )
 
 func TestTelegramUnconfirmedRequest(t *testing.T) {
-	m := &tgMock{
-		t:            t,
-		expectedText: "error",
+	m := &TelegramAPIMock{
+		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
+			return &telegramUpdate{}, nil
+		},
 	}
 
 	tg, cleanup := setupHandler(t, m)
@@ -54,9 +53,31 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 }
 
 func TestTelegramConfirmedRequest(t *testing.T) {
-	m := &tgMock{
-		t:            t,
-		expectedText: "success",
+	var servedToken string
+
+	m := &TelegramAPIMock{
+		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
+			var upd telegramUpdate
+
+			if servedToken != "" {
+				resp := fmt.Sprintf(getUpdatesResp, servedToken)
+
+				err := json.Unmarshal([]byte(resp), &upd)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			return &upd, nil
+		},
+		AvatarFunc: func(ctx context.Context, userID int) (string, error) {
+			assert.Equal(t, 313131313, userID)
+			return "http://t.me/avatar.png", nil
+		},
+		SendFunc: func(ctx context.Context, id int, text string) error {
+			assert.Equal(t, 313131313, id)
+			assert.Equal(t, "success", text)
+			return nil
+		},
 	}
 
 	tg, cleanup := setupHandler(t, m)
@@ -70,9 +91,10 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.Equal(t, 200, w.Code, "request should succeed")
 	token := w.Body.String()
 
-	m.Lock()
-	m.token = token
-	m.Unlock()
+	m.lockGetUpdates.Lock()
+	servedToken = token
+	m.lockGetUpdates.Unlock()
+
 	time.Sleep(tgPollInterval * 2)
 
 	// The token should be confirmed by now
@@ -104,7 +126,11 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 }
 
 func TestTelegramLogout(t *testing.T) {
-	m := &tgMock{t: t}
+	m := &TelegramAPIMock{
+		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
+			return &telegramUpdate{}, nil
+		},
+	}
 
 	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
@@ -128,7 +154,7 @@ func TestTelegramLogout(t *testing.T) {
 	assert.Equal(t, time.Time{}, c.Expires)
 }
 
-func setupHandler(t *testing.T, m *tgMock) (tg *TelegramHandler, cleanup func()) {
+func setupHandler(t *testing.T, m TelegramAPI) (tg *TelegramHandler, cleanup func()) {
 	tgPollInterval = time.Millisecond * 10
 	tgAuthRequestLifetime = time.Millisecond * 100
 
@@ -194,43 +220,6 @@ const getUpdatesResp = `{
       }
    ]
 }`
-
-type tgMock struct {
-	t            *testing.T
-	expectedText string
-	token        string
-
-	sync.Mutex
-}
-
-func (m *tgMock) GetUpdates(ctx context.Context) (*telegramUpdate, error) {
-	m.Lock()
-	if m.token != "" {
-		m.Unlock()
-		var upd telegramUpdate
-		resp := fmt.Sprintf(getUpdatesResp, m.token)
-
-		err := json.Unmarshal([]byte(resp), &upd)
-		if err != nil {
-			m.t.Fatal(err)
-		}
-		return &upd, nil
-	}
-	m.Unlock()
-
-	return nil, errors.New("no updates")
-}
-
-func (m *tgMock) Avatar(ctx context.Context, userID int) (string, error) {
-	assert.Equal(m.t, userID, 313131313)
-	return "https://example.com/telegram/avatar.jpg", nil
-}
-
-func (m *tgMock) Send(ctx context.Context, userID int, text string) error {
-	assert.Equal(m.t, userID, 313131313)
-	assert.Equal(m.t, m.expectedText, text)
-	return nil
-}
 
 //
 func TestTgAPI_GetUpdates(t *testing.T) {
