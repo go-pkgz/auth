@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -248,10 +249,32 @@ func TestTgAPI_GetUpdates(t *testing.T) {
 	assert.Equal(t, "/start token", upd.Result[0].Message.Text)
 }
 
+const sendMessageResp = `{
+   "ok": true,
+   "result": {
+      "message_id": 100,
+      "from": {
+         "id": 666666666,
+         "is_bot": true,
+         "first_name": "Test auth bot",
+         "username": "TestAuthBot"
+      },
+      "chat": {
+         "id": 313131313,
+         "first_name": "Joe",
+         "username": "joe123",
+         "type": "private"
+      },
+      "date": 1602430546,
+      "text": "123"
+   }
+}`
+
 func TestTgAPI_Send(t *testing.T) {
 	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "123", r.URL.Query().Get("chat_id"))
 		assert.Equal(t, "hello there", r.URL.Query().Get("text"))
+		fmt.Fprint(w, sendMessageResp)
 	}))
 	defer cleanup()
 
@@ -301,11 +324,11 @@ func TestTgAPI_Avatar(t *testing.T) {
 	}))
 	defer cleanup()
 
-	url, err := tg.Avatar(context.Background(), 123)
+	avatarURL, err := tg.Avatar(context.Background(), 123)
 	assert.Nil(t, err)
 
-	expected := fmt.Sprintf("%s/file/bot%s/photos/file_0.jpg", tg.endpoint, tg.token)
-	assert.Equal(t, expected, url)
+	expected := fmt.Sprintf("https://api.telegram.org/file/bot%s/photos/file_0.jpg", tg.token)
+	assert.Equal(t, expected, avatarURL)
 }
 
 const errorResp = `{"ok":false,"error_code":400,"description":"Very bad request"}`
@@ -322,17 +345,25 @@ func TestTgAPI_Error(t *testing.T) {
 	assert.Equal(t, "failed to fetch updates: telegram returned error: Very bad request", err.Error())
 }
 
+// mockRoundTripper redirects all incoming requests to mock url
+type mockRoundTripper struct{ url string }
+
+func (m mockRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	u, _ := url.Parse(m.url)
+	r.URL.Host = u.Host
+	r.URL.Scheme = u.Scheme
+	return http.DefaultClient.Do(r)
+}
+
 func prepareTgAPI(t *testing.T, h http.HandlerFunc) (tg *tgAPI, cleanup func()) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.URL.String(), "xxxsupersecretxxx")
 		h(w, r)
 	}))
 
-	tg = &tgAPI{
-		L:        t,
-		endpoint: srv.URL,
-		token:    "xxxsupersecretxxx",
+	client := &http.Client{
+		Transport: mockRoundTripper{srv.URL},
 	}
 
-	return tg, srv.Close
+	return NewTelegramAPI("xxxsupersecretxxx", client, t).(*tgAPI), srv.Close
 }

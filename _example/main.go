@@ -97,7 +97,7 @@ func main() {
 		ProviderName: "telegram",
 		ErrorMsg:     "❌ Invalid auth request. Please try clicking link again.",
 		SuccessMsg:   "✅ You have successfully authenticated!",
-		Telegram:     provider.NewTelegramAPI(os.Getenv("TELEGRAM_TOKEN"), log.Default()),
+		Telegram:     provider.NewTelegramAPI(os.Getenv("TELEGRAM_TOKEN"), http.DefaultClient, log.Default()),
 
 		L:            log.Default(),
 		TokenService: service.TokenService(),

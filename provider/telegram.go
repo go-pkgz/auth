@@ -251,17 +251,21 @@ func (t *TelegramHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) 
 // tgAPI implements TelegramAPI
 type tgAPI struct {
 	logger.L
-	endpoint     string
-	token        string
+	token  string
+	client *http.Client
+
+	// Identifier of the first update to be requested.
+	// Should be equal to LastSeenUpdateID + 1
+	// See https://core.telegram.org/bots/api#getupdates
 	updateOffset int
 }
 
 // NewTelegramAPI returns initialized TelegramAPI implementation
-func NewTelegramAPI(token string, l logger.L) TelegramAPI {
+func NewTelegramAPI(token string, client *http.Client, l logger.L) TelegramAPI {
 	return &tgAPI{
-		L:        l,
-		endpoint: "https://api.telegram.org",
-		token:    token,
+		L:      l,
+		client: client,
+		token:  token,
 	}
 }
 
@@ -269,7 +273,7 @@ func NewTelegramAPI(token string, l logger.L) TelegramAPI {
 func (t *tgAPI) GetUpdates(ctx context.Context) (*telegramUpdate, error) {
 	url := `getUpdates?allowed_updates=["message"]`
 	if t.updateOffset != 0 {
-		url += fmt.Sprintf("&offset=%d", t.updateOffset) // See core.telegram.org/bots/api#getupdates
+		url += fmt.Sprintf("&offset=%d", t.updateOffset)
 	}
 
 	var result telegramUpdate
@@ -290,24 +294,8 @@ func (t *tgAPI) GetUpdates(ctx context.Context) (*telegramUpdate, error) {
 
 // Send sends a message to telegram peer
 func (t *tgAPI) Send(ctx context.Context, id int, msg string) error {
-	url := fmt.Sprintf("%s/bot%s/sendMessage?chat_id=%d&text=%s", t.endpoint, t.token, id, neturl.PathEscape(msg))
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return errors.Wrap(err, "failed to create request")
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "failed to send request")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return errors.Errorf("telegram returned %d status code", resp.StatusCode)
-	}
-
-	return nil
+	url := fmt.Sprintf("sendMessage?chat_id=%d&text=%s", id, neturl.PathEscape(msg))
+	return t.request(ctx, url, &struct{}{})
 }
 
 // Avatar returns URL to user avatar
@@ -323,17 +311,16 @@ func (t *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 		} `json:"result"`
 	}{}
 
-	err := t.request(ctx, url, &profilePhotos)
-	if err != nil {
+	if err := t.request(ctx, url, &profilePhotos); err != nil {
 		return "", err
 	}
 
 	// User does not have profile picture set or it is hidden in privacy settings
-	if len(profilePhotos.Result.Photos) == 0 {
+	if len(profilePhotos.Result.Photos) == 0 || len(profilePhotos.Result.Photos[0]) == 0 {
 		return "", nil
 	}
 
-	// Get actual avatar url
+	// Get max possible picture size
 	last := len(profilePhotos.Result.Photos[0]) - 1
 	fileID := profilePhotos.Result.Photos[0][last].ID
 	url = fmt.Sprintf(`getFile?file_id=%s`, fileID)
@@ -344,25 +331,24 @@ func (t *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 		} `json:"result"`
 	}{}
 
-	err = t.request(ctx, url, &fileMetadata)
-	if err != nil {
+	if err := t.request(ctx, url, &fileMetadata); err != nil {
 		return "", err
 	}
 
-	avatarURL := fmt.Sprintf("%s/file/bot%s/%s", t.endpoint, t.token, fileMetadata.Result.Path)
+	avatarURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", t.token, fileMetadata.Result.Path)
 
 	return avatarURL, nil
 }
 
 func (t *tgAPI) request(ctx context.Context, method string, data interface{}) error {
-	url := fmt.Sprintf("%s/bot%s/%s", t.endpoint, t.token, method)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", t.token, method)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return errors.Wrap(err, "failed to create request")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := t.client.Do(req)
 	if err != nil {
 		return errors.Wrap(err, "failed to send request")
 	}
@@ -372,7 +358,7 @@ func (t *tgAPI) request(ctx context.Context, method string, data interface{}) er
 		return t.parseError(resp.Body)
 	}
 
-	if err = json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	if err = json.NewDecoder(resp.Body).Decode(data); err != nil {
 		return errors.Wrap(err, "can't decode json response")
 	}
 
