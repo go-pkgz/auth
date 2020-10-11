@@ -41,7 +41,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	assert.Equal(t, 404, w.Code, "response code should be 404")
 	assert.Equal(t, `{"error":"request not yet confirmed"}`+"\n", w.Body.String())
 
-	time.Sleep(tokenLifetime)
+	time.Sleep(tgAuthRequestLifetime)
 
 	// Confirm auth request expired
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
@@ -72,7 +72,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	m.Lock()
 	m.token = token
 	m.Unlock()
-	time.Sleep(pollInterval * 2)
+	time.Sleep(tgPollInterval * 2)
 
 	// The token should be confirmed by now
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
@@ -128,8 +128,8 @@ func TestTelegramLogout(t *testing.T) {
 }
 
 func setupHandler(t *testing.T, m *tgMock) (tg *TelegramHandler, cleanup func()) {
-	pollInterval = time.Millisecond * 10
-	tokenLifetime = time.Millisecond * 100
+	tgPollInterval = time.Millisecond * 10
+	tgAuthRequestLifetime = time.Millisecond * 100
 
 	tg = &TelegramHandler{
 		ProviderName: "telegram",

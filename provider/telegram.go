@@ -30,8 +30,18 @@ type TelegramHandler struct {
 	AvatarSaver  AvatarSaver
 	Telegram     TelegramAPI
 
-	mu           sync.Mutex                 // Guard for the map below
-	authRequests map[string]authRequestInfo // Tokens waiting for confirmation
+	requests tgAuthRequests
+}
+
+type tgAuthRequests struct {
+	sync.RWMutex
+	data map[string]tgAuthRequest
+}
+
+type tgAuthRequest struct {
+	confirmed bool // whether login request has been confirmed and user info set
+	expires   time.Time
+	user      *authtoken.User
 }
 
 // TelegramAPI is used for interacting with telegram API
@@ -41,30 +51,18 @@ type TelegramAPI interface {
 	Send(ctx context.Context, id int, text string) error
 }
 
-type authRequestInfo struct {
-	confirmed bool // whether login request has been confirmed and userInfo set
-	expires   time.Time
-	user      *userInfo
-}
-
-type userInfo struct {
-	ID     int
-	Name   string
-	Avatar string
-}
-
 // changed in tests
-var pollInterval = time.Second
+var tgPollInterval = time.Second
 
 // Run starts processing login requests sent in Telegram
 // Blocks caller
 func (t *TelegramHandler) Run(ctx context.Context) error {
 	// Initialization
-	t.mu.Lock()
-	t.authRequests = make(map[string]authRequestInfo)
-	t.mu.Unlock()
+	t.requests.Lock()
+	t.requests.data = make(map[string]tgAuthRequest)
+	t.requests.Unlock()
 
-	ticker := time.NewTicker(pollInterval)
+	ticker := time.NewTicker(tgPollInterval)
 
 	for {
 		select {
@@ -80,13 +78,13 @@ func (t *TelegramHandler) Run(ctx context.Context) error {
 
 			// Purge expired requests
 			now := time.Now()
-			t.mu.Lock()
-			for key, req := range t.authRequests {
+			t.requests.Lock()
+			for key, req := range t.requests.data {
 				if now.After(req.expires) {
-					delete(t.authRequests, key)
+					delete(t.requests.data, key)
 				}
 			}
-			t.mu.Unlock()
+			t.requests.Unlock()
 		}
 	}
 }
@@ -128,17 +126,17 @@ func (t *TelegramHandler) processUpdates(ctx context.Context) error {
 
 		token := strings.TrimPrefix(update.Message.Text, "/start ")
 
-		t.mu.Lock()
-		authRequest, ok := t.authRequests[token]
+		t.requests.RLock()
+		authRequest, ok := t.requests.data[token]
 		if !ok { // No such token
-			t.mu.Unlock()
+			t.requests.RUnlock()
 			err := t.Telegram.Send(ctx, update.Message.Chat.ID, t.ErrorMsg)
 			if err != nil {
 				t.Logf("failed to notify telegram peer: %v", err)
 			}
 			continue
 		}
-		t.mu.Unlock()
+		t.requests.RUnlock()
 
 		avatarURL, err := t.Telegram.Avatar(ctx, update.Message.Chat.ID)
 		if err != nil {
@@ -146,16 +144,18 @@ func (t *TelegramHandler) processUpdates(ctx context.Context) error {
 			continue
 		}
 
+		id := t.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(update.Message.Chat.ID))
+
 		authRequest.confirmed = true
-		authRequest.user = &userInfo{
-			ID:     update.Message.Chat.ID,
-			Name:   update.Message.Chat.Name,
-			Avatar: avatarURL,
+		authRequest.user = &authtoken.User{
+			ID:      id,
+			Name:    update.Message.Chat.Name,
+			Picture: avatarURL,
 		}
 
-		t.mu.Lock()
-		t.authRequests[token] = authRequest
-		t.mu.Unlock()
+		t.requests.Lock()
+		t.requests.data[token] = authRequest
+		t.requests.Unlock()
 
 		err = t.Telegram.Send(ctx, update.Message.Chat.ID, t.SuccessMsg)
 		if err != nil {
@@ -170,7 +170,7 @@ func (t *TelegramHandler) processUpdates(ctx context.Context) error {
 func (t *TelegramHandler) Name() string { return t.ProviderName }
 
 // Default token lifetime. Changed in tests
-var tokenLifetime = time.Minute * 10
+var tgAuthRequestLifetime = time.Minute * 10
 
 // LoginHandler generates and verifies login requests
 func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -183,23 +183,26 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to generate code")
 		}
 
-		t.mu.Lock()
-		t.authRequests[token] = authRequestInfo{
-			expires: time.Now().Add(tokenLifetime),
+		t.requests.Lock()
+		t.requests.data[token] = tgAuthRequest{
+			expires: time.Now().Add(tgAuthRequestLifetime),
 		}
-		t.mu.Unlock()
+		t.requests.Unlock()
 
 		fmt.Fprint(w, token)
 		return
 	}
 
 	// GET /login?token=blah
-	t.mu.Lock()
-	authRequest, ok := t.authRequests[queryToken]
-	t.mu.Unlock()
+	t.requests.RLock()
+	authRequest, ok := t.requests.data[queryToken]
+	t.requests.RUnlock()
 
 	if !ok || time.Now().After(authRequest.expires) {
-		delete(t.authRequests, queryToken)
+		t.requests.Lock()
+		delete(t.requests.data, queryToken)
+		t.requests.Unlock()
+
 		rest.SendErrorJSON(w, r, nil, http.StatusNotFound, nil, "request expired")
 		return
 	}
@@ -209,13 +212,7 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u := authtoken.User{
-		Name:    authRequest.user.Name,
-		ID:      t.ProviderName + "_" + authtoken.HashID(sha1.New(), fmt.Sprint(authRequest.user.ID)),
-		Picture: authRequest.user.Avatar,
-	}
-
-	u, err := setAvatar(t.AvatarSaver, u, &http.Client{Timeout: 5 * time.Second})
+	u, err := setAvatar(t.AvatarSaver, *authRequest.user, &http.Client{Timeout: 5 * time.Second})
 	if err != nil {
 		rest.SendErrorJSON(w, r, t.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
 		return
@@ -238,9 +235,9 @@ func (t *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, r, claims.User)
 
 	// Delete request
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.authRequests, queryToken)
+	t.requests.Lock()
+	defer t.requests.Unlock()
+	delete(t.requests.data, queryToken)
 }
 
 // AuthHandler does nothing since we're don't have any callbacks
