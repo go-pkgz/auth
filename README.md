@@ -211,20 +211,25 @@ The provider acts like any other, i.e. will be registered as `/auth/email/login`
 
 ### Telegram
 
-Telegram provider allows your users to log in with Telegram bot. First, you will need to create your bot and obtain it's token.
-Contact [@BotFather](https://t.me/botfather) and follow it's instructions to create your own bot (call it, for example, "My site auth bot")
+Telegram provider allows your users to log in with Telegram account. First, you will need to create your bot.
+Contact [@BotFather](https://t.me/botfather) and follow his instructions to create your own bot (call it, for example, "My site auth bot")
 
-Then initialize TelegramHandler with following parameters:
-* `ProviderName` - any unique name
+Next initialize TelegramHandler with following parameters:
+* `ProviderName` - Any unique name to distinguish between providers
 * `SuccessMsg` - Message sent to user on successfull authentication
-* `ErrorMsg` - Message sent on errors
-* `Telegram` - Telegram API implementation. Use provider.NewTelegramAPI with your bot secret token as a first argument
+* `ErrorMsg` - Message sent on errors (e.g. login request expired)
+* `Telegram` - Telegram API implementation. Use provider.NewTelegramAPI with following arguments
+	1. The secret token bot father gave you
+	2. An http.Client for accessing Telegram API's
+
 ```go
+token := os.Getenv("TELEGRAM_TOKEN")
+
 telegram := provider.TelegramHandler{
 	ProviderName: "telegram",
 	ErrorMsg:     "❌ Invalid auth request. Please try clicking link again.",
 	SuccessMsg:   "✅ You have successfully authenticated!",
-	Telegram:     provider.NewTelegramAPI(os.Getenv("TELEGRAM_TOKEN"), http.DefaultClient, log.Default()),
+	Telegram:     provider.NewTelegramAPI(token, http.DefaultClient, log.Default()),
 
 	L:            log.Default(),
 	TokenService: service.TokenService(),
@@ -232,7 +237,7 @@ telegram := provider.TelegramHandler{
 }
 ```
 
-After that run provider and register custom handler:
+After that run provider and register it's handlers:
 ```go
 // Run Telegram provider in the background
 go func() {
@@ -246,15 +251,14 @@ go func() {
 service.AddCustomHandler(&telegram)
 ```
 
-The following routes are now exposed:
-* `/auth/<providerName>/login` - Retrieve auth token (see below).
-* `/auth/<providerName>/login?token=<token>` - Check if auth request has been confirmed. Logs user in on success, returns 404 othervise.
-* `/auth/<providerName>/logout` - Invalidate user session.
-
-
-Now all your users users have to do is click the following link press start:
-
+Now all your users have to do is click one of the following links and press **start**
 `tg://resolve?domain=<botname>&start=<token>` or `https://t.me/<botname>/?start=<token>`
+
+Use the following routes to interact with provider:
+1. `/auth/<providerName>/login` - Obtain auth token.
+2. `/auth/<providerName>/login?token=<token>` - Check if auth request has been confirmed (i.e. user pressed start). Sets session cookieand returns user info on success, errors with 404 otherwise.
+
+3. `/auth/<providerName>/logout` - Invalidate user session.
 
 ### Custom oauth2
 
