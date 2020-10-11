@@ -15,6 +15,7 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-pkgz/auth/logger"
 	authtoken "github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/repeater"
 	"github.com/go-pkgz/rest"
 	"github.com/pkg/errors"
 )
@@ -341,28 +342,32 @@ func (tg *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 }
 
 func (tg *tgAPI) request(ctx context.Context, method string, data interface{}) error {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tg.token, method)
+	repeat := repeater.NewDefault(3, time.Millisecond*50)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return errors.Wrap(err, "failed to create request")
-	}
+	return repeat.Do(ctx, func() error {
+		url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tg.token, method)
 
-	resp, err := tg.client.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "failed to send request")
-	}
-	defer resp.Body.Close()
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return errors.Wrap(err, "failed to create request")
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		return tg.parseError(resp.Body)
-	}
+		resp, err := tg.client.Do(req)
+		if err != nil {
+			return errors.Wrap(err, "failed to send request")
+		}
+		defer resp.Body.Close()
 
-	if err = json.NewDecoder(resp.Body).Decode(data); err != nil {
-		return errors.Wrap(err, "can't decode json response")
-	}
+		if resp.StatusCode != http.StatusOK {
+			return tg.parseError(resp.Body)
+		}
 
-	return nil
+		if err = json.NewDecoder(resp.Body).Decode(data); err != nil {
+			return errors.Wrap(err, "failed to decode json response")
+		}
+
+		return nil
+	})
 }
 
 func (tg *tgAPI) parseError(r io.Reader) error {
