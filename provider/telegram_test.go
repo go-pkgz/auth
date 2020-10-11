@@ -354,5 +354,5 @@ func prepareTgAPI(t *testing.T, h http.HandlerFunc) (tg *tgAPI, cleanup func()) 
 		Transport: mockRoundTripper{srv.URL},
 	}
 
-	return NewTelegramAPI("xxxsupersecretxxx", client, t).(*tgAPI), srv.Close
+	return NewTelegramAPI("xxxsupersecretxxx", client).(*tgAPI), srv.Close
 }

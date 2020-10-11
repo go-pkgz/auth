@@ -229,7 +229,7 @@ telegram := provider.TelegramHandler{
 	ProviderName: "telegram",
 	ErrorMsg:     "❌ Invalid auth request. Please try clicking link again.",
 	SuccessMsg:   "✅ You have successfully authenticated!",
-	Telegram:     provider.NewTelegramAPI(token, http.DefaultClient, log.Default()),
+	Telegram:     provider.NewTelegramAPI(token, http.DefaultClient),
 
 	L:            log.Default(),
 	TokenService: service.TokenService(),

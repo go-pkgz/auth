@@ -264,9 +264,8 @@ type tgAPI struct {
 }
 
 // NewTelegramAPI returns initialized TelegramAPI implementation
-func NewTelegramAPI(token string, client *http.Client, l logger.L) TelegramAPI {
+func NewTelegramAPI(token string, client *http.Client) TelegramAPI {
 	return &tgAPI{
-		L:      l,
 		client: client,
 		token:  token,
 	}
