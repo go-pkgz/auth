@@ -33,6 +33,7 @@ type TelegramHandler struct {
 	AvatarSaver  AvatarSaver
 	Telegram     TelegramAPI
 
+	username string // bot username
 	requests tgAuthRequests
 }
 
@@ -52,6 +53,7 @@ type TelegramAPI interface {
 	GetUpdates(ctx context.Context) (*telegramUpdate, error)
 	Avatar(ctx context.Context, userID int) (string, error)
 	Send(ctx context.Context, id int, text string) error
+	BotInfo(ctx context.Context) (*botInfo, error)
 }
 
 // changed in tests
@@ -61,9 +63,16 @@ var tgPollInterval = time.Second
 // Blocks caller
 func (th *TelegramHandler) Run(ctx context.Context) error {
 	// Initialization
+	info, err := th.Telegram.BotInfo(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to fetch bot info")
+	}
+
 	th.requests.Lock()
 	th.requests.data = make(map[string]tgAuthRequest)
 	th.requests.Unlock()
+
+	th.username = info.Username
 
 	ticker := time.NewTicker(tgPollInterval)
 
@@ -192,7 +201,11 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 		}
 		th.requests.Unlock()
 
-		fmt.Fprint(w, token)
+		rest.RenderJSON(w, r, struct {
+			Token string `json:"token"`
+			Bot   string `json:"bot"`
+		}{token, th.username})
+
 		return
 	}
 
@@ -340,6 +353,26 @@ func (tg *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 	avatarURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", tg.token, fileMetadata.Result.Path)
 
 	return avatarURL, nil
+}
+
+type botInfo struct {
+	ID       int    `json:"id"`
+	Name     string `json:"first_name"`
+	Username string `json:"username"`
+}
+
+// BotInfo returns info about configured bot
+func (tg *tgAPI) BotInfo(ctx context.Context) (*botInfo, error) {
+	var resp = struct {
+		Result *botInfo `json:"result"`
+	}{}
+
+	err := tg.request(ctx, "getMe", &resp)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to fetch bot info")
+	}
+
+	return resp.Result, nil
 }
 
 func (tg *tgAPI) request(ctx context.Context, method string, data interface{}) error {

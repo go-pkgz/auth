@@ -264,14 +264,14 @@ function getEmailTokenLoginForm(onSubmit) {
 }
 
 async function getTelegramLoginForm() {
-  let token = await (await fetch("/auth/telegram/login")).text()
+  let {token, bot} = await fetch("/auth/telegram/login").then(r => r.json())
 
   let form = document.createElement("div")
   form.className = "anon-form login__anon-form"
   form.style.display = "none"
 
   let link = document.createElement("a")
-  link.href = `tg://resolve?domain=remarkauthbot&start=${token}`
+  link.href = `tg://resolve?domain=${bot}&start=${token}`
   link.innerHTML = "Click the link and press start"
 
   // Poll login endpoint until user confirms login request

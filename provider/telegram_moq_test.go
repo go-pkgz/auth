@@ -21,6 +21,9 @@ var _ TelegramAPI = &TelegramAPIMock{}
 //             AvatarFunc: func(ctx context.Context, userID int) (string, error) {
 // 	               panic("mock out the Avatar method")
 //             },
+//             BotInfoFunc: func(ctx context.Context) (*botInfo, error) {
+// 	               panic("mock out the BotInfo method")
+//             },
 //             GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
 // 	               panic("mock out the GetUpdates method")
 //             },
@@ -37,6 +40,9 @@ type TelegramAPIMock struct {
 	// AvatarFunc mocks the Avatar method.
 	AvatarFunc func(ctx context.Context, userID int) (string, error)
 
+	// BotInfoFunc mocks the BotInfo method.
+	BotInfoFunc func(ctx context.Context) (*botInfo, error)
+
 	// GetUpdatesFunc mocks the GetUpdates method.
 	GetUpdatesFunc func(ctx context.Context) (*telegramUpdate, error)
 
@@ -51,6 +57,11 @@ type TelegramAPIMock struct {
 			Ctx context.Context
 			// UserID is the userID argument value.
 			UserID int
+		}
+		// BotInfo holds details about calls to the BotInfo method.
+		BotInfo []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 		}
 		// GetUpdates holds details about calls to the GetUpdates method.
 		GetUpdates []struct {
@@ -68,6 +79,7 @@ type TelegramAPIMock struct {
 		}
 	}
 	lockAvatar     sync.RWMutex
+	lockBotInfo    sync.RWMutex
 	lockGetUpdates sync.RWMutex
 	lockSend       sync.RWMutex
 }
@@ -104,6 +116,37 @@ func (mock *TelegramAPIMock) AvatarCalls() []struct {
 	mock.lockAvatar.RLock()
 	calls = mock.calls.Avatar
 	mock.lockAvatar.RUnlock()
+	return calls
+}
+
+// BotInfo calls BotInfoFunc.
+func (mock *TelegramAPIMock) BotInfo(ctx context.Context) (*botInfo, error) {
+	if mock.BotInfoFunc == nil {
+		panic("TelegramAPIMock.BotInfoFunc: method is nil but TelegramAPI.BotInfo was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockBotInfo.Lock()
+	mock.calls.BotInfo = append(mock.calls.BotInfo, callInfo)
+	mock.lockBotInfo.Unlock()
+	return mock.BotInfoFunc(ctx)
+}
+
+// BotInfoCalls gets all the calls that were made to BotInfo.
+// Check the length with:
+//     len(mockedTelegramAPI.BotInfoCalls())
+func (mock *TelegramAPIMock) BotInfoCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockBotInfo.RLock()
+	calls = mock.calls.BotInfo
+	mock.lockBotInfo.RUnlock()
 	return calls
 }
 

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,11 +16,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// same across all tests
+var botInfoFunc = func(ctx context.Context) (*botInfo, error) {
+	return &botInfo{Username: "my_auth_bot"}, nil
+}
+
 func TestTelegramUnconfirmedRequest(t *testing.T) {
 	m := &TelegramAPIMock{
 		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
 			return &telegramUpdate{}, nil
 		},
+		BotInfoFunc: botInfoFunc,
 	}
 
 	tg, cleanup := setupHandler(t, m)
@@ -31,7 +38,17 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	tg.LoginHandler(w, r)
 
 	assert.Equal(t, 200, w.Code, "request should succeed")
-	token := w.Body.String()
+
+	var resp = struct {
+		Token string `json:"token"`
+		Bot   string `json:"bot"`
+	}{}
+
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Nil(t, err)
+
+	assert.Equal(t, "my_auth_bot", resp.Bot)
+	token := resp.Token
 
 	// Make sure we get error without first confirming auth request
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
@@ -54,11 +71,14 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 
 func TestTelegramConfirmedRequest(t *testing.T) {
 	var servedToken string
+	var mu sync.Mutex
 
 	m := &TelegramAPIMock{
 		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
 			var upd telegramUpdate
 
+			mu.Lock()
+			defer mu.Unlock()
 			if servedToken != "" {
 				resp := fmt.Sprintf(getUpdatesResp, servedToken)
 
@@ -78,6 +98,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 			assert.Equal(t, "success", text)
 			return nil
 		},
+		BotInfoFunc: botInfoFunc,
 	}
 
 	tg, cleanup := setupHandler(t, m)
@@ -89,16 +110,24 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	tg.LoginHandler(w, r)
 
 	assert.Equal(t, 200, w.Code, "request should succeed")
-	token := w.Body.String()
 
-	m.lockGetUpdates.Lock()
-	servedToken = token
-	m.lockGetUpdates.Unlock()
+	var resp = struct {
+		Token string `json:"token"`
+		Bot   string `json:"bot"`
+	}{}
+
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Nil(t, err)
+	assert.Equal(t, "my_auth_bot", resp.Bot)
+
+	mu.Lock()
+	servedToken = resp.Token
+	mu.Unlock()
 
 	time.Sleep(tgPollInterval * 2)
 
 	// The token should be confirmed by now
-	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
+	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
@@ -109,7 +138,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 		ID      string `id:"id"`
 		Picture string `json:"picture"`
 	}{}
-	err := json.NewDecoder(w.Body).Decode(&info)
+	err = json.NewDecoder(w.Body).Decode(&info)
 	assert.Nil(t, err)
 
 	assert.Equal(t, "Joe", info.Name)
@@ -117,7 +146,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.Equal(t, "http://example.com/ava12345.png", info.Picture)
 
 	// Test request has been invalidated
-	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
+	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
@@ -130,6 +159,7 @@ func TestTelegramLogout(t *testing.T) {
 		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
 			return &telegramUpdate{}, nil
 		},
+		BotInfoFunc: botInfoFunc,
 	}
 
 	tg, cleanup := setupHandler(t, m)
@@ -344,9 +374,29 @@ func (m mockRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	return http.DefaultClient.Do(r)
 }
 
+const getMeResp = `{
+   "ok": true,
+   "result": {
+      "id": 123456789,
+      "is_bot": true,
+      "first_name": "Test auth bot",
+      "username": "RemarkAuthBot",
+      "can_join_groups": true,
+      "can_read_all_group_messages": false,
+      "supports_inline_queries": false
+   }
+}
+`
+
 func prepareTgAPI(t *testing.T, h http.HandlerFunc) (tg *tgAPI, cleanup func()) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.URL.String(), "xxxsupersecretxxx")
+
+		if strings.Contains(r.URL.String(), "getMe") {
+			fmt.Fprint(w, getMeResp)
+			return
+		}
+
 		h(w, r)
 	}))
 

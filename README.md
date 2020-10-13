@@ -255,8 +255,8 @@ Now all your users have to do is click one of the following links and press **st
 `tg://resolve?domain=<botname>&start=<token>` or `https://t.me/<botname>/?start=<token>`
 
 Use the following routes to interact with provider:
-1. `/auth/<providerName>/login` - Obtain auth token.
-2. `/auth/<providerName>/login?token=<token>` - Check if auth request has been confirmed (i.e. user pressed start). Sets session cookieand returns user info on success, errors with 404 otherwise.
+1. `/auth/<providerName>/login` - Obtain auth token. Returns JSON object with `bot` (bot username) and `token` (token itself) fields.
+2. `/auth/<providerName>/login?token=<token>` - Check if auth request has been confirmed (i.e. user pressed start). Sets session cookie and returns user info on success, errors with 404 otherwise.
 
 3. `/auth/<providerName>/logout` - Invalidate user session.
 
