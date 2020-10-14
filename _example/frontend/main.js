@@ -274,8 +274,18 @@ async function getTelegramLoginForm() {
   link.href = `tg://resolve?domain=${bot}&start=${token}`
   link.innerHTML = "Click the link and press start"
 
-  // Poll login endpoint until user confirms login request
+  shouldPoll = false
+  link.onclick = (e) => {
+    e.stopPropagation()
+    shouldPoll = true
+  }
+
   setInterval(() => {
+    if (!shouldPoll) {
+      return
+    }
+
+    // Poll login endpoint until user confirms login request
     fetch(`/auth/telegram/login?token=${token}`)
       .then(resp => {
         if (resp.status == 200) {
@@ -286,7 +296,9 @@ async function getTelegramLoginForm() {
   }, 1000);
 
   form.appendChild(link)
-  return form
+
+  const stopPolling = () => shouldPoll = false
+  return { form, stopPolling }
 }
 
 function errorHandler(err) {
@@ -413,23 +425,28 @@ function getLoginLinks() {
       } else if (prov === "telegram") {
         a = document.createElement("span");
         a.dataset.provider = prov;
-        a.textContent = "Login with " + prov;
-        a.className = "pseudo login__prov";
+        a.className = "login__prov";
 
+        const textEl = document.createElement("span");
+        textEl.textContent = "Login with " + prov;
+        textEl.className = "pseudo";
+        a.appendChild(textEl);
 
         getTelegramLoginForm()
-          .then((form) => {
+          .then(({ form, stopPolling}) => {
             a.addEventListener("click", e => {
               const display = form.style.display;
               formSwitcher();
               if (display === "none") {
                 form.style.display = "block";
                 formSwitcher = () => {
+                  stopPolling()
                   form.style.display = "none";
                 };
 
               } else {
                 form.style.display = "none";
+                stopPolling()
                 formSwitcher = () => { };
               }
             });
