@@ -92,6 +92,29 @@ func main() {
 		}),
 	)
 
+	if token := os.Getenv("TELEGRAM_TOKEN"); token != "" {
+		// add telegram provider
+		telegram := provider.TelegramHandler{
+			ProviderName: "telegram",
+			ErrorMsg:     "❌ Invalid auth request. Please try clicking link again.",
+			SuccessMsg:   "✅ You have successfully authenticated!",
+			Telegram:     provider.NewTelegramAPI(token, http.DefaultClient),
+
+			L:            log.Default(),
+			TokenService: service.TokenService(),
+			AvatarSaver:  service.AvatarProxy(),
+		}
+
+		go func() {
+			err := telegram.Run(context.Background())
+			if err != nil {
+				log.Fatalf("[PANIC] failed to start telegram: %v", err)
+			}
+		}()
+
+		service.AddCustomHandler(&telegram)
+	}
+
 	// run dev/test oauth2 server on :8084
 	go func() {
 		devAuthServer, err := service.DevAuth() // peak dev oauth2 server

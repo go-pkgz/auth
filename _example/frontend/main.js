@@ -263,6 +263,44 @@ function getEmailTokenLoginForm(onSubmit) {
   return form;
 }
 
+async function getTelegramLoginForm() {
+  let {token, bot} = await fetch("/auth/telegram/login").then(r => r.json())
+
+  let form = document.createElement("div")
+  form.className = "anon-form login__anon-form"
+  form.style.display = "none"
+
+  let link = document.createElement("a")
+  link.href = `tg://resolve?domain=${bot}&start=${token}`
+  link.innerHTML = "Click the link and press start"
+
+  shouldPoll = false
+  link.onclick = (e) => {
+    e.stopPropagation()
+    shouldPoll = true
+  }
+
+  setInterval(() => {
+    if (!shouldPoll) {
+      return
+    }
+
+    // Poll login endpoint until user confirms login request
+    fetch(`/auth/telegram/login?token=${token}`)
+      .then(resp => {
+        if (resp.status == 200) {
+          // Success
+          window.location.reload()
+        }
+      })
+  }, 1000);
+
+  form.appendChild(link)
+
+  const stopPolling = () => shouldPoll = false
+  return { form, stopPolling }
+}
+
 function errorHandler(err) {
   const status = document.querySelector(".status__label");
   if (err instanceof Response) {
@@ -384,6 +422,38 @@ function getLoginLinks() {
         formStage2.style.display = "none";
         formStage2.className = "email-form login__email-form hidden";
         a.appendChild(formStage2);
+      } else if (prov === "telegram") {
+        a = document.createElement("span");
+        a.dataset.provider = prov;
+        a.className = "login__prov";
+
+        const textEl = document.createElement("span");
+        textEl.textContent = "Login with " + prov;
+        textEl.className = "pseudo";
+        a.appendChild(textEl);
+
+        getTelegramLoginForm()
+          .then(({ form, stopPolling}) => {
+            a.addEventListener("click", e => {
+              const display = form.style.display;
+              formSwitcher();
+              if (display === "none") {
+                form.style.display = "block";
+                formSwitcher = () => {
+                  stopPolling()
+                  form.style.display = "none";
+                };
+
+              } else {
+                form.style.display = "none";
+                stopPolling()
+                formSwitcher = () => { };
+              }
+            });
+
+            a.appendChild(form)
+          })
+          .catch(console.error)
       } else {
         a = document.createElement("span");
         a.dataset.provider = prov;

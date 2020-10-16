@@ -1,7 +1,7 @@
 # auth - authentication via oauth2, direct and email
 [![Build Status](https://github.com/go-pkgz/auth/workflows/build/badge.svg)](https://github.com/go-pkgz/auth/actions) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth?status.svg)](https://pkg.go.dev/github.com/go-pkgz/auth?tab=doc)
 
-This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex and Battle.net as well as custom auth providers and email verification.
+This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net and Telegram as well as custom auth providers and email verification.
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
@@ -209,6 +209,57 @@ The API for this provider:
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
 
+### Telegram
+
+Telegram provider allows your users to log in with Telegram account. First, you will need to create your bot.
+Contact [@BotFather](https://t.me/botfather) and follow his instructions to create your own bot (call it, for example, "My site auth bot")
+
+Next initialize TelegramHandler with following parameters:
+* `ProviderName` - Any unique name to distinguish between providers
+* `SuccessMsg` - Message sent to user on successfull authentication
+* `ErrorMsg` - Message sent on errors (e.g. login request expired)
+* `Telegram` - Telegram API implementation. Use provider.NewTelegramAPI with following arguments
+	1. The secret token bot father gave you
+	2. An http.Client for accessing Telegram API's
+
+```go
+token := os.Getenv("TELEGRAM_TOKEN")
+
+telegram := provider.TelegramHandler{
+	ProviderName: "telegram",
+	ErrorMsg:     "❌ Invalid auth request. Please try clicking link again.",
+	SuccessMsg:   "✅ You have successfully authenticated!",
+	Telegram:     provider.NewTelegramAPI(token, http.DefaultClient),
+
+	L:            log.Default(),
+	TokenService: service.TokenService(),
+	AvatarSaver:  service.AvatarProxy(),
+}
+```
+
+After that run provider and register it's handlers:
+```go
+// Run Telegram provider in the background
+go func() {
+	err := telegram.Run(context.Background())
+	if err != nil {
+		log.Fatalf("[PANIC] failed to start telegram: %v", err)
+	}
+}()
+
+// Register Telegram provider
+service.AddCustomHandler(&telegram)
+```
+
+Now all your users have to do is click one of the following links and press **start**
+`tg://resolve?domain=<botname>&start=<token>` or `https://t.me/<botname>/?start=<token>`
+
+Use the following routes to interact with provider:
+1. `/auth/<providerName>/login` - Obtain auth token. Returns JSON object with `bot` (bot username) and `token` (token itself) fields.
+2. `/auth/<providerName>/login?token=<token>` - Check if auth request has been confirmed (i.e. user pressed start). Sets session cookie and returns user info on success, errors with 404 otherwise.
+
+3. `/auth/<providerName>/logout` - Invalidate user session.
+
 ### Custom oauth2
 
 This provider brings two extra functions:
@@ -256,7 +307,7 @@ In order to add a new oauth2 provider following input is required:
 			WithLoginPage: true,
 		}
 		prov := provider.NewCustomServer(srv, sopts)
-		
+
 		// Start server
 		go prov.Run(context.Background())
 		```
@@ -371,9 +422,9 @@ _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://githu
 
 1. Register a new application [using the Azure portal](https://docs.microsoft.com/en-us/graph/auth-register-app-v2).
 2. Under **"Authentication/Platform configurations/Web"** enter the correct url constructed as domain + `/auth/microsoft/callback`. i.e. `https://example.mysite.com/auth/microsoft/callback`
-3. In "Overview" take note of the **Application (client) ID** 
+3. In "Overview" take note of the **Application (client) ID**
 4. Choose the new project from the top right project dropdown (only if another project is selected)
-5.  Select "Certificates & secrets" and click on "+ New Client Secret". 
+5.  Select "Certificates & secrets" and click on "+ New Client Secret".
 
 
 #### GitHub Auth Provider
