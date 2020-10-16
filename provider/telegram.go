@@ -34,12 +34,10 @@ type TelegramHandler struct {
 	Telegram     TelegramAPI
 
 	username string // bot username
-	requests tgAuthRequests
-}
-
-type tgAuthRequests struct {
-	sync.RWMutex
-	data map[string]tgAuthRequest
+	requests struct {
+		sync.RWMutex
+		data map[string]tgAuthRequest
+	}
 }
 
 type tgAuthRequest struct {
@@ -116,7 +114,7 @@ type telegramUpdate struct {
 }
 
 // processUpdates processes a batch of updates from telegram servers
-// Returns offset for subsequest calls
+// Returns offset for subsequent calls
 func (th *TelegramHandler) processUpdates(ctx context.Context) error {
 	updates, err := th.Telegram.GetUpdates(ctx)
 	if err != nil {
@@ -178,7 +176,7 @@ func (th *TelegramHandler) processUpdates(ctx context.Context) error {
 	return nil
 }
 
-// Name of the handler
+// Name of the provider
 func (th *TelegramHandler) Name() string { return th.ProviderName }
 
 // Default token lifetime. Changed in tests
