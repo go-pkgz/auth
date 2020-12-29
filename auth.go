@@ -287,6 +287,22 @@ func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender)
 	s.authMiddleware.Providers = s.providers
 }
 
+// AddVerifyRedirectProvider adds provider user's verification sent by sender
+func (s *Service) AddVerifyRedirectProvider(name, msgTmpl string, sender provider.Sender) {
+	dh := provider.VerifyRedirectHandler{
+		L:            s.logger,
+		ProviderName: name,
+		Issuer:       s.issuer,
+		TokenService: s.jwtService,
+		AvatarSaver:  s.avatarProxy,
+		Sender:       sender,
+		Template:     msgTmpl,
+		UseGravatar:  s.useGravatar,
+	}
+	s.providers = append(s.providers, provider.NewService(dh))
+	s.authMiddleware.Providers = s.providers
+}
+
 // AddCustomHandler adds user-defined self-implemented handler of auth provider
 func (s *Service) AddCustomHandler(handler provider.Provider) {
 	s.providers = append(s.providers, provider.NewService(handler))
