@@ -372,7 +372,7 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 	}
 
 	svc = NewService(options)
-	svc.AddProvider("dev", "", "")           // add dev provider
+	svc.AddDevProvider(18084)                // add dev provider on 18084
 	svc.AddProvider("github", "cid", "csec") // add github provider
 
 	// add go-oauth2/oauth2 provider
@@ -385,11 +385,12 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 
 	svc.AddVerifProvider("email", "{{.Token}}", &sender)
 
-	// run dev/test oauth2 server on :8084
+	// run dev/test oauth2 server on :18084
 	devAuth, err := svc.DevAuth()
 	require.NoError(t, err)
 	devAuth.Automatic = true // eliminate form
 	go devAuth.Run(context.TODO())
+	time.Sleep(time.Millisecond * 50)
 
 	// setup http server
 	m := svc.Middleware()
@@ -412,13 +413,11 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 	assert.NoError(t, ts.Listener.Close())
 	ts.Listener = l
 	ts.Start()
-	time.Sleep(time.Millisecond * 100)
 
 	return svc, func() {
 		ts.Close()
 		devAuth.Shutdown()
 		_ = os.RemoveAll("/tmp/auth-pkgz")
-		time.Sleep(time.Millisecond * 100)
 	}
 }
 

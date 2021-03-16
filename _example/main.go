@@ -261,7 +261,7 @@ func protectedDataHandler(w http.ResponseWriter, r *http.Request) {
 		User:   userInfo,
 	}
 
-	rest.RenderJSON(w, r, res)
+	rest.RenderJSON(w, res)
 }
 
 // initialize go-oauth2/oauth2 server

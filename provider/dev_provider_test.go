@@ -17,7 +17,7 @@ import (
 )
 
 func TestDevProvider(t *testing.T) {
-	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std,
+	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std, Port: 18084,
 		JwtService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
@@ -67,10 +67,10 @@ func TestDevProvider(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user",
-		Picture: "http://127.0.0.1:8084/avatar?user=dev_user", IP: ""}, *claims.User)
+		Picture: "http://127.0.0.1:18084/avatar?user=dev_user", IP: ""}, *claims.User)
 
 	// check avatar
-	resp, err = client.Get("http://127.0.0.1:8084/avatar?user=dev_user")
+	resp, err = client.Get("http://127.0.0.1:18084/avatar?user=dev_user")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
