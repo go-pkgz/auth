@@ -242,6 +242,19 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 	s.authMiddleware.Providers = s.providers
 }
 
+// AddDevProvider with a custom port
+func (s *Service) AddDevProvider(port int) {
+	p := provider.Params{
+		URL:         s.opts.URL,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+		L:           s.logger,
+		Port:        port,
+	}
+	s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
+}
+
 // AddCustomProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3)
 func (s *Service) AddCustomProvider(name string, client Client, copts provider.CustomHandlerOpt) {
 	p := provider.Params{

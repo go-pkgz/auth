@@ -39,6 +39,8 @@ type Params struct {
 	Csecret     string
 	Issuer      string
 	AvatarSaver AvatarSaver
+
+	Port int // relevant for providers supporting port customization, for example dev oauth2
 }
 
 // UserData is type for user information returned from oauth2 providers /info API method
