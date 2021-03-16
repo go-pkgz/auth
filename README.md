@@ -379,7 +379,7 @@ Working with oauth2 providers can be a pain, especially during development phase
 	}()
 ```
 
-It will run fake aouth2 "server" on port :18084 and user could login with any user name. See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go) for more details.
+It will run fake aouth2 "server" on port :8084 and user could login with any user name. See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go) for more details.
 
 _Warning: this is not the real oauth2 server but just a small fake thing for development and testing only. Don't use `dev` provider with any production code._
 
