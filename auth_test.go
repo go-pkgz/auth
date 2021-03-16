@@ -412,6 +412,7 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 	assert.NoError(t, ts.Listener.Close())
 	ts.Listener = l
 	ts.Start()
+	time.Sleep(time.Millisecond * 100)
 
 	return svc, func() {
 		ts.Close()
