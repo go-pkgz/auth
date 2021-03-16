@@ -11,6 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: disable and stop mono-xsp4.service (wtf?)
+        run: |
+          sudo systemctl stop mono-xsp4.service || true
+          sudo systemctl disable mono-xsp4.service || true
+
       - name: set up go 1.16
         uses: actions/setup-go@v2
         with:
