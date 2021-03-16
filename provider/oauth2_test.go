@@ -162,7 +162,7 @@ func TestOauth2InvalidHandler(t *testing.T) {
 
 	resp, err = client.Post("http://localhost:8691/login", "", nil)
 	require.Nil(t, err)
-	assert.Equal(t, 405, resp.StatusCode)
+	assert.Equal(t, 500, resp.StatusCode)
 }
 
 func TestMakeRedirURL(t *testing.T) {

@@ -159,12 +159,12 @@ func TestOauth1InvalidHandler(t *testing.T) {
 
 	client := &http.Client{Timeout: timeout * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login_bad", loginPort))
-	require.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 
 	resp, err = client.Post(fmt.Sprintf("http://localhost:%d/login", loginPort), "", nil)
-	require.Nil(t, err)
-	assert.Equal(t, 405, resp.StatusCode)
+	require.NoError(t, err)
+	assert.Equal(t, 500, resp.StatusCode)
 }
 
 func TestOauth1MakeRedirURL(t *testing.T) {
