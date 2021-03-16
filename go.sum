@@ -24,6 +24,8 @@ github.com/go-pkgz/repeater v1.1.3 h1:q6+JQF14ESSy28Dd7F+wRelY4F+41HJ0LEy/szNnMi
 github.com/go-pkgz/repeater v1.1.3/go.mod h1:hVTavuO5x3Gxnu8zW7d6sQBfAneKV8X2FjU48kGfpKw=
 github.com/go-pkgz/rest v1.5.0 h1:C8SxXcXza4GiUUAn/95iCkvoIrGbS30qpwK19iqlrWQ=
 github.com/go-pkgz/rest v1.5.0/go.mod h1:nQaM3RhSTUAmbBZWY4hfe4buyeC9VckvhoCktiQXJxI=
+github.com/go-pkgz/rest v1.6.0 h1:mowpdpVsgofMJsfoqeUFUrF5efXPHpXJkQDoy13OKcA=
+github.com/go-pkgz/rest v1.6.0/go.mod h1:FKpgK5FgSqREG323OIU/JpIc0xA7dqay9BmK7LZXTQE=
 github.com/go-session/session v3.1.2+incompatible/go.mod h1:8B3iivBQjrz/JtC68Np2T1yBBLxTan3mn/3OM0CyRt0=
 github.com/go-sql-driver/mysql v1.5.0/go.mod h1:DCzpHaOWr8IXmIStZouvnhqoel9Qv2LBy8hT2VhHyBg=
 github.com/go-stack/stack v1.8.0 h1:5SgMzNM5HxrEjV0ww2lTmX6E2Izsfxas4+YHWRs3Lsk=
