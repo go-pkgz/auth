@@ -418,6 +418,7 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 		ts.Close()
 		devAuth.Shutdown()
 		_ = os.RemoveAll("/tmp/auth-pkgz")
+		time.Sleep(time.Millisecond * 100)
 	}
 }
 
