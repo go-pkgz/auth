@@ -122,54 +122,61 @@ func TestAvatar_Routes(t *testing.T) {
 	_, err := p.Put(u, client)
 	assert.NoError(t, err)
 
-	// status 400
-	req, err := http.NewRequest("GET", "/some_random_name.image", nil)
-	if err != nil {
-		t.Fatal(err)
+	{
+		// status 400
+		req, err := http.NewRequest("GET", "/123aa77b4c04a9551b8781d03191fe098f325e67.image", nil)
+		require.NoError(t, err)
+		rr := httptest.NewRecorder()
+		handler := http.Handler(http.HandlerFunc(p.Handler))
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	}
 
-	rr := httptest.NewRecorder()
-	handler := http.Handler(http.HandlerFunc(p.Handler))
-	handler.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusBadRequest, rr.Code)
-
-	// status 200
-	req, err = http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", nil)
-	if err != nil {
-		t.Fatal(err)
+	{
+		// status 403
+		req, err := http.NewRequest("GET", "../not-allowed.txt", nil)
+		require.NoError(t, err)
+		rr := httptest.NewRecorder()
+		handler := http.Handler(http.HandlerFunc(p.Handler))
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusForbidden, rr.Code)
 	}
 
-	rr = httptest.NewRecorder()
-	handler = http.Handler(http.HandlerFunc(p.Handler))
-	handler.ServeHTTP(rr, req)
+	{ // status 200
+		req, err := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", nil)
+		require.NoError(t, err)
+		rr := httptest.NewRecorder()
+		handler := http.Handler(http.HandlerFunc(p.Handler))
+		handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, []string{"image/*"}, rr.Header()["Content-Type"])
+		assert.Equal(t, []string{"21"}, rr.Header()["Content-Length"])
+		assert.Equal(t, []string(nil), rr.Header()["Custom-Header"], "strip all custom headers")
+		assert.NotNil(t, rr.Header()["Etag"])
 
-	assert.Equal(t, []string{"image/*"}, rr.Header()["Content-Type"])
-	assert.Equal(t, []string{"21"}, rr.Header()["Content-Length"])
-	assert.Equal(t, []string(nil), rr.Header()["Custom-Header"], "strip all custom headers")
-	assert.NotNil(t, rr.Header()["Etag"])
-
-	bb := bytes.Buffer{}
-	sz, err := io.Copy(&bb, rr.Body)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(21), sz)
-	assert.Equal(t, "some picture bin data", bb.String())
-
-	// status 304
-	req, err = http.NewRequest("GET", "/some_random_name.image", nil)
-	if err != nil {
-		t.Fatal(err)
+		bb := bytes.Buffer{}
+		sz, err := io.Copy(&bb, rr.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, int64(21), sz)
+		assert.Equal(t, "some picture bin data", bb.String())
 	}
-	req.Header.Add("If-None-Match", `"a008de0a2ccb3308b5d99ffff66436e15538f701"`) // hash of `some_random_name.image` since the file doesn't exist
 
-	rr = httptest.NewRecorder()
-	handler = http.Handler(http.HandlerFunc(p.Handler))
-	handler.ServeHTTP(rr, req)
+	{
+		// status 304
+		req, err := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", nil)
+		require.NoError(t, err)
+		id := p.Store.ID("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
+		req.Header.Add("If-None-Match", p.Store.ID(id)) // hash of `some_random_name.image` since the file doesn't exist
 
-	assert.Equal(t, http.StatusNotModified, rr.Code)
-	assert.Equal(t, []string{`"a008de0a2ccb3308b5d99ffff66436e15538f701"`}, rr.Header()["Etag"])
+		rr := httptest.NewRecorder()
+		handler := http.Handler(http.HandlerFunc(p.Handler))
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusNotModified, rr.Code)
+		assert.Equal(t, []string{`"` + id + `"`}, rr.Header()["Etag"])
+	}
+
 }
 
 func TestAvatar_resize(t *testing.T) {
