@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -101,13 +102,19 @@ func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	elems := strings.Split(r.URL.Path, "/")
 	avatarID := elems[len(elems)-1]
+	if !reValidAvatarID.MatchString(avatarID) {
+		rest.SendErrorJSON(w, r, p.L, http.StatusForbidden, fmt.Errorf("invalid avatar id from %s", r.URL.Path), "can't load avatar")
+		return
+	}
 
 	// enforce client-side caching
 	etag := `"` + p.Store.ID(avatarID) + `"`
 	w.Header().Set("Etag", etag)
 	w.Header().Set("Cache-Control", "max-age=604800") // 7 days
 	if match := r.Header.Get("If-None-Match"); match != "" {
-		if strings.Contains(match, etag) {
+		etag = strings.TrimPrefix(etag, `"`)
+		etag = strings.TrimSuffix(etag, `"`)
+		if match == etag {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
@@ -115,7 +122,6 @@ func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
 
 	avReader, size, err := p.Store.Get(avatarID)
 	if err != nil {
-
 		rest.SendErrorJSON(w, r, p.L, http.StatusBadRequest, err, "can't load avatar")
 		return
 	}

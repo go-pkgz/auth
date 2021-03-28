@@ -34,15 +34,25 @@ func TestNoOp_Get(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(proxy.Handler))
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/avatar")
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-	require.Zero(t, resp.ContentLength)
-	body, err := ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Empty(t, body)
-	err = resp.Body.Close()
-	require.NoError(t, err)
+	{
+		resp, err := http.Get(ts.URL + "/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Zero(t, resp.ContentLength)
+		body, err := ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Empty(t, body)
+		err = resp.Body.Close()
+		require.NoError(t, err)
+	}
+
+	{
+		resp, err := http.Get(ts.URL + "/avatar/invalid.image")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusForbidden, resp.StatusCode)
+		err = resp.Body.Close()
+		require.NoError(t, err)
+	}
 
 }
 
