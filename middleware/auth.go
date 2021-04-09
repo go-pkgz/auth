@@ -76,8 +76,8 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 	f := func(h http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
 
-			// use admin user basic auth if enabled
-			if a.basicAdminUser(r) && a.BasicAuthChecker == nil {
+			// use admin user basic auth if enabled but ignore when BasicAuthChecker defined
+			if a.BasicAuthChecker == nil && a.basicAdminUser(r) {
 				r = token.SetUserInfo(r, adminUser)
 				h.ServeHTTP(w, r)
 				return
