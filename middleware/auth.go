@@ -19,11 +19,12 @@ import (
 // Authenticator is top level auth object providing middlewares
 type Authenticator struct {
 	logger.L
-	JWTService   TokenService
-	Providers    []provider.Service
-	Validator    token.Validator
-	AdminPasswd  string
-	RefreshCache RefreshCache
+	JWTService       TokenService
+	Providers        []provider.Service
+	Validator        token.Validator
+	AdminPasswd      string
+	BasicAuthChecker token.BasicAuth
+	RefreshCache     RefreshCache
 }
 
 // RefreshCache defines interface storing and retrieving refreshed tokens
@@ -76,10 +77,28 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
 
 			// use admin user basic auth if enabled
-			if a.basicAdminUser(r) {
+			if a.basicAdminUser(r) && a.BasicAuthChecker == nil {
 				r = token.SetUserInfo(r, adminUser)
 				h.ServeHTTP(w, r)
 				return
+			}
+
+			// user custom basic auth if BasicAuthChecker defined
+			if a.BasicAuthChecker != nil {
+				if user, passwd, isBasicAuth := r.BasicAuth(); isBasicAuth {
+					ok, userInfo, err := a.BasicAuthChecker.Check(user, passwd)
+					if err != nil {
+						onError(h, w, r, errors.Wrap(err, "basic auth check failed"))
+						return
+					}
+					if !ok {
+						onError(h, w, r, errors.Wrap(err, "wrong credentials for basic auth"))
+						return
+					}
+					r = token.SetUserInfo(r, userInfo)
+					h.ServeHTTP(w, r)
+					return
+				}
 			}
 
 			claims, tkn, err := a.JWTService.Get(r)
