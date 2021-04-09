@@ -301,6 +301,43 @@ func TestAuthWithBasic(t *testing.T) {
 	assert.Equal(t, 401, resp.StatusCode, "admin with basic not allowed")
 }
 
+func TestAuthWithBasicChecker(t *testing.T) {
+	a := makeTestAuth(t)
+	a.AdminPasswd = "" // disable admin
+	a.BasicAuthChecker = token.BasicAuthFunc(func(user, passwd string) (bool, token.User, error) {
+		if passwd == "123456" {
+			return true, token.User{Name: user, Role: "test_r"}, nil
+		}
+		return false, token.User{}, errors.New("credentials check failed")
+	})
+
+	server := httptest.NewServer(makeTestMux(t, &a, true))
+	defer server.Close()
+
+	client := &http.Client{Timeout: 1 * time.Second}
+	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	req.SetBasicAuth("basic_user", "123456")
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 201, resp.StatusCode, "valid token user")
+
+	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	req.SetBasicAuth("dev", "xyz")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 401, resp.StatusCode, "wrong token creds")
+
+	a.BasicAuthChecker = nil // disable basicAuthChecker
+	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	require.NoError(t, err)
+	req.SetBasicAuth("admin", "123456")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, 401, resp.StatusCode, "admin with basic not allowed")
+}
+
 func TestAuthNotRequired(t *testing.T) {
 	a := makeTestAuth(t)
 	server := httptest.NewServer(makeTestMux(t, &a, false))
