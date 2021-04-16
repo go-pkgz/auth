@@ -389,7 +389,7 @@ In addition to the primary method (i.e. JWT cookie with XSRF header) there are t
 
 1. Send JWT header as `X-JWT`. This shouldn't be used for web application, however can be helpful for service-to-service authentication.
 2. Send JWT token as query parameter, i.e. `/something?token=<jwt>`
-3. Basic access authentication, for more details see below [Basic authentication](https://github.com/go-pkgz/auth/blob/master/README.md#L394).
+3. Basic access authentication, for more details see below [Basic authentication](#basic-authentication).
 
 ### Basic authentication
 
