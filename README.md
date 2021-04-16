@@ -384,13 +384,13 @@ It will run fake aouth2 "server" on port :8084 and user could login with any use
 _Warning: this is not the real oauth2 server but just a small fake thing for development and testing only. Don't use `dev` provider with any production code._
 
 ### Basic authentication
-In some cases the `middleware.Authenticator` allow use  [Basic access authentication](https://en.wikipedia.org/wiki/Basic_access_authentication), which transmits credentials as user-id/password pairs, encoded using Base64 ([RFC7235](https://tools.ietf.org/html/rfc7617)). 
+In some cases the `middleware.Authenticator` allow use  [Basic access authentication](https://en.wikipedia.org/wiki/Basic_access_authentication), which transmits credentials as user-id/password pairs, encoded using Base64 ([RFC7235](https://tools.ietf.org/html/rfc7617)).
 When basic authentication used, client doesn't get auth token in response. It's auth type expect credentials in a header `Authorization` at every client request. It can be helpful, if client side not support cookie/token store (e.g. embedded device or custom apps).
 This mode disabled by default and will be enabled with options.
 
 The `auth` package has two options of basic authentication:
 - simple basic auth will be enabled if `Opts.AdminPasswd` defined. This will allow access with basic auth admin:<Opts.AdminPasswd> with user [admin](https://github.com/go-pkgz/auth/blob/master/middleware/auth.go#L24). Such method can be used for automation scripts.
-- basic auth with custom checker [function](https://github.com/go-pkgz/auth/blob/master/middleware/auth.go#L47), which allow adding user data from store to context of request.  It will be enabled if `Opts.BasicAuthChecker` defined. When `BasicAuthChecker` defined then `Opts.AdminPasswd` option will ignore. 
+- basic auth with custom checker [function](https://github.com/go-pkgz/auth/blob/master/middleware/auth.go#L47), which allow adding user data from store to context of request.  It will be enabled if `Opts.BasicAuthChecker` defined. When `BasicAuthChecker` defined then `Opts.AdminPasswd` option will be ignore.
 ```go
 options := auth.Opts{
    //...
