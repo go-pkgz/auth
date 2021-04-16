@@ -383,7 +383,16 @@ It will run fake aouth2 "server" on port :8084 and user could login with any use
 
 _Warning: this is not the real oauth2 server but just a small fake thing for development and testing only. Don't use `dev` provider with any production code._
 
+### Other ways to authenticate
+
+In addition to the primary method (i.e. JWT cookie with XSRF header) there are two more ways to authenticate:
+
+1. Send JWT header as `X-JWT`. This shouldn't be used for web application, however can be helpful for service-to-service authentication.
+2. Send JWT token as query parameter, i.e. `/something?token=<jwt>`
+3. Basic access authentication, for more details see below [Basic authentication](https://github.com/go-pkgz/auth/blob/master/README.md#L394).
+
 ### Basic authentication
+
 In some cases the `middleware.Authenticator` allow use  [Basic access authentication](https://en.wikipedia.org/wiki/Basic_access_authentication), which transmits credentials as user-id/password pairs, encoded using Base64 ([RFC7235](https://tools.ietf.org/html/rfc7617)).
 When basic authentication used, client doesn't get auth token in response. It's auth type expect credentials in a header `Authorization` at every client request. It can be helpful, if client side not support cookie/token store (e.g. embedded device or custom apps).
 This mode disabled by default and will be enabled with options.
@@ -404,14 +413,6 @@ options := auth.Opts{
    //...
 }
 ```
-
-### Other ways to authenticate
-
-In addition to the primary method (i.e. JWT cookie with XSRF header) there are two more ways to authenticate:
-
-1. Send JWT header as `X-JWT`. This shouldn't be used for web application, however can be helpful for service-to-service authentication.
-2. Send JWT token as query parameter, i.e. `/something?token=<jwt>`
-
 ### Logging
 
 By default, this library doesn't print anything to stdout/stderr, however user can pass a logger implementing `logger.L` interface with a single method `Logf(format string, args ...interface{})`. Functional adapter for this interface included as `logger.Func`. There are two predefined implementations in the `logger` package - `NoOp` (prints nothing, default) and `Std` wrapping `log.Printf` from stdlib.
