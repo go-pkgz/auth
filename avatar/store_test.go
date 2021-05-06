@@ -65,7 +65,7 @@ func TestStore_NewStore(t *testing.T) {
 		{"file:///tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
 		{"bolt:///tmp/ava_tmp", "boltdb, path=/tmp/ava_tmp", nil},
 		{"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), db=db1, bucket=coll1", nil},
-		{"mongodb://127.0.0.2:27017/test?ava_db=db1&ava_coll=coll1", "", errors.New("failed to connect to mongo server: context deadline exceeded")},
+		{"mongodb://127.0.0.2:27017/test?ava_db=db1&ava_coll=coll1", "", errors.New("failed to connect to mongo server: server selection error: context deadline exceeded")},
 		{"blah:///tmp/ava_tmp", "", errors.New("can't parse store url blah:///tmp/ava_tmp")},
 	}
 
@@ -79,7 +79,8 @@ func TestStore_NewStore(t *testing.T) {
 			}
 			res, err := NewStore(tt.uri)
 			if tt.err != nil {
-				require.EqualError(t, err, tt.err.Error())
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.err.Error())
 				return
 			}
 			require.NoError(t, err)
