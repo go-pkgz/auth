@@ -6,10 +6,10 @@ replace github.com/go-pkgz/auth => ../
 
 require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
-	github.com/go-chi/chi v4.1.1+incompatible
-	github.com/go-pkgz/auth v0.4.1
-	github.com/go-pkgz/lgr v0.7.0
-	github.com/go-pkgz/rest v1.6.0
-	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
+	github.com/go-chi/chi/v5 v5.0.3
+	github.com/go-pkgz/auth v1.15.0
+	github.com/go-pkgz/lgr v0.10.4
+	github.com/go-pkgz/rest v1.9.2
+	golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
 	gopkg.in/oauth2.v3 v3.12.0
 )
