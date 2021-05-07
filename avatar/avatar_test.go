@@ -33,7 +33,10 @@ func TestAvatar_Put(t *testing.T) {
 		}
 		http.Error(w, "not found", http.StatusNotFound)
 	}))
-	defer ts.Close()
+	defer func() {
+		os.RemoveAll("/tmp/avatars.test/")
+		ts.Close()
+	}()
 
 	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.NoOp}
 	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0700))
@@ -62,8 +65,10 @@ func TestAvatar_PutIdenticon(t *testing.T) {
 		log.Print("request: ", r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
 	}))
-	defer ts.Close()
-
+	defer func() {
+		os.RemoveAll("/tmp/avatars.test/")
+		ts.Close()
+	}()
 	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
 	client := &http.Client{Timeout: time.Second}
 
@@ -83,20 +88,21 @@ func TestAvatar_PutFailed(t *testing.T) {
 		log.Print("request: ", r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
 	}))
-	defer ts.Close()
+	defer func() {
+		os.RemoveAll("/tmp/avatars.test/")
+		ts.Close()
+	}()
 
-	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
 	client := &http.Client{Timeout: time.Second}
 
-	u := token.User{ID: "user1", Name: "user1 name", Picture: "http://127.0.0.1:22345/avater/pic"}
-	_, err := p.Put(u, client)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "connect: connection refused")
-
-	u = token.User{ID: "user1", Name: "user1 name", Picture: ts.URL + "/avatar/pic"}
-	_, err = p.Put(u, client)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to get avatar from the orig")
+	u := token.User{ID: "user2", Name: "user2 name", Picture: "http://127.0.0.1:22345/avater/pic"}
+	res, err := p.Put(u, client)
+	require.NoError(t, err)
+	assert.Equal(t, "http://localhost:8080/avatar/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image", res)
+	fi, err := os.Stat("/tmp/avatars.test/84/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image")
+	require.NoError(t, err)
+	assert.Equal(t, int64(992), fi.Size())
 }
 
 func TestAvatar_Routes(t *testing.T) {

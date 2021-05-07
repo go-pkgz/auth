@@ -37,14 +37,13 @@ type Proxy struct {
 // Put stores retrieved avatar to avatar.Store. Gets image from user info. Returns proxied url
 func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err error) {
 
-	// no picture for user, try to generate identicon avatar
-	if u.Picture == "" {
-		b, e := GenerateAvatar(u.ID)
+	genIdenticon := func(userID string) (avatarURL string, err error) {
+		b, e := GenerateAvatar(userID)
 		if e != nil {
-			return "", errors.Wrapf(e, "no picture for %s", u.ID)
+			return "", errors.Wrapf(e, "no picture for %s", userID)
 		}
 		// put returns avatar base name, like 123456.image
-		avatarID, e := p.Store.Put(u.ID, p.resize(bytes.NewBuffer(b), p.ResizeLimit))
+		avatarID, e := p.Store.Put(userID, p.resize(bytes.NewBuffer(b), p.ResizeLimit))
 		if e != nil {
 			return "", err
 		}
@@ -53,9 +52,15 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 		return p.URL + p.RoutePath + "/" + avatarID, nil
 	}
 
+	// no picture for user, try to generate identicon avatar
+	if u.Picture == "" {
+		return genIdenticon(u.ID)
+	}
+
 	body, err := p.load(u.Picture, client)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to fetch avatar from the orig")
+		p.Logf("[DEBUG] failed to fetch avatar from the orig %s, %v", u.Picture, err)
+		return genIdenticon(u.ID)
 	}
 
 	defer func() {
