@@ -12,7 +12,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-var testDb = "/tmp/test-remark-avatars.db"
+var testDB = "/tmp/test-remark-avatars.db"
 
 func TestBoltDB_PutAndGet(t *testing.T) {
 	var b Store
@@ -84,11 +84,11 @@ func TestBoltDB_List(t *testing.T) {
 
 // makes new boltdb, put two records
 func prepBoltStore(t *testing.T) (blt *BoltDB, teardown func()) {
-	_ = os.Remove(testDb)
-	boltStore, err := NewBoltDB(testDb, bolt.Options{})
+	_ = os.Remove(testDB)
+	boltStore, err := NewBoltDB(testDB, bolt.Options{})
 	require.Nil(t, err)
 	return boltStore, func() {
 		assert.Nil(t, boltStore.Close())
-		_ = os.Remove(testDb)
+		_ = os.Remove(testDB)
 	}
 }

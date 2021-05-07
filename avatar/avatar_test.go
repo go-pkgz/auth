@@ -34,7 +34,7 @@ func TestAvatar_Put(t *testing.T) {
 		http.Error(w, "not found", http.StatusNotFound)
 	}))
 	defer func() {
-		os.RemoveAll("/tmp/avatars.test/")
+		_ = os.RemoveAll("/tmp/avatars.test/")
 		ts.Close()
 	}()
 
@@ -66,7 +66,7 @@ func TestAvatar_PutIdenticon(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer func() {
-		os.RemoveAll("/tmp/avatars.test/")
+		_ = os.RemoveAll("/tmp/avatars.test/")
 		ts.Close()
 	}()
 	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
@@ -89,7 +89,7 @@ func TestAvatar_PutFailed(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer func() {
-		os.RemoveAll("/tmp/avatars.test/")
+		_ = os.RemoveAll("/tmp/avatars.test/")
 		ts.Close()
 	}()
 

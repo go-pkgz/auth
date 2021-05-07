@@ -4,7 +4,7 @@ package avatar
 
 import (
 	"bytes"
-	"crypto/md5"
+	"crypto/md5" //nolint gosec
 	"encoding/hex"
 	"fmt"
 	"image"
