@@ -81,7 +81,7 @@ func TestProvider(t *testing.T) {
 
 	ch, err := svc.Provider("telegramBotMySiteCom")
 	assert.NoError(t, err)
-	chp := ch.Provider.(provider.Provider)
+	chp := ch.Provider
 	assert.Equal(t, "telegramBotMySiteCom", chp.Name())
 }
 
@@ -121,7 +121,7 @@ func TestIntegrationProtected(t *testing.T) {
 	resp, err = client.Get("http://127.0.0.1:8089/private")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	defer resp.Body.Close()
+	assert.NoError(t, resp.Body.Close())
 }
 
 func TestIntegrationBasicAuth(t *testing.T) {
@@ -143,7 +143,7 @@ func TestIntegrationBasicAuth(t *testing.T) {
 	resp, err = client.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	defer resp.Body.Close()
+	assert.NoError(t, resp.Body.Close())
 }
 
 func TestIntegrationAvatar(t *testing.T) {
@@ -240,7 +240,7 @@ func TestLogout(t *testing.T) {
 	resp, err = client.Get("http://127.0.0.1:8089/private")
 	require.Nil(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
-	defer resp.Body.Close()
+	assert.NoError(t, resp.Body.Close())
 }
 
 func TestLogoutNoProviders(t *testing.T) {
@@ -274,7 +274,8 @@ func TestBadRequests(t *testing.T) {
 	resp, err = client.Get("http://127.0.0.1:8089/auth")
 	require.Nil(t, err)
 	assert.Equal(t, 400, resp.StatusCode)
-	defer resp.Body.Close()
+	assert.NoError(t, resp.Body.Close())
+
 }
 
 func TestDirectProvider(t *testing.T) {
@@ -309,7 +310,7 @@ func TestDirectProvider(t *testing.T) {
 	resp, err = client.Get("http://127.0.0.1:8089/private")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	defer resp.Body.Close()
+	assert.NoError(t, resp.Body.Close())
 }
 
 func TestVerifProvider(t *testing.T) {
