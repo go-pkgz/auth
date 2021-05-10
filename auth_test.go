@@ -9,6 +9,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +84,61 @@ func TestProvider(t *testing.T) {
 	assert.NoError(t, err)
 	chp := ch.Provider
 	assert.Equal(t, "telegramBotMySiteCom", chp.Name())
+}
+
+func TestService_AddAppleProvider(t *testing.T) {
+
+	options := Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:          "http://127.0.0.1:8089",
+		Logger:       logger.Std,
+	}
+	svc := NewService(options)
+
+	testValidKey := `-----BEGIN PRIVATE KEY-----
+MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgTxaHXzyuM85Znw7y
+SJ9XeeC8gqcpE/VLhZHGsnPPiPagCgYIKoZIzj0DAQehRANCAATnwlOv7I6eC3Ec
+/+GeYXT+hbcmhEVveDqLmNcHiXCR9XxJZXtpMRlcRfY8eaJpUdig27dfsbvpnfX5
+Ivx5tHkv
+-----END PRIVATE KEY-----`
+	testPrivKeyFileName := "privKeyTest.tmp"
+
+	dir, err := ioutil.TempDir(os.TempDir(), testPrivKeyFileName)
+	assert.NoError(t, err)
+	assert.NotNil(t, dir)
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+
+	defer func() {
+		err = os.RemoveAll(dir)
+		require.NoError(t, err)
+	}()
+
+	filePath := filepath.Join(dir, testPrivKeyFileName)
+
+	if err = ioutil.WriteFile(filePath, []byte(testValidKey), 0600); err != nil {
+		require.NoError(t, err)
+		return
+	}
+	assert.NoError(t, err)
+
+	appleCfg := provider.AppleConfig{
+		ClientID: "111222",
+		TeamID:   "3334445556",
+		KeyID:    "0011002200",
+	}
+
+	err = svc.AddAppleProvider(appleCfg, provider.LoadApplePrivateKeyFromFile(filePath))
+	require.NoError(t, err)
+	p, err := svc.Provider("apple")
+	assert.NoError(t, err)
+	assert.Equal(t, p.Name(), "apple")
+
+	err = svc.AddAppleProvider(appleCfg, nil)
+	require.Error(t, err)
+
 }
 
 func TestIntegrationProtected(t *testing.T) {
