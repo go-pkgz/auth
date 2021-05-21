@@ -110,7 +110,41 @@ func TestOauth2LoginSessionOnly(t *testing.T) {
 	t.Logf("%+v", res)
 }
 
-//nolint dupl
+func TestOauth2LoginNoAva(t *testing.T) {
+
+	teardown := prepOauth2Test(t, 8981, 8982)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	// check non-admin, session
+	resp, err := client.Get("http://localhost:8981/login?site=remark&noava=1")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, 2, len(resp.Cookies()))
+	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
+	assert.NotEqual(t, 0, resp.Cookies()[0].MaxAge)
+	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
+	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
+
+	req, err := http.NewRequest("GET", "http://example.com", nil)
+	require.Nil(t, err)
+
+	req.AddCookie(resp.Cookies()[0])
+	req.AddCookie(resp.Cookies()[1])
+	req.Header.Add("X-XSRF-TOKEN", resp.Cookies()[1].Value)
+
+	jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore)})
+	res, _, err := jwtService.Get(req)
+	require.Nil(t, err)
+	assert.Equal(t, "http://example.com/fake.png", res.User.Picture)
+	assert.Equal(t, true, res.NoAva)
+	t.Logf("%+v", res)
+}
+
 func TestOauth2Logout(t *testing.T) {
 
 	teardown := prepOauth2Test(t, 8691, 8692)
@@ -211,7 +245,9 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 				case "mock_myuser2":
 					claims.User.SetBoolAttr("admin", true)
 				case "mock_myuser1":
-					claims.User.Picture = "http://example.com/custom.png"
+					if !claims.NoAva {
+						claims.User.Picture = "http://example.com/custom.png"
+					}
 				}
 			}
 			return claims
@@ -286,5 +322,9 @@ func mockKeyStore(string) (string, error) { return "12345", nil }
 type mockAvatarSaver struct{}
 
 func (m *mockAvatarSaver) Put(u token.User, client *http.Client) (avatarURL string, err error) {
-	return "http://example.com/ava12345.png", nil
+	if u.Picture != "" {
+		return "http://example.com/ava12345.png", nil
+	}
+	return "http://example.com/fake.png", nil
+
 }
