@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"crypto/rsa"
+	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -60,7 +61,7 @@ func TestAppleHandler_NewApple(t *testing.T) {
 	// testing mapUser
 	u := ah.mapUser(testTokenClaims)
 	t.Logf("%+v", u)
-	assert.Equal(t, u.ID, "apple_001122.7893f76ebedc4118a7917dab9a8a9ea9.1122")
+	assert.Equal(t, u.ID, "apple_"+token.HashID(sha1.New(), "001122.7893f76ebedc4118a7917dab9a8a9ea9.1122"))
 
 	_, err = NewApple(p, aCfg, nil)
 	require.Error(t, err)
@@ -157,13 +158,18 @@ func TestAppleParseUserData(t *testing.T) {
 	ah := AppleHandler{Params: Params{L: logger.NoOp}}
 
 	userNameClaimTest := `{"name":{"firstName":"test","lastName":"user"}}`
-	testUser := &token.User{Email: "user@example.com"}
+	testUser := &token.User{ID: "", Email: "user@example.com"}
+	shaID := "apple_" + token.HashID(sha1.New(), testUser.ID)
+
+	testUser.ID = shaID
+	testCheckUser := &token.User{ID: shaID, Name: "test user", Email: "user@example.com"}
 
 	ah.parseUserData(testUser, userNameClaimTest)
-	assert.Equal(t, testUser, &token.User{Name: "test user", Email: "user@example.com"})
+	assert.Equal(t, testUser, testCheckUser)
 
-	ah.parseUserData(testUser, "invalid user name data")
-	assert.Equal(t, testUser, &token.User{Name: "test user", Email: "user@example.com"})
+	testCheckUser.Name = "noname_" + shaID[6:12]
+	ah.parseUserData(testUser, "")
+	assert.Equal(t, testUser, testCheckUser)
 }
 
 func TestPrepareLoginURL(t *testing.T) {
@@ -232,7 +238,10 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 	u := token.User{}
 	err = json.Unmarshal(body, &u)
 	assert.Nil(t, err)
-	assert.Equal(t, token.User{ID: "mock_userid1", Email: "test@example.go"}, u)
+	testHashID := token.HashID(sha1.New(), "userid1")
+	testUserID := "apple_" + testHashID
+	testUserName := "noname_" + testUserID[6:12]
+	assert.Equal(t, token.User{ID: testUserID, Name: testUserName}, u)
 
 	tk := resp.Cookies()[0].Value
 	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
@@ -400,17 +409,6 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 
 	provider.PrivateKeyLoader = LoadApplePrivateKeyFromFile(filePath)
 	require.NoError(t, err)
-
-	provider.mapUser = func(claims jwt.MapClaims) token.User {
-		var usr token.User
-		if uid, ok := claims["sub"]; ok {
-			usr.ID = fmt.Sprintf("mock_%s", uid.(string))
-		}
-		if email, ok := claims["email"]; ok {
-			usr.Email = email.(string)
-		}
-		return usr
-	}
 
 	// create self-signed JWT
 	testResponseToken, err := createTestResponseToken(signKey)

@@ -465,9 +465,11 @@ Then add an Apple provider that accepts the following parameters:
 ```
 
 **Limitation:**
-* Map a userName (if specific scope defined) can be only at first login for a user.
-Every next login with Apple, under account which sign in early, will no return field with userName and provider can't fetch the name until a user delete sign in for you service with Apple ID in  Apple account profile (security section).
-Provider always get user `UID` (`sub` claim) and `email` (if email scope defined) from claims of `IDToken`.
+* Map a userName (if specific scope defined) is only sent in the upon initial user sign up.
+Subsequent logins to your app using Sign In with Apple with the same account do not share any user info and will only return a user identifier in IDToken claims.
+This behaves correctly until a user delete sign in for you service with Apple ID in own Apple account profile (security section). 
+It is recommend that you securely cache the at first login containing the user info for bind it with a user UID at next login.
+Provider always get user `UID` (`sub` claim) in `IDToken`.
 
 * Apple doesn't have an API for fetch avatar and user info.
 

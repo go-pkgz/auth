@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/sha1"
 	"crypto/x509"
 	"encoding/json"
 	"golang.org/x/oauth2"
@@ -176,7 +177,7 @@ func NewApple(p Params, appleCfg AppleConfig, privateKeyLoader PrivateKeyLoaderI
 		mapUser: func(claims jwt.MapClaims) token.User {
 			var usr token.User
 			if uid, ok := claims["sub"]; ok {
-				usr.ID = fmt.Sprintf("apple_%s", uid.(string))
+				usr.ID = "apple_" + token.HashID(sha1.New(), uid.(string))
 			}
 			return usr
 		},
@@ -317,7 +318,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, err, "exchange failed")
 		return
 	}
-	ah.Logf("[DEBUG]response data %+v", resp)
+	ah.Logf("[DEBUG] response data %+v", resp)
 	if resp.Error != "" {
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("fetch IDtoken response error: %s", resp.Error))
 		return
@@ -326,7 +327,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	// trying to fetch Apple public key (JWK) for verify token signature, it need for verify IDToken received from Apple
 	keySet, err := fetchAppleJWK(r.Context(), ah.conf.jwkURL)
 	if err != nil {
-		ah.L.Logf("failed to fetch JWK from Apple key service: " + err.Error())
+		ah.L.Logf("[ERROR] failed to fetch JWK from Apple key service: " + err.Error())
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("failed to fetch JWK from Apple key service: %s", resp.Error))
 		return
 	}
@@ -335,7 +336,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	tokenClaims := jwt.MapClaims{}
 	_, err = jwt.ParseWithClaims(resp.IDToken, tokenClaims, keySet.keyFunc)
 	if err != nil {
-		ah.L.Logf("failed to get claims: " + err.Error())
+		ah.L.Logf("[ERROR] failed to get claims: " + err.Error())
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("failed to token validation, key is invalid: %s", resp.Error))
 		return
 	}
@@ -348,10 +349,8 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// try parse user name data if it exist in scope and service response
-	if jUser != "" {
-		ah.parseUserData(&u, jUser)
-	}
+	// try parse username if one exist at response or noname assign
+	ah.parseUserData(&u, jUser)
 
 	cid, err := randToken()
 	if err != nil {
@@ -489,9 +488,11 @@ func (ah *AppleHandler) parseUserData(user *token.User, jUser string) {
 
 	// Catch error for log only. No need break flow if user name doesn't exist
 	if err := json.Unmarshal([]byte(jUser), &userData); err != nil {
-		ah.L.Logf("[ERROR] failed to parse user data %s: %v", user, err)
+		ah.L.Logf("[DEBUG] failed to parse user data %s: %v", user, err)
+		user.Name = "noname_" + user.ID[6:12] // paste noname if user name failed to parse
 		return
 	}
+
 	user.Name = fmt.Sprintf("%s %s", userData.Name.FirstName, userData.Name.LastName)
 }
 
