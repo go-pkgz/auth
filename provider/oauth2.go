@@ -239,5 +239,5 @@ func (p Oauth2Handler) makeRedirURL(path string) string {
 	elems := strings.Split(path, "/")
 	newPath := strings.Join(elems[:len(elems)-1], "/")
 
-	return strings.TrimRight(p.URL, "/") + strings.TrimRight(newPath, "/") + urlCallbackSuffix
+	return strings.TrimSuffix(p.URL, "/") + strings.TrimSuffix(newPath, "/") + urlCallbackSuffix
 }
