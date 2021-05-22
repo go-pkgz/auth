@@ -421,7 +421,53 @@ By default, this library doesn't print anything to stdout/stderr, however user c
 
 Authentication handled by external providers. You should setup oauth2 for all (or some) of them to allow users to authenticate. It is not mandatory to have all of them, but at least one should be correctly configured.
 
+#### Google Auth Provider
+
+1.  Create a new project: https://console.developers.google.com/project
+2.  Choose the new project from the top right project dropdown (only if another project is selected)
+3.  In the project Dashboard center pane, choose **"API Manager"**
+4.  In the left Nav pane, choose **"Credentials"**
+5.  In the center pane, choose **"OAuth consent screen"** tab. Fill in **"Product name shown to users"** and hit save.
+6.  In the center pane, choose **"Credentials"** tab.
+    * Open the **"New credentials"** drop down
+    * Choose **"OAuth client ID"**
+    * Choose **"Web application"**
+    * Application name is freeform, choose something appropriate
+    * Authorized origins is your domain ex: `https://example.mysite.com`
+    * Authorized redirect URIs is the location of oauth2/callback constructed as domain + `/auth/google/callback`, ex: `https://example.mysite.com/auth/google/callback`
+    * Choose **"Create"**
+7.  Take note of the **Client ID** and **Client Secret**
+
+_instructions for google oauth2 setup borrowed from [oauth2_proxy](https://github.com/bitly/oauth2_proxy)_
+
+#### Microsoft Auth Provider
+
+1. Register a new application [using the Azure portal](https://docs.microsoft.com/en-us/graph/auth-register-app-v2).
+2. Under **"Authentication/Platform configurations/Web"** enter the correct url constructed as domain + `/auth/microsoft/callback`. i.e. `https://example.mysite.com/auth/microsoft/callback`
+3. In "Overview" take note of the **Application (client) ID**
+4. Choose the new project from the top right project dropdown (only if another project is selected)
+5.  Select "Certificates & secrets" and click on "+ New Client Secret".
+
+
+#### GitHub Auth Provider
+
+1.  Create a new **"OAuth App"**: https://github.com/settings/developers
+1.  Fill **"Application Name"** and **"Homepage URL"** for your site
+1.  Under **"Authorization callback URL"** enter the correct url constructed as domain + `/auth/github/callback`. ie `https://example.mysite.com/auth/github/callback`
+1.  Take note of the **Client ID** and **Client Secret**
+
+#### Facebook Auth Provider
+
+1.  From https://developers.facebook.com select **"My Apps"** / **"Add a new App"**
+1.  Set **"Display Name"** and **"Contact email"**
+1.  Choose **"Facebook Login"** and then **"Web"**
+1.  Set "Site URL" to your domain, ex: `https://example.mysite.com`
+1.  Under **"Facebook login"** / **"Settings"** fill "Valid OAuth redirect URIs" with your callback url constructed as domain + `/auth/facebook/callback`
+1.  Select **"App Review"** and turn public flag on. This step may ask you to provide a link to your privacy policy.
+
+
 #### Apple Auth Provider
+
 To configure this provider, a user requires an Apple developer account (without it setting up a sign in with Apple is impossible). [Sign in with Apple](https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api) lets users log in to your app using their two-factor authentication Apple ID.
 
 Follow to next steps for configuring on the Apple side:
@@ -465,59 +511,16 @@ Then add an Apple provider that accepts the following parameters:
 ```
 
 **Limitation:**
+
 * Map a userName (if specific scope defined) is only sent in the upon initial user sign up.
-Subsequent logins to your app using Sign In with Apple with the same account do not share any user info and will only return a user identifier in IDToken claims.
-This behaves correctly until a user delete sign in for you service with Apple ID in own Apple account profile (security section). 
-It is recommend that you securely cache the at first login containing the user info for bind it with a user UID at next login.
-Provider always get user `UID` (`sub` claim) in `IDToken`.
+  Subsequent logins to your app using Sign In with Apple with the same account do not share any user info and will only return a user identifier in IDToken claims.
+  This behaves correctly until a user delete sign in for you service with Apple ID in own Apple account profile (security section).
+  It is recommend that you securely cache the at first login containing the user info for bind it with a user UID at next login.
+  Provider always get user `UID` (`sub` claim) in `IDToken`.
 
 * Apple doesn't have an API for fetch avatar and user info.
 
 See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L83:L93) before use.
-
-#### Google Auth Provide
-
-1.  Create a new project: https://console.developers.google.com/project
-2.  Choose the new project from the top right project dropdown (only if another project is selected)
-3.  In the project Dashboard center pane, choose **"API Manager"**
-4.  In the left Nav pane, choose **"Credentials"**
-5.  In the center pane, choose **"OAuth consent screen"** tab. Fill in **"Product name shown to users"** and hit save.
-6.  In the center pane, choose **"Credentials"** tab.
-    * Open the **"New credentials"** drop down
-    * Choose **"OAuth client ID"**
-    * Choose **"Web application"**
-    * Application name is freeform, choose something appropriate
-    * Authorized origins is your domain ex: `https://example.mysite.com`
-    * Authorized redirect URIs is the location of oauth2/callback constructed as domain + `/auth/google/callback`, ex: `https://example.mysite.com/auth/google/callback`
-    * Choose **"Create"**
-7.  Take note of the **Client ID** and **Client Secret**
-
-_instructions for google oauth2 setup borrowed from [oauth2_proxy](https://github.com/bitly/oauth2_proxy)_
-
-#### Microsoft Auth Provider
-
-1. Register a new application [using the Azure portal](https://docs.microsoft.com/en-us/graph/auth-register-app-v2).
-2. Under **"Authentication/Platform configurations/Web"** enter the correct url constructed as domain + `/auth/microsoft/callback`. i.e. `https://example.mysite.com/auth/microsoft/callback`
-3. In "Overview" take note of the **Application (client) ID**
-4. Choose the new project from the top right project dropdown (only if another project is selected)
-5.  Select "Certificates & secrets" and click on "+ New Client Secret".
-
-
-#### GitHub Auth Provider
-
-1.  Create a new **"OAuth App"**: https://github.com/settings/developers
-1.  Fill **"Application Name"** and **"Homepage URL"** for your site
-1.  Under **"Authorization callback URL"** enter the correct url constructed as domain + `/auth/github/callback`. ie `https://example.mysite.com/auth/github/callback`
-1.  Take note of the **Client ID** and **Client Secret**
-
-#### Facebook Auth Provider
-
-1.  From https://developers.facebook.com select **"My Apps"** / **"Add a new App"**
-1.  Set **"Display Name"** and **"Contact email"**
-1.  Choose **"Facebook Login"** and then **"Web"**
-1.  Set "Site URL" to your domain, ex: `https://example.mysite.com`
-1.  Under **"Facebook login"** / **"Settings"** fill "Valid OAuth redirect URIs" with your callback url constructed as domain + `/auth/facebook/callback`
-1.  Select **"App Review"** and turn public flag on. This step may ask you to provide a link to your privacy policy.
 
 #### Yandex Auth Provider
 
