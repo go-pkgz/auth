@@ -265,6 +265,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
 
+	//nolint dupl
 	oauth := &http.Server{
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

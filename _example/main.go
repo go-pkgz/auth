@@ -80,6 +80,16 @@ func main() {
 	service.AddProvider("twitter", os.Getenv("AEXMPL_TWITTER_APIKEY"), os.Getenv("AEXMPL_TWITTER_APISEC"))
 	service.AddProvider("microsoft", os.Getenv("AEXMPL_MS_APIKEY"), os.Getenv("AEXMPL_MS_APISEC"))
 
+	// allow sign with apple id
+	appleCfg := provider.AppleConfig{
+		ClientID: os.Getenv("AEXMPL_APPLE_CID"),
+		TeamID:   os.Getenv("AEXMPL_APPLE_TID"),
+		KeyID:    os.Getenv("AEXMPL_APPLE_KEYID"), // private key identifier
+	}
+
+	if err := service.AddAppleProvider(appleCfg, provider.LoadApplePrivateKeyFromFile(os.Getenv("AEXMPL_APPLE_PRIVKEY_PATH"))); err != nil {
+		log.Fatalf("[ERROR] create AppleProvider failed: %v", err)
+	}
 	// allow anonymous user via custom (direct) provider
 	service.AddDirectProvider("anonymous", anonymousAuthProvider())
 
