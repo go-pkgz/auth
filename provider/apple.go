@@ -433,17 +433,17 @@ func (ah *AppleHandler) exchange(ctx context.Context, code, redirectURI string, 
 		return errors.Wrap(err, "unmarshalling data from apple service response failed")
 	}
 
-	// If above operation done successfully checking a response code and error descriptions, if one exist.
-	// Apple service will response either 200 (OK) or 400 (any error).
-	if res.StatusCode != http.StatusOK || result.Error != "" {
-		return fmt.Errorf("apple token service error: %s", result.Error)
-	}
-
 	defer func() {
 		if err = res.Body.Close(); err != nil {
 			ah.L.Logf("[ERROR] close request body failed when get access token: %v", err)
 		}
 	}()
+
+	// If above operation done successfully checking a response code and error descriptions, if one exist.
+	// Apple service will response either 200 (OK) or 400 (any error).
+	if res.StatusCode != http.StatusOK || result.Error != "" {
+		return fmt.Errorf("apple token service error: %s", result.Error)
+	}
 
 	return err
 }
