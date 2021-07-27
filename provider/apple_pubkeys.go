@@ -11,12 +11,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"math/big"
 	"net/http"
 	"time"
+
+	"github.com/golang-jwt/jwt"
+	"github.com/pkg/errors"
 )
 
 // appleKeysURL is the endpoint URL for fetch Apple’s public key

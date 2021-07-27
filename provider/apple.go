@@ -12,16 +12,18 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"encoding/json"
+
 	"golang.org/x/oauth2"
 
 	"encoding/pem"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
+	"io/ioutil"
+
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/rest"
+	"github.com/golang-jwt/jwt"
 	"github.com/pkg/errors"
-	"io/ioutil"
 
 	"net/http"
 	"net/url"

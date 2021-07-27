@@ -9,12 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/oauth2"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -25,6 +19,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/token"
+	"github.com/golang-jwt/jwt"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 )
 
 type customLoader struct{} // implement custom private key loader interface

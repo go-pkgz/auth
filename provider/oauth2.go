@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/go-pkgz/rest"
+	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth/logger"
