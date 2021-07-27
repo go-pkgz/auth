@@ -12,25 +12,23 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"encoding/json"
-
-	"golang.org/x/oauth2"
-
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
 
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
+	"golang.org/x/oauth2"
+
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
 	"github.com/pkg/errors"
 
-	"net/http"
-	"net/url"
-	"os"
-
-	"strings"
-	"time"
+	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/token"
 )
 
 const (
