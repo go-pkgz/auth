@@ -192,9 +192,15 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 		token, err := randToken()
 		if err != nil {
 			rest.SendErrorJSON(w, r, th.L, http.StatusInternalServerError, err, "failed to generate code")
+			return
 		}
 
 		th.requests.Lock()
+		if th.requests.data == nil {
+			th.requests.Unlock()
+			rest.SendErrorJSON(w, r, th.L, http.StatusInternalServerError, errors.New("run goroutine is not running"), "failed to process login request")
+			return
+		}
 		th.requests.data[token] = tgAuthRequest{
 			expires: time.Now().Add(tgAuthRequestLifetime),
 		}
