@@ -12,13 +12,31 @@ import (
 	"testing"
 	"time"
 
-	authtoken "github.com/go-pkgz/auth/token"
 	"github.com/stretchr/testify/assert"
+
+	authtoken "github.com/go-pkgz/auth/token"
 )
 
 // same across all tests
 var botInfoFunc = func(ctx context.Context) (*botInfo, error) {
 	return &botInfo{Username: "my_auth_bot"}, nil
+}
+
+func TestTgLoginHandlerErrors(t *testing.T) {
+	tg := TelegramHandler{Telegram: NewTelegramAPI("test", http.DefaultClient)}
+
+	r := httptest.NewRequest("GET", "/login", nil)
+	w := httptest.NewRecorder()
+	tg.LoginHandler(w, r)
+	assert.Equal(t, 500, w.Code, "request should succeed")
+
+	var resp = struct {
+		Error string `json:"error"`
+	}{}
+
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Nil(t, err)
+	assert.Equal(t, "failed to process login request", resp.Error)
 }
 
 func TestTelegramUnconfirmedRequest(t *testing.T) {
