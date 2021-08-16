@@ -25,10 +25,10 @@ var botInfoFunc = func(ctx context.Context) (*botInfo, error) {
 func TestTgLoginHandlerErrors(t *testing.T) {
 	tg := TelegramHandler{Telegram: NewTelegramAPI("test", http.DefaultClient)}
 
-	r := httptest.NewRequest("GET", "/login", nil)
+	r := httptest.NewRequest("GET", "/login?site=remark", nil)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
-	assert.Equal(t, 500, w.Code, "request should succeed")
+	assert.Equal(t, http.StatusInternalServerError, w.Code, "request should fail")
 
 	var resp = struct {
 		Error string `json:"error"`
@@ -55,7 +55,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
-	assert.Equal(t, 200, w.Code, "request should succeed")
+	assert.Equal(t, http.StatusOK, w.Code, "request should succeed")
 
 	var resp = struct {
 		Token string `json:"token"`
@@ -73,7 +73,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
-	assert.Equal(t, 404, w.Code, "response code should be 404")
+	assert.Equal(t, http.StatusNotFound, w.Code, "response code should be 404")
 	assert.Equal(t, `{"error":"request not yet confirmed"}`+"\n", w.Body.String())
 
 	time.Sleep(tgAuthRequestLifetime)
@@ -83,7 +83,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
-	assert.Equal(t, 404, w.Code, "response code should be 404")
+	assert.Equal(t, http.StatusNotFound, w.Code, "response code should be 404")
 	assert.Equal(t, `{"error":"request expired"}`+"\n", w.Body.String())
 }
 
@@ -127,7 +127,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
-	assert.Equal(t, 200, w.Code, "request should succeed")
+	assert.Equal(t, http.StatusOK, w.Code, "request should succeed")
 
 	var resp = struct {
 		Token string `json:"token"`
@@ -149,7 +149,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
-	assert.Equal(t, 200, w.Code, "response code should be 200")
+	assert.Equal(t, http.StatusOK, w.Code, "response code should be 200")
 
 	info := struct {
 		Name    string `name:"name"`
@@ -168,7 +168,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
-	assert.Equal(t, 404, w.Code, "request should get revoked")
+	assert.Equal(t, http.StatusNotFound, w.Code, "request should get revoked")
 	assert.Equal(t, `{"error":"request expired"}`+"\n", w.Body.String())
 }
 
@@ -189,7 +189,7 @@ func TestTelegramLogout(t *testing.T) {
 	req, err := http.NewRequest("GET", "/logout", nil)
 	assert.Nil(t, err)
 	handler.ServeHTTP(rr, req)
-	assert.Equal(t, 200, rr.Code)
+	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, 2, len(rr.Header()["Set-Cookie"]))
 
 	request := &http.Request{Header: http.Header{"Cookie": rr.Header()["Set-Cookie"]}}
@@ -372,7 +372,7 @@ const errorResp = `{"ok":false,"error_code":400,"description":"Very bad request"
 
 func TestTgAPI_Error(t *testing.T) {
 	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, errorResp)
 	}))
 	defer cleanup()
