@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/dghubble/oauth1 v0.7.0
 	github.com/go-pkgz/repeater v1.1.3
-	github.com/go-pkgz/rest v1.9.2
+	github.com/go-pkgz/rest v1.11.0
 	github.com/golang-jwt/jwt v3.2.1+incompatible
 	github.com/microcosm-cc/bluemonday v1.0.15
 	github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022
