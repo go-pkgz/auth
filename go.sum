@@ -67,8 +67,8 @@ github.com/go-gl/glfw/v3.3/glfw v0.0.0-20191125211704-12ad95a8df72/go.mod h1:tQ2
 github.com/go-gl/glfw/v3.3/glfw v0.0.0-20200222043503-6f7a984d4dc4/go.mod h1:tQ2UAYgL5IevRw8kRxooKSPJfGvJ9fJQFa0TUsXzTg8=
 github.com/go-pkgz/repeater v1.1.3 h1:q6+JQF14ESSy28Dd7F+wRelY4F+41HJ0LEy/szNnMiE=
 github.com/go-pkgz/repeater v1.1.3/go.mod h1:hVTavuO5x3Gxnu8zW7d6sQBfAneKV8X2FjU48kGfpKw=
-github.com/go-pkgz/rest v1.9.2 h1:RyBBRXBYY6eBgTW3UGYOyT4VQPDiBBFh/tesELWsryQ=
-github.com/go-pkgz/rest v1.9.2/go.mod h1:wZ/dGipZUaF9to0vIQl7PwDHgWQDB0jsrFg1xnAKLDw=
+github.com/go-pkgz/rest v1.11.0 h1:Z//qgmM0NhBYfhXYEP/aJtDVLK5XlJGxqcb4sHFNN0E=
+github.com/go-pkgz/rest v1.11.0/go.mod h1:wZ/dGipZUaF9to0vIQl7PwDHgWQDB0jsrFg1xnAKLDw=
 github.com/go-session/session v3.1.2+incompatible/go.mod h1:8B3iivBQjrz/JtC68Np2T1yBBLxTan3mn/3OM0CyRt0=
 github.com/go-stack/stack v1.8.0 h1:5SgMzNM5HxrEjV0ww2lTmX6E2Izsfxas4+YHWRs3Lsk=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
