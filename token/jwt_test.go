@@ -47,6 +47,7 @@ func mockKeyStore(aud string) (string, error) {
 func TestJWT_NewDefault(t *testing.T) {
 	j := NewService(Opts{})
 	assert.Equal(t, defaultJWTCookieName, j.JWTCookieName)
+	assert.Equal(t, defaultJWTCookieDomain, j.JWTCookieDomain)
 	assert.Equal(t, defaultJWTHeaderKey, j.JWTHeaderKey)
 	assert.Equal(t, defaultXSRFCookieName, j.XSRFCookieName)
 	assert.Equal(t, defaultXSRFHeaderKey, j.XSRFHeaderKey)
@@ -54,7 +55,7 @@ func TestJWT_NewDefault(t *testing.T) {
 }
 
 func TestJWT_NewNotDefault(t *testing.T) {
-	j := NewService(Opts{JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+	j := NewService(Opts{JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey, JWTCookieDomain: "blah.com",
 		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey, Issuer: "i1",
 	})
 	assert.Equal(t, jwtCustomCookieName, j.JWTCookieName)
@@ -62,6 +63,7 @@ func TestJWT_NewNotDefault(t *testing.T) {
 	assert.Equal(t, xsrfCustomCookieName, j.XSRFCookieName)
 	assert.Equal(t, xsrfCustomHeaderKey, j.XSRFHeaderKey)
 	assert.Equal(t, "i1", j.Issuer)
+	assert.Equal(t, "blah.com", j.JWTCookieDomain)
 }
 
 func TestJWT_Token(t *testing.T) {
@@ -181,6 +183,7 @@ func TestJWT_Set(t *testing.T) {
 	assert.Equal(t, 0, cookies[0].MaxAge)
 	assert.Equal(t, xsrfCustomCookieName, cookies[1].Name)
 	assert.Equal(t, "random id", cookies[1].Value)
+	assert.Equal(t, "", cookies[0].Domain)
 
 	j.DisableIAT = false
 	rr = httptest.NewRecorder()
@@ -192,6 +195,38 @@ func TestJWT_Set(t *testing.T) {
 	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
 	assert.NotEqual(t, testJwtValidSess, cookies[0].Value, "iat changed the token")
 	assert.Equal(t, "", rr.Result().Header.Get(jwtCustomHeaderKey), "no JWT header set")
+}
+
+func TestJWT_SetWithDomain(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31, Issuer: "remark42",
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey, JWTCookieDomain: "example.com",
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
+		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
+			claims.User.SetStrAttr("stra", "stra-val")
+			claims.User.SetBoolAttr("boola", true)
+			return claims
+		}),
+		DisableIAT: true,
+	})
+
+	claims := testClaims
+	claims.Handshake = nil
+
+	rr := httptest.NewRecorder()
+	c, err := j.Set(rr, claims)
+	assert.Nil(t, err)
+	assert.Equal(t, claims, c)
+	cookies := rr.Result().Cookies()
+	t.Log(cookies)
+	require.Equal(t, 2, len(cookies))
+	assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
+	assert.Equal(t, "example.com", cookies[0].Domain)
+	assert.Equal(t, testJwtValidNoHandshake, cookies[0].Value)
+	assert.Equal(t, 31*24*3600, cookies[0].MaxAge)
+	assert.Equal(t, xsrfCustomCookieName, cookies[1].Name)
+	assert.Equal(t, "random id", cookies[1].Value)
+
 }
 
 func TestJWT_SendJWTHeader(t *testing.T) {
