@@ -116,3 +116,50 @@ func TestProviders_NewTwitter(t *testing.T) {
 	}
 
 }
+
+func TestProviders_NewPatreon(t *testing.T) {
+	r := NewPatreon(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+	assert.Equal(t, "patreon", r.Name())
+
+	udata := UserData{}
+	user := r.mapUser(udata, []byte(`{
+		  "data": {
+			"attributes": {
+			  "email": "corgi@example.com",
+			  "full_name": "Corgi The Dev",
+			  "image_url": "https://c8.patreon.com/2/400/0000000"
+			},
+			"id": "0000000"
+		}}`))
+	assert.Equal(t, token.User{Name: "Corgi The Dev", ID: "patreon_da39a3ee5e6b4b0d3255bfef95601890afd80709",
+		Picture: "https://c8.patreon.com/2/400/0000000", IP: ""}, user, "got %+v", user)
+
+	udata = UserData{}
+	user = r.mapUser(udata, []byte(`{
+		  "data": {
+			"attributes": {
+			  "email": "corgi@example.com",
+			  "full_name": "Corgi The Dev",
+			  "image_url": "https://c8.patreon.com/2/400/0000000"
+			},
+			"id": "0000000",
+			"relationships": {
+				"pledges": {
+					"data": [
+						{
+							"id": "0000000",
+							"type": "pledge"
+						}
+					]
+				}
+			}
+		}}`))
+	assert.Equal(
+		t,
+		token.User{Name: "Corgi The Dev", ID: "patreon_da39a3ee5e6b4b0d3255bfef95601890afd80709",
+			Picture: "https://c8.patreon.com/2/400/0000000", IP: "", Attributes: map[string]interface{}{"is_paid_sub": true}},
+		user,
+		"got %+v",
+		user,
+	)
+}
