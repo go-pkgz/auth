@@ -89,6 +89,15 @@ func TestUser_Admin(t *testing.T) {
 	assert.False(t, u.IsAdmin())
 }
 
+func TestUser_PaidSubscriber(t *testing.T) {
+	u := User{Name: "test"}
+	assert.False(t, u.IsPaidSub())
+	u.SetPaidSub(true)
+	assert.True(t, u.IsPaidSub())
+	u.SetPaidSub(false)
+	assert.False(t, u.IsPaidSub())
+}
+
 func TestUser_GetUserInfo(t *testing.T) {
 	r, err := http.NewRequest("GET", "http://blah.com", nil)
 	assert.Nil(t, err)
