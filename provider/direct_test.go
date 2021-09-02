@@ -98,6 +98,32 @@ func TestDirect_LoginHandler(t *testing.T) {
 	}
 }
 
+func TestDirect_LoginHandlerCustomUserID(t *testing.T) {
+	d := DirectHandler{
+		ProviderName: "test",
+		CredChecker:  &mockCredsChecker{ok: true},
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer: "iss-test",
+		L:      logger.Std,
+		UserIDFunc: func(user string, r *http.Request) string {
+			return user + "_custom_id"
+		},
+	}
+
+	assert.Equal(t, "test", d.Name())
+	handler := http.HandlerFunc(d.LoginHandler)
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", nil)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, 200, rr.Code)
+	assert.Equal(t, `{"name":"myuser","id":"test_myuser_custom_id","picture":""}`+"\n", rr.Body.String())
+}
+
 func TestDirect_LoginHandlerFailed(t *testing.T) {
 	testCases := map[string]struct {
 		makeRequest func(t *testing.T) *http.Request

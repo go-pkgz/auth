@@ -309,6 +309,23 @@ func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecke
 	s.authMiddleware.Providers = s.providers
 }
 
+// AddDirectProviderWithUserIDFunc adds provider with direct check against data store and sets custom UserIDFunc allows
+// to modify user's ID on the client side.
+// it doesn't do any handshake and uses provided credChecker to verify user and password from the request
+func (s *Service) AddDirectProviderWithUserIDFunc(name string, credChecker provider.CredChecker, ufn provider.UserIDFunc) {
+	dh := provider.DirectHandler{
+		L:            s.logger,
+		ProviderName: name,
+		Issuer:       s.issuer,
+		TokenService: s.jwtService,
+		CredChecker:  credChecker,
+		AvatarSaver:  s.avatarProxy,
+		UserIDFunc:   ufn,
+	}
+	s.providers = append(s.providers, provider.NewService(dh))
+	s.authMiddleware.Providers = s.providers
+}
+
 // AddVerifProvider adds provider user's verification sent by sender
 func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender) {
 	dh := provider.VerifyHandler{
