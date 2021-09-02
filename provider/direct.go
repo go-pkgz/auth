@@ -98,7 +98,7 @@ func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID := p.ProviderName + "_" + token.HashID(sha1.New(), creds.User)
 	if p.UserIDFunc != nil {
-		userID = p.ProviderName + "_" + p.UserIDFunc(creds.User, r)
+		userID = p.ProviderName + "_" + token.HashID(sha1.New(), p.UserIDFunc(creds.User, r))
 	}
 
 	u := token.User{

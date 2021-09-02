@@ -395,7 +395,7 @@ func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
-	assert.Contains(t, string(body), `"name":"dev_direct","id":"direct_custom_blah"`)
+	assert.Contains(t, string(body), `"name":"dev_direct","id":"direct_custom_5bf1fd927dfb8679496a2e6cf00cbe50c1c87145"`)
 
 	require.Equal(t, 2, len(resp.Cookies()))
 	assert.Equal(t, "JWT", resp.Cookies()[0].Name)

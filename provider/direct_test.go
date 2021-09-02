@@ -121,7 +121,7 @@ func TestDirect_LoginHandlerCustomUserID(t *testing.T) {
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
-	assert.Equal(t, `{"name":"myuser","id":"test_myuser_custom_id","picture":""}`+"\n", rr.Body.String())
+	assert.Equal(t, `{"name":"myuser","id":"test_18c4eec1ecbe23902609e999c4d3da997e7ac10f","picture":""}`+"\n", rr.Body.String())
 }
 
 func TestDirect_LoginHandlerFailed(t *testing.T) {
