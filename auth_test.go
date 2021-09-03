@@ -236,7 +236,7 @@ func TestIntegrationList(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, `["dev","github","custom123","direct","email"]`+"\n", string(b))
+	assert.Equal(t, `["dev","github","custom123","direct","direct_custom","email"]`+"\n", string(b))
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
@@ -356,6 +356,47 @@ func TestDirectProvider(t *testing.T) {
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
+
+	assert.Contains(t, string(body), `"name":"dev_direct","id":"direct_38773b45e3a477434abb6d08668358a2b0ddd2f5"`)
+
+	require.Equal(t, 2, len(resp.Cookies()))
+	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
+	assert.Equal(t, 86400, resp.Cookies()[0].MaxAge)
+	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
+	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
+
+	resp, err = client.Get("http://127.0.0.1:8089/private")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.NoError(t, resp.Body.Close())
+}
+
+func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
+	_, teardown := prepService(t)
+	defer teardown()
+
+	// login
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:8089/auth/direct_custom/login?user=dev_direct&passwd=bad")
+	require.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 403, resp.StatusCode)
+
+	resp, err = client.Get("http://127.0.0.1:8089/auth/direct_custom/login?user=dev_direct&passwd=password")
+	require.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, 200, resp.StatusCode)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	t.Logf("resp %s", string(body))
+	t.Logf("headers: %+v", resp.Header)
+
+	assert.Contains(t, string(body), `"name":"dev_direct","id":"direct_custom_5bf1fd927dfb8679496a2e6cf00cbe50c1c87145"`)
+
 	require.Equal(t, 2, len(resp.Cookies()))
 	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
 	assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
@@ -439,6 +480,16 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 	svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
 		return user == "dev_direct" && password == "password", nil
 	}))
+
+	// add direct provider with custom user id func
+	svc.AddDirectProviderWithUserIDFunc("direct_custom",
+		provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
+			return user == "dev_direct" && password == "password", nil
+		}),
+		func(user string, r *http.Request) string {
+			return "blah"
+		},
+	)
 
 	svc.AddVerifProvider("email", "{{.Token}}", &sender)
 
