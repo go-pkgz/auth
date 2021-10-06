@@ -33,11 +33,14 @@ type Oauth2Handler struct {
 // Params to make initialized and ready to use provider
 type Params struct {
 	logger.L
-	URL         string
-	JwtService  TokenService
-	Cid         string
-	Csecret     string
-	Issuer      string
+	URL             string
+	JwtService      TokenService
+	Cid             string
+	Csecret         string
+	Issuer          string
+	ExtraScopes     []string
+	ExtraUserInfoFn ExtraUserInfoFunc
+
 	AvatarSaver AvatarSaver
 
 	Port int // relevant for providers supporting port customization, for example dev oauth2
@@ -45,6 +48,9 @@ type Params struct {
 
 // UserData is type for user information returned from oauth2 providers /info API method
 type UserData map[string]interface{}
+
+// ExtraUserInfoFunc allows to provide extra user info using the authenticated http client
+type ExtraUserInfoFunc func(c *http.Client, u token.User) token.User
 
 // Value returns value for key or empty string if not found
 func (u UserData) Value(key string) string {
@@ -65,7 +71,7 @@ func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
 	service.conf = oauth2.Config{
 		ClientID:     service.Cid,
 		ClientSecret: service.Csecret,
-		Scopes:       service.scopes,
+		Scopes:       append(service.scopes, p.ExtraScopes...),
 		Endpoint:     service.endpoint,
 	}
 
@@ -193,6 +199,10 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
 		return
+	}
+
+	if p.ExtraUserInfoFn != nil {
+		u = p.ExtraUserInfoFn(client, u)
 	}
 
 	cid, err := randToken()
