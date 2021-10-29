@@ -35,7 +35,7 @@ func TestTgLoginHandlerErrors(t *testing.T) {
 	}{}
 
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "failed to process login request", resp.Error)
 }
 
@@ -63,7 +63,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	}{}
 
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, "my_auth_bot", resp.Bot)
 	token := resp.Token
@@ -74,7 +74,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	tg.LoginHandler(w, r)
 
 	assert.Equal(t, http.StatusNotFound, w.Code, "response code should be 404")
-	assert.Equal(t, `{"error":"request not yet confirmed"}`+"\n", w.Body.String())
+	assert.Equal(t, `{"error":"request is not verified yet"}`+"\n", w.Body.String())
 
 	time.Sleep(tgAuthRequestLifetime)
 
@@ -135,14 +135,14 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	}{}
 
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "my_auth_bot", resp.Bot)
 
 	mu.Lock()
 	servedToken = resp.Token
 	mu.Unlock()
 
-	time.Sleep(tgPollInterval * 2)
+	time.Sleep(apiPollInterval * 2)
 
 	// The token should be confirmed by now
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
@@ -157,7 +157,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 		Picture string `json:"picture"`
 	}{}
 	err = json.NewDecoder(w.Body).Decode(&info)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, "Joe", info.Name)
 	assert.Contains(t, info.ID, "telegram_")
@@ -169,7 +169,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	tg.LoginHandler(w, r)
 
 	assert.Equal(t, http.StatusNotFound, w.Code, "request should get revoked")
-	assert.Equal(t, `{"error":"request expired"}`+"\n", w.Body.String())
+	assert.Equal(t, `{"error":"request is not found"}`+"\n", w.Body.String())
 }
 
 func TestTelegramLogout(t *testing.T) {
@@ -187,23 +187,93 @@ func TestTelegramLogout(t *testing.T) {
 	handler := http.HandlerFunc(tg.LogoutHandler)
 	rr := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/logout", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, 2, len(rr.Header()["Set-Cookie"]))
 
 	request := &http.Request{Header: http.Header{"Cookie": rr.Header()["Set-Cookie"]}}
 	c, err := request.Cookie("JWT")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, time.Time{}, c.Expires)
 
 	c, err = request.Cookie("XSRF-TOKEN")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, time.Time{}, c.Expires)
 }
 
+func TestTelegram_TokenVerification(t *testing.T) {
+	m := &TelegramAPIMock{
+		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
+			return &telegramUpdate{}, nil
+		},
+		BotInfoFunc: botInfoFunc,
+	}
+
+	th, cleanup := setupHandler(t, m)
+	defer cleanup()
+	assert.NotNil(t, th)
+	th.requests.data = make(map[string]tgAuthRequest) // usually done in Run()
+	err := th.addToken("token", time.Now().Add(time.Minute))
+	assert.NoError(t, err)
+	assert.Len(t, th.requests.data, 1)
+
+	// wrong token
+	tgID, err := th.checkToken("unknown token")
+	assert.Empty(t, tgID)
+	assert.EqualError(t, err, "request is not found")
+
+	// right token, not verified yet
+	tgID, err = th.checkToken("token")
+	assert.Empty(t, tgID)
+	assert.EqualError(t, err, "request is not verified yet")
+
+	// confirm request
+	authRequest, ok := th.requests.data["token"]
+	assert.True(t, ok)
+	authRequest.confirmed = true
+	authRequest.user = &authtoken.User{
+		Name: "telegram user name",
+	}
+	th.requests.data["token"] = authRequest
+
+	// successful check
+	tgID, err = th.checkToken("token")
+	assert.NoError(t, err)
+	assert.Equal(t, &authtoken.User{Name: "telegram user name"}, tgID)
+
+	// expired token
+	err = th.addToken("expired token", time.Now().Add(-time.Minute))
+	assert.NoError(t, err)
+	tgID, err = th.checkToken("expired token")
+	assert.Empty(t, tgID)
+	assert.EqualError(t, err, "request expired")
+	assert.Len(t, th.requests.data, 1)
+
+	// expired token, cleaned up by the cleanup
+	apiPollInterval = time.Hour
+	expiredCleanupInterval = time.Millisecond * 10
+	ctx, cancel := context.WithCancel(context.Background())
+	go th.Run(ctx)
+	// that sleep is needed because Run() will create new requests.data map, and we need to be sure that
+	// it's created by the time addToken is called.
+	time.Sleep(expiredCleanupInterval)
+	err = th.addToken("expired token", time.Now().Add(-time.Minute))
+	assert.NoError(t, err)
+	th.requests.RLock()
+	assert.Len(t, th.requests.data, 1)
+	th.requests.RUnlock()
+	time.Sleep(expiredCleanupInterval * 2)
+	th.requests.RLock()
+	assert.Len(t, th.requests.data, 0)
+	th.requests.RUnlock()
+	cancel()
+	// give enough time for Run() to finish
+	time.Sleep(expiredCleanupInterval)
+}
+
 func setupHandler(t *testing.T, m TelegramAPI) (tg *TelegramHandler, cleanup func()) {
-	tgPollInterval = time.Millisecond * 10
+	apiPollInterval = time.Millisecond * 10
 	tgAuthRequestLifetime = time.Millisecond * 100
 
 	tg = &TelegramHandler{
@@ -269,21 +339,31 @@ const getUpdatesResp = `{
    ]
 }`
 
-//
 func TestTgAPI_GetUpdates(t *testing.T) {
-	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "", r.URL.Query().Get("offset"))
-		fmt.Fprintf(w, getUpdatesResp, "token")
-	}))
+	first := true
+	tg, cleanup := prepareTgAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if first {
+			assert.Equal(t, "", r.URL.Query().Get("offset"))
+			first = false
+		} else {
+			assert.Equal(t, "1001", r.URL.Query().Get("offset"))
+		}
+		_, _ = fmt.Fprintf(w, getUpdatesResp, "token")
+	})
 	defer cleanup()
 
+	// send request with no offset
 	upd, err := tg.GetUpdates(context.Background())
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, upd.Result, 1)
 
 	assert.Equal(t, 1001, tg.updateOffset)
-	assert.Equal(t, "/start token", upd.Result[0].Message.Text)
+	assert.Equal(t, "/start token", upd.Result[len(upd.Result)-1].Message.Text)
+
+	// send request with offset
+	_, err = tg.GetUpdates(context.Background())
+	assert.NoError(t, err)
 }
 
 const sendMessageResp = `{
@@ -311,12 +391,12 @@ func TestTgAPI_Send(t *testing.T) {
 	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "123", r.URL.Query().Get("chat_id"))
 		assert.Equal(t, "hello there", r.URL.Query().Get("text"))
-		fmt.Fprint(w, sendMessageResp)
+		_, _ = w.Write([]byte(sendMessageResp))
 	}))
 	defer cleanup()
 
 	err := tg.Send(context.Background(), 123, "hello there")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 }
 
 const profilePhotosResp = `{
@@ -351,18 +431,18 @@ func TestTgAPI_Avatar(t *testing.T) {
 	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.String(), "getUserProfilePhotos") {
 			assert.Equal(t, "123", r.URL.Query().Get("user_id"))
-			fmt.Fprint(w, profilePhotosResp)
+			_, _ = w.Write([]byte(profilePhotosResp))
 			return
 		}
 
 		assert.Equal(t, "1", r.URL.Query().Get("file_id"))
-		fmt.Fprint(w, getFileResp)
+		_, _ = w.Write([]byte(getFileResp))
 
 	}))
 	defer cleanup()
 
 	avatarURL, err := tg.Avatar(context.Background(), 123)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	expected := fmt.Sprintf("https://api.telegram.org/file/bot%s/photos/file_0.jpg", tg.token)
 	assert.Equal(t, expected, avatarURL)
@@ -373,13 +453,12 @@ const errorResp = `{"ok":false,"error_code":400,"description":"Very bad request"
 func TestTgAPI_Error(t *testing.T) {
 	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, errorResp)
+		_, _ = w.Write([]byte(errorResp))
 	}))
 	defer cleanup()
 
 	_, err := tg.GetUpdates(context.Background())
-	assert.NotNil(t, err)
-	assert.Equal(t, "failed to fetch updates: telegram returned error: Very bad request", err.Error())
+	assert.EqualError(t, err, "failed to fetch updates: unexpected telegram API status code 400, error: \"Very bad request\"")
 }
 
 // mockRoundTripper redirects all incoming requests to mock url
@@ -411,7 +490,7 @@ func prepareTgAPI(t *testing.T, h http.HandlerFunc) (tg *tgAPI, cleanup func()) 
 		assert.Contains(t, r.URL.String(), "xxxsupersecretxxx")
 
 		if strings.Contains(r.URL.String(), "getMe") {
-			fmt.Fprint(w, getMeResp)
+			_, _ = w.Write([]byte(getMeResp))
 			return
 		}
 
