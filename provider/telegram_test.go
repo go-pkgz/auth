@@ -202,6 +202,71 @@ func TestTelegramLogout(t *testing.T) {
 	assert.Equal(t, time.Time{}, c.Expires)
 }
 
+func TestTelegramHandler_Name(t *testing.T) {
+	tg := &TelegramHandler{ProviderName: "test telegram"}
+	assert.Equal(t, "test telegram", tg.Name())
+	assert.Equal(t, "test telegram", tg.String())
+}
+
+func TestTelegram_ProcessUpdateFlow(t *testing.T) {
+	m := &TelegramAPIMock{
+		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
+			return &telegramUpdate{}, nil
+		},
+		SendFunc: func(ctx context.Context, id int, text string) error {
+			assert.Equal(t, 313131313, id)
+			return nil
+		},
+		AvatarFunc: func(ctx context.Context, userID int) (string, error) {
+			assert.Equal(t, 313131313, userID)
+			return "http://t.me/avatar.png", nil
+		},
+		BotInfoFunc: botInfoFunc,
+	}
+
+	tg := &TelegramHandler{
+		ProviderName: "telegram",
+		ErrorMsg:     "error",
+		SuccessMsg:   "success",
+
+		L: t,
+		TokenService: authtoken.NewService(authtoken.Opts{
+			SecretReader:   authtoken.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		AvatarSaver: &mockAvatarSaver{},
+		Telegram:    m,
+	}
+	// we can't call addToken unless requests.data initialized either in Run or ProcessUpdate
+	assert.EqualError(t, tg.ProcessUpdate(context.Background(), ""), "failed to decode provided telegram update: unexpected end of JSON input")
+
+	assert.NoError(t, tg.addToken("token", time.Now().Add(time.Minute)))
+	assert.NoError(t, tg.addToken("expired token", time.Now().Add(-time.Minute)))
+	assert.Len(t, tg.requests.data, 2)
+	_, err := tg.checkToken("token")
+	assert.Error(t, err)
+	assert.NoError(t, tg.ProcessUpdate(context.Background(), fmt.Sprintf(getUpdatesResp, "token")))
+	assert.Len(t, tg.requests.data, 1, "expired token was cleaned up")
+	tgUser, err := tg.checkToken("token")
+	assert.NoError(t, err)
+	assert.NotNil(t, tgUser)
+	assert.Equal(t, "Joe", tgUser.Name)
+	assert.Len(t, tg.requests.data, 1)
+
+	assert.NoError(t, tg.addToken("expired token", time.Now().Add(-time.Minute)))
+	assert.Len(t, tg.requests.data, 2)
+	assert.EqualError(t, tg.ProcessUpdate(context.Background(), ""), "failed to decode provided telegram update: unexpected end of JSON input")
+	assert.Len(t, tg.requests.data, 1, "expired token should be cleaned up despite the error")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go tg.Run(ctx)
+	assert.Eventually(t, func() bool {
+		return tg.ProcessUpdate(ctx, "").Error() == "Run goroutine should not be used with ProcessUpdate"
+	}, time.Millisecond*100, time.Millisecond*10, "ProcessUpdate should not work same time as Run")
+}
+
 func TestTelegram_TokenVerification(t *testing.T) {
 	m := &TelegramAPIMock{
 		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
@@ -210,63 +275,63 @@ func TestTelegram_TokenVerification(t *testing.T) {
 		BotInfoFunc: botInfoFunc,
 	}
 
-	th, cleanup := setupHandler(t, m)
+	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
-	assert.NotNil(t, th)
-	th.requests.data = make(map[string]tgAuthRequest) // usually done in Run()
-	err := th.addToken("token", time.Now().Add(time.Minute))
+	assert.NotNil(t, tg)
+	tg.requests.data = make(map[string]tgAuthRequest) // usually done in Run()
+	err := tg.addToken("token", time.Now().Add(time.Minute))
 	assert.NoError(t, err)
-	assert.Len(t, th.requests.data, 1)
+	assert.Len(t, tg.requests.data, 1)
 
 	// wrong token
-	tgID, err := th.checkToken("unknown token")
+	tgID, err := tg.checkToken("unknown token")
 	assert.Empty(t, tgID)
 	assert.EqualError(t, err, "request is not found")
 
 	// right token, not verified yet
-	tgID, err = th.checkToken("token")
+	tgID, err = tg.checkToken("token")
 	assert.Empty(t, tgID)
 	assert.EqualError(t, err, "request is not verified yet")
 
 	// confirm request
-	authRequest, ok := th.requests.data["token"]
+	authRequest, ok := tg.requests.data["token"]
 	assert.True(t, ok)
 	authRequest.confirmed = true
 	authRequest.user = &authtoken.User{
 		Name: "telegram user name",
 	}
-	th.requests.data["token"] = authRequest
+	tg.requests.data["token"] = authRequest
 
 	// successful check
-	tgID, err = th.checkToken("token")
+	tgID, err = tg.checkToken("token")
 	assert.NoError(t, err)
 	assert.Equal(t, &authtoken.User{Name: "telegram user name"}, tgID)
 
 	// expired token
-	err = th.addToken("expired token", time.Now().Add(-time.Minute))
+	err = tg.addToken("expired token", time.Now().Add(-time.Minute))
 	assert.NoError(t, err)
-	tgID, err = th.checkToken("expired token")
+	tgID, err = tg.checkToken("expired token")
 	assert.Empty(t, tgID)
 	assert.EqualError(t, err, "request expired")
-	assert.Len(t, th.requests.data, 1)
+	assert.Len(t, tg.requests.data, 1)
 
 	// expired token, cleaned up by the cleanup
 	apiPollInterval = time.Hour
 	expiredCleanupInterval = time.Millisecond * 10
 	ctx, cancel := context.WithCancel(context.Background())
-	go th.Run(ctx)
+	go tg.Run(ctx)
 	// that sleep is needed because Run() will create new requests.data map, and we need to be sure that
 	// it's created by the time addToken is called.
 	time.Sleep(expiredCleanupInterval)
-	err = th.addToken("expired token", time.Now().Add(-time.Minute))
+	err = tg.addToken("expired token", time.Now().Add(-time.Minute))
 	assert.NoError(t, err)
-	th.requests.RLock()
-	assert.Len(t, th.requests.data, 1)
-	th.requests.RUnlock()
+	tg.requests.RLock()
+	assert.Len(t, tg.requests.data, 1)
+	tg.requests.RUnlock()
 	time.Sleep(expiredCleanupInterval * 2)
-	th.requests.RLock()
-	assert.Len(t, th.requests.data, 0)
-	th.requests.RUnlock()
+	tg.requests.RLock()
+	assert.Len(t, tg.requests.data, 0)
+	tg.requests.RUnlock()
 	cancel()
 	// give enough time for Run() to finish
 	time.Sleep(expiredCleanupInterval)

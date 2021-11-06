@@ -12,6 +12,7 @@ import (
 	neturl "net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-pkgz/repeater"
@@ -34,6 +35,7 @@ type TelegramHandler struct {
 	AvatarSaver  AvatarSaver
 	Telegram     TelegramAPI
 
+	run      int32  // non-zero if Run goroutine has started
 	username string // bot username
 	requests struct {
 		sync.RWMutex
@@ -63,6 +65,7 @@ var expiredCleanupInterval = time.Minute * 5 // interval to check and clean up e
 // Blocks caller
 func (th *TelegramHandler) Run(ctx context.Context) error {
 	// Initialization
+	atomic.AddInt32(&th.run, 1)
 	info, err := th.Telegram.BotInfo(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to fetch bot info")
@@ -82,6 +85,7 @@ func (th *TelegramHandler) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			processUpdatedTicker.Stop()
 			cleanupTicker.Stop()
+			atomic.AddInt32(&th.run, -1)
 			return ctx.Err()
 		case <-processUpdatedTicker.C:
 			updates, err := th.Telegram.GetUpdates(ctx)
@@ -118,6 +122,38 @@ type telegramUpdate struct {
 	} `json:"result"`
 }
 
+// ProcessUpdate is alternative to Run, it processes provided plain text update from Telegram
+// so that caller could get updates and send it not only there but to multiple sources
+func (th *TelegramHandler) ProcessUpdate(ctx context.Context, textUpdate string) error {
+	if atomic.LoadInt32(&th.run) != 0 {
+		return errors.New("Run goroutine should not be used with ProcessUpdate")
+	}
+	defer func() {
+		// as Run goroutine is not running, clean up old requests on each update
+		// even if we hit json decode error
+		now := time.Now()
+		th.requests.Lock()
+		for key, req := range th.requests.data {
+			if now.After(req.expires) {
+				delete(th.requests.data, key)
+			}
+		}
+		th.requests.Unlock()
+	}()
+	// initialize requests.data as usually it's initialized in Run
+	th.requests.Lock()
+	if th.requests.data == nil {
+		th.requests.data = make(map[string]tgAuthRequest)
+	}
+	th.requests.Unlock()
+	var updates telegramUpdate
+	if err := json.Unmarshal([]byte(textUpdate), &updates); err != nil {
+		return errors.Wrap(err, "failed to decode provided telegram update")
+	}
+	th.processUpdates(ctx, &updates)
+	return nil
+}
+
 // processUpdates processes a batch of updates from telegram servers
 // Returns offset for subsequent calls
 func (th *TelegramHandler) processUpdates(ctx context.Context, updates *telegramUpdate) {
@@ -127,10 +163,6 @@ func (th *TelegramHandler) processUpdates(ctx context.Context, updates *telegram
 		}
 
 		if !strings.HasPrefix(update.Message.Text, "/start ") {
-			err := th.Telegram.Send(ctx, update.Message.Chat.ID, th.ErrorMsg)
-			if err != nil {
-				th.Logf("failed to notify telegram peer: %v", err)
-			}
 			continue
 		}
 
@@ -214,6 +246,9 @@ func (th *TelegramHandler) checkToken(token string) (*authtoken.User, error) {
 
 // Name of the provider
 func (th *TelegramHandler) Name() string { return th.ProviderName }
+
+// String representation of the provider
+func (th *TelegramHandler) String() string { return th.Name() }
 
 // Default token lifetime. Changed in tests
 var tgAuthRequestLifetime = time.Minute * 10
