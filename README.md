@@ -383,6 +383,22 @@ It will run fake aouth2 "server" on port :8084 and user could login with any use
 
 _Warning: this is not the real oauth2 server but just a small fake thing for development and testing only. Don't use `dev` provider with any production code._
 
+By default, Dev provider doesn't return `email` claim from `/user` endpoint, to match behaviour of other providers which only request minimal scopes.
+However sometimes it is useful to have `email` included into user info. This can be done by configuring `devAuthServer.GetEmailFn` function:
+
+```go
+    go func() {
+		devAuthServer, err := service.DevAuth()
+		devOauth2Srv.GetEmailFn = func(username string) string {
+			return username + "@example.com"
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		devAuthServer.Run()
+	}()
+```
+
 ### Other ways to authenticate
 
 In addition to the primary method (i.e. JWT cookie with XSRF header) there are two more ways to authenticate:

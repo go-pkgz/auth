@@ -29,6 +29,9 @@ func TestDevProvider(t *testing.T) {
 	devProvider := NewDev(params)
 	s := Service{Provider: devProvider}
 	devOauth2Srv := DevAuthServer{Provider: devProvider, Automatic: true, username: "dev_user", L: logger.Std}
+	devOauth2Srv.GetEmailFn = func(username string) string {
+		return username + "@example.com"
+	}
 
 	router := http.NewServeMux()
 	router.Handle("/auth/dev/", http.HandlerFunc(s.Handler))
@@ -67,7 +70,7 @@ func TestDevProvider(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user",
-		Picture: "http://127.0.0.1:18084/avatar?user=dev_user", IP: ""}, *claims.User)
+		Picture: "http://127.0.0.1:18084/avatar?user=dev_user", IP: "", Email: "dev_user@example.com"}, *claims.User)
 
 	// check avatar
 	resp, err = client.Get("http://127.0.0.1:18084/avatar?user=dev_user")
