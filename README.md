@@ -101,6 +101,7 @@ For the example above authentication handlers wired as `/auth` and provides:
 - `/auth/<provider>/logout` and `/auth/logout` - invalidate "session" by removing JWT cookie
 - `/auth/list` - gives a json list of active providers
 - `/auth/user` - returns `token.User` (json)
+- `/auth/status` - returns status of logged in user (json)
 
 ### User info
 

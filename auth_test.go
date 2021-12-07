@@ -450,7 +450,46 @@ func TestVerifProvider(t *testing.T) {
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 }
 
-func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unparam
+func TestStatus(t *testing.T) {
+
+	svc, teardown := prepService(t)
+	defer teardown()
+
+	// svc := NewService(Opts{Logger: logger.Std})
+	authRoute, _ := svc.Handlers()
+
+	mux := http.NewServeMux()
+	mux.Handle("/auth/", authRoute)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/auth/status")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	b, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"status\":\"not logged in\"}\n", string(b))
+
+	// login
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	resp, err = client.Get("http://127.0.0.1:8089/auth/dev/login?site=my-test-site")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	resp, err = client.Get(ts.URL + "/auth/status")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	b, err = ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"status\":\"logged in\",\"user\":\"dev_user\"}\n", string(b))
+
+}
+
+func prepService(t *testing.T) (svc *Service, teardown func()) { // nolint unparam
 
 	options := Opts{
 		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
