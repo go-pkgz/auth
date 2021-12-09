@@ -3,7 +3,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -37,7 +37,7 @@ func TestOauth1Login(t *testing.T) {
 	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark", loginPort))
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
@@ -68,7 +68,7 @@ func TestOauth1Login(t *testing.T) {
 	resp, err = client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark", loginPort))
 	assert.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	u = token.User{}
 	err = json.Unmarshal(body, &u)
@@ -98,7 +98,7 @@ func TestOauth1LoginSessionOnly(t *testing.T) {
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
-	req, err := http.NewRequest("GET", "http://example.com", nil)
+	req, err := http.NewRequest("GET", "http://example.com", http.NoBody)
 	require.Nil(t, err)
 
 	req.AddCookie(resp.Cookies()[0])
@@ -121,15 +121,15 @@ func TestOauth1Logout(t *testing.T) {
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: timeout * time.Second}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/logout", loginPort), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/logout", loginPort), http.NoBody)
 	require.Nil(t, err)
 	resp, err := client.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, 403, resp.StatusCode, "user not lagged in")
 
-	req, err = http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/logout", loginPort), nil)
+	req, err = http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/logout", loginPort), http.NoBody)
 	require.NoError(t, err)
-	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err = client.Do(req)
@@ -184,7 +184,7 @@ func TestOauth1MakeRedirURL(t *testing.T) {
 	}
 }
 
-func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
+func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { // nolint
 
 	provider := Oauth1Handler{
 		name: "mock",
@@ -248,7 +248,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 			switch {
 			case strings.HasPrefix(r.URL.Path, "/login/oauth/request_token"):
 				w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
-				_, err := w.Write([]byte(fmt.Sprintf(`oauth_token=%s&oauth_token_secret=%s&oauth_callback_confirmed=%s`, requestToken, requestSecret, "true")))
+				_, err := fmt.Fprintf(w, `oauth_token=%s&oauth_token_secret=%s&oauth_callback_confirmed=true`, requestToken, requestSecret)
 				if err != nil {
 					w.WriteHeader(500)
 					return
@@ -259,7 +259,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 				w.WriteHeader(302)
 			case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
 				w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
-				_, err := w.Write([]byte(fmt.Sprintf(`oauth_token=%s&oauth_token_secret=%s`, accessToken, accessSecret)))
+				_, err := fmt.Fprintf(w, "oauth_token=%s&oauth_token_secret=%s", accessToken, accessSecret)
 				if err != nil {
 					w.WriteHeader(500)
 					return

@@ -3,7 +3,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -36,7 +36,7 @@ func TestOauth2Login(t *testing.T) {
 	resp, err := client.Get("http://localhost:8981/login?site=remark")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
@@ -67,7 +67,7 @@ func TestOauth2Login(t *testing.T) {
 	resp, err = client.Get("http://localhost:8981/login?site=remark")
 	assert.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	u = token.User{}
 	err = json.Unmarshal(body, &u)
@@ -96,7 +96,7 @@ func TestOauth2LoginSessionOnly(t *testing.T) {
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
-	req, err := http.NewRequest("GET", "http://example.com", nil)
+	req, err := http.NewRequest("GET", "http://example.com", http.NoBody)
 	require.Nil(t, err)
 
 	req.AddCookie(resp.Cookies()[0])
@@ -130,7 +130,7 @@ func TestOauth2LoginNoAva(t *testing.T) {
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
-	req, err := http.NewRequest("GET", "http://example.com", nil)
+	req, err := http.NewRequest("GET", "http://example.com", http.NoBody)
 	require.Nil(t, err)
 
 	req.AddCookie(resp.Cookies()[0])
@@ -154,15 +154,15 @@ func TestOauth2Logout(t *testing.T) {
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 
-	req, err := http.NewRequest("GET", "http://localhost:8691/logout", nil)
+	req, err := http.NewRequest("GET", "http://localhost:8691/logout", http.NoBody)
 	require.Nil(t, err)
 	resp, err := client.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, 403, resp.StatusCode, "user not lagged in")
 
-	req, err = http.NewRequest("GET", "http://localhost:8691/logout", nil)
+	req, err = http.NewRequest("GET", "http://localhost:8691/logout", http.NoBody)
 	require.NoError(t, err)
-	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err = client.Do(req)
@@ -265,7 +265,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
 
-	//nolint dupl
+	// nolint dupl
 	oauth := &http.Server{
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

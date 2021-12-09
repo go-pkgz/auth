@@ -1,7 +1,7 @@
 package avatar
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -26,7 +26,7 @@ func TestBoltDB_PutAndGet(t *testing.T) {
 	rd, size, err := b.Get(avatar)
 	require.Nil(t, err)
 	assert.Equal(t, 21, size)
-	data, err := ioutil.ReadAll(rd)
+	data, err := io.ReadAll(rd)
 	require.Nil(t, err)
 	assert.Equal(t, "some picture bin data", string(data))
 
@@ -77,7 +77,7 @@ func TestBoltDB_List(t *testing.T) {
 	r, size, err := b.Get("0b7f849446d3383546d15a480966084442cd2193.image")
 	assert.Nil(t, err)
 	assert.Equal(t, 23, size)
-	data, err := ioutil.ReadAll(r)
+	data, err := io.ReadAll(r)
 	assert.Nil(t, err)
 	assert.Equal(t, "some picture bin data 3", string(data))
 }

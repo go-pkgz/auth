@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -123,7 +123,7 @@ func TestCustomProvider(t *testing.T) {
 	resp, err := client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
@@ -132,7 +132,7 @@ func TestCustomProvider(t *testing.T) {
 	resp, err = client.Get("http://127.0.0.1:9096/avatar?user=dev_user")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	assert.Equal(t, 960, len(body))
 	t.Logf("headers: %+v", resp.Header)

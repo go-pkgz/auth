@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 
 	"github.com/pkg/errors"
@@ -24,7 +23,7 @@ const metasBktName = "metas"
 
 // NewBoltDB makes bolt avatar store
 func NewBoltDB(fileName string, options bolt.Options) (*BoltDB, error) {
-	db, err := bolt.Open(fileName, 0600, &options) //nolint
+	db, err := bolt.Open(fileName, 0600, &options) // nolint
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to make boltdb for %s", fileName)
 	}
@@ -72,7 +71,7 @@ func (b *BoltDB) Get(avatarID string) (reader io.ReadCloser, size int, err error
 		size, err = buf.Write(data)
 		return errors.Wrapf(err, "failed to write for %s", avatarID)
 	})
-	return ioutil.NopCloser(buf), size, err
+	return io.NopCloser(buf), size, err
 }
 
 // ID returns a fingerprint of the avatar content.

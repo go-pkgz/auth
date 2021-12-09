@@ -22,7 +22,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 	}{
 		"GET": {
 			makeRequest: func(t *testing.T) *http.Request {
-				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", nil)
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", http.NoBody)
 				require.NoError(t, err)
 				return req
 			},
@@ -117,7 +117,7 @@ func TestDirect_LoginHandlerCustomUserID(t *testing.T) {
 	assert.Equal(t, "test", d.Name())
 	handler := http.HandlerFunc(d.LoginHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", nil)
+	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
@@ -133,7 +133,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 	}{
 		"no credential checker": {
 			makeRequest: func(t *testing.T) *http.Request {
-				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", http.NoBody)
 				require.NoError(t, err)
 				return req
 			},
@@ -143,7 +143,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 		},
 		"failed to check user credentials": {
 			makeRequest: func(t *testing.T) *http.Request {
-				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", http.NoBody)
 				require.NoError(t, err)
 				return req
 			},
@@ -153,7 +153,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 		},
 		"incorrect user or password": {
 			makeRequest: func(t *testing.T) *http.Request {
-				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", nil)
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123", http.NoBody)
 				require.NoError(t, err)
 				return req
 			},
@@ -175,7 +175,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 		},
 		"malformed application/x-www-form-urlencoded body": {
 			makeRequest: func(t *testing.T) *http.Request {
-				req, err := http.NewRequest("POST", "/login?from=http://example.com", nil)
+				req, err := http.NewRequest("POST", "/login?from=http://example.com", nil) // nolint
 				require.NoError(t, err)
 				req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 				return req
@@ -226,7 +226,7 @@ func TestDirect_Logout(t *testing.T) {
 
 	handler := http.HandlerFunc(d.LogoutHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/logout", nil)
+	req, err := http.NewRequest("GET", "/logout", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
@@ -246,7 +246,7 @@ func TestDirect_AuthHandler(t *testing.T) {
 	d := DirectHandler{}
 	handler := http.HandlerFunc(d.AuthHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/callback", nil)
+	req, err := http.NewRequest("GET", "/callback", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)

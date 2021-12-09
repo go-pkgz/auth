@@ -36,7 +36,7 @@ func TestHandler(t *testing.T) {
 		tt := tt
 		t.Run(fmt.Sprintf("check-%d", n), func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			req, err := http.NewRequest(tt.method, tt.url, nil)
+			req, err := http.NewRequest(tt.method, tt.url, http.NoBody)
 			require.NoError(t, err)
 			handler.ServeHTTP(rr, req)
 			assert.Equal(t, tt.code, rr.Code)

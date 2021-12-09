@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -45,8 +45,8 @@ func TestAuthJWTCookie(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -56,7 +56,7 @@ func TestAuthJWTCookie(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "valid token user")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "wrong id")
@@ -64,7 +64,7 @@ func TestAuthJWTCookie(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode, "xsrf mismatch")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -72,7 +72,7 @@ func TestAuthJWTCookie(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtNoUser, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -87,14 +87,14 @@ func TestAuthJWTHeader(t *testing.T) {
 	defer server.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.Nil(t, err)
 	req.Header.Add("X-JWT", testJwtValid)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "valid token user")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.Nil(t, err)
 	req.Header.Add("X-JWT", testJwtExpired)
 	resp, err = client.Do(req)
@@ -110,10 +110,10 @@ func TestAuthJWTRefresh(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 
-	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 
@@ -151,10 +151,10 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 			jar, err := cookiejar.New(nil)
 			require.Nil(t, err)
 			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-			req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+			req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 			require.NoError(t, err)
 
-			expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
+			expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
 			req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
 				MaxAge: expiration, Secure: false})
 			req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -185,9 +185,9 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
-	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: tkn, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err := client.Do(req)
@@ -220,10 +220,10 @@ func TestAuthJWTRefreshFailed(t *testing.T) {
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 
 	a.JWTService = &badJwtService{Service: a.JWTService.(*token.Service)}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 
-	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
 		MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -234,7 +234,7 @@ func TestAuthJWTRefreshFailed(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, 401, resp.StatusCode)
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, "Unauthorized\n", string(data))
 }
@@ -248,7 +248,7 @@ func TestAuthJWtBlocked(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.Nil(t, err)
 	req.Header.Add("X-JWT", testJwtValid)
 	resp, err := client.Do(req)
@@ -264,7 +264,7 @@ func TestAuthJWtWithHandshake(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.Nil(t, err)
 	req.Header.Add("X-JWT", testJwtWithHandshake)
 	resp, err := client.Do(req)
@@ -278,14 +278,14 @@ func TestAuthWithBasic(t *testing.T) {
 	defer server.Close()
 
 	client := &http.Client{Timeout: 1 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.SetBasicAuth("admin", "123456")
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "valid token user")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.SetBasicAuth("dev", "xyz")
 	resp, err = client.Do(req)
@@ -293,7 +293,7 @@ func TestAuthWithBasic(t *testing.T) {
 	assert.Equal(t, 401, resp.StatusCode, "wrong token creds")
 
 	a.AdminPasswd = "" // disable admin
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.SetBasicAuth("admin", "123456")
 	resp, err = client.Do(req)
@@ -315,14 +315,14 @@ func TestAuthWithBasicChecker(t *testing.T) {
 	defer server.Close()
 
 	client := &http.Client{Timeout: 1 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.SetBasicAuth("basic_user", "123456")
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "valid basic user")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.SetBasicAuth("dev", "xyz")
 	resp, err = client.Do(req)
@@ -330,7 +330,7 @@ func TestAuthWithBasicChecker(t *testing.T) {
 	assert.Equal(t, 401, resp.StatusCode, "wrong basic auth creds")
 
 	a.BasicAuthChecker = nil // disable basicAuthChecker
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.SetBasicAuth("admin", "123456")
 	resp, err = client.Do(req)
@@ -344,20 +344,20 @@ func TestAuthNotRequired(t *testing.T) {
 	defer server.Close()
 
 	client := &http.Client{Timeout: 1 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "no token user")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.Header.Add("X-JWT", testJwtValid)
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode, "valid token user")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.Header.Add("X-JWT", testJwtWithHandshake)
 	resp, err = client.Do(req)
@@ -377,7 +377,7 @@ func TestAdminRequired(t *testing.T) {
 	defer server.Close()
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.SetBasicAuth("admin", "123456")
 	resp, err := client.Do(req)
@@ -385,20 +385,20 @@ func TestAdminRequired(t *testing.T) {
 	assert.Equal(t, 201, resp.StatusCode, "valid token user, admin")
 
 	adminUser.SetAdmin(false)
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.SetBasicAuth("admin", "123456")
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode, "valid token user, not admin")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode, "not authorized")
 
-	req, err = http.NewRequest("GET", server.URL+"/auth", nil)
+	req, err = http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 	require.NoError(t, err)
 	req.Header.Add("X-JWT", "bad bad token")
 	resp, err = client.Do(req)
@@ -426,8 +426,8 @@ func TestRBAC(t *testing.T) {
 	defer server.Close()
 
 	// employee route only, token with employee role
-	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
-	req, err := http.NewRequest("GET", server.URL+"/authForEmployees", nil)
+	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
+	req, err := http.NewRequest("GET", server.URL+"/authForEmployees", http.NoBody)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtWithRole, HttpOnly: true, Path: "/",
 		MaxAge: expiration, Secure: false})
@@ -439,8 +439,8 @@ func TestRBAC(t *testing.T) {
 	assert.Equal(t, 201, resp.StatusCode, "valid token user")
 
 	// employee route only, token without employee role
-	expiration = int(365 * 24 * time.Hour.Seconds()) //nolint
-	req, err = http.NewRequest("GET", server.URL+"/authForEmployees", nil)
+	expiration = int(365 * 24 * time.Hour.Seconds()) // nolint
+	req, err = http.NewRequest("GET", server.URL+"/authForEmployees", http.NoBody)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/",
 		MaxAge: expiration, Secure: false})
@@ -452,7 +452,7 @@ func TestRBAC(t *testing.T) {
 	assert.Equal(t, 403, resp.StatusCode, "valid token user, incorrect role")
 
 	// external route only, token with employee role
-	req, err = http.NewRequest("GET", server.URL+"/authForExternals", nil)
+	req, err = http.NewRequest("GET", server.URL+"/authForExternals", http.NoBody)
 	require.Nil(t, err)
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtWithRole, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
@@ -461,7 +461,7 @@ func TestRBAC(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, 403, resp.StatusCode)
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, "Access denied\n", string(data))
 }

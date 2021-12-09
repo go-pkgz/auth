@@ -186,7 +186,7 @@ func TestTelegramLogout(t *testing.T) {
 	// Same TestVerifyHandler_Logout
 	handler := http.HandlerFunc(tg.LogoutHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/logout", nil)
+	req, err := http.NewRequest("GET", "/logout", http.NoBody)
 	assert.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)

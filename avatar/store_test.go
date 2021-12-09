@@ -2,7 +2,7 @@ package avatar
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -19,7 +19,7 @@ func TestAvatarStore_Migrate(t *testing.T) {
 	}
 	// prep localfs
 	plocal := NewLocalFS("/tmp/avatars.test")
-	err := os.MkdirAll("/tmp/avatars.test", 0700)
+	err := os.MkdirAll("/tmp/avatars.test", 0o700)
 	require.NoError(t, err)
 	defer os.RemoveAll("/tmp/avatars.test")
 
@@ -50,7 +50,7 @@ func TestAvatarStore_Migrate(t *testing.T) {
 	r, size, err := pgfs.Get("0b7f849446d3383546d15a480966084442cd2193.image")
 	assert.Nil(t, err)
 	assert.Equal(t, 23, size)
-	data, err := ioutil.ReadAll(r)
+	data, err := io.ReadAll(r)
 	assert.Nil(t, err)
 	assert.Equal(t, "some picture bin data 3", string(data))
 }

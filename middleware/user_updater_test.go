@@ -35,7 +35,7 @@ func TestUserUpdate(t *testing.T) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	// check everything works if there is no Trace/Auth/AdminOnly middleware
-	req, err := http.NewRequest("GET", server.URL+"/trace", nil)
+	req, err := http.NewRequest("GET", server.URL+"/trace", http.NoBody)
 	require.NoError(t, err)
 	req.Header.Add("X-JWT", testJwtValid)
 	resp, err := client.Do(req)
@@ -63,7 +63,7 @@ func TestUserUpdate_WithoutAuth(t *testing.T) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	// check everything works if there is no Trace/Auth/AdminOnly middleware
-	req, err := http.NewRequest("GET", server.URL+"/no_auth", nil)
+	req, err := http.NewRequest("GET", server.URL+"/no_auth", http.NoBody)
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)

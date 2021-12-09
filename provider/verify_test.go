@@ -16,7 +16,7 @@ import (
 	"github.com/go-pkgz/auth/token"
 )
 
-//nolint
+// nolint
 var (
 	testConfirmedToken      = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn19.D8AvAunK7Tj-P6P56VyaoZ-hyA6U8duZ9HV8-ACEya8`
 	testConfirmedBadIDToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJibGFoQHVzZXIuY29tIn19.hB91-kyY9-Q2Ln6IJGR9StQi-QQiXYu8SV31YhOoTbc`
@@ -42,7 +42,7 @@ func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 
 	handler := http.HandlerFunc(e.LoginHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/login?address=blah@user.com&user=test123&site=remark42", nil)
+	req, err := http.NewRequest("GET", "/login?address=blah@user.com&user=test123&site=remark42", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
@@ -74,7 +74,7 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 
 	handler := http.HandlerFunc(e.LoginHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s&sess=1", testConfirmedToken), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s&sess=1", testConfirmedToken), http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
@@ -108,7 +108,7 @@ func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 
 	handler := http.HandlerFunc(e.LoginHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s&sess=1", testConfirmedGravatar), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s&sess=1", testConfirmedGravatar), http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
@@ -130,7 +130,7 @@ func TestVerifyHandler_LoginAcceptConfirmWithGrAvatarDisabled(t *testing.T) {
 
 	handler := http.HandlerFunc(e.LoginHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s&sess=1", testConfirmedGravatar), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s&sess=1", testConfirmedGravatar), http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
@@ -153,7 +153,7 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 
 	handler := http.HandlerFunc(d.LoginHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/login?user=myuser&aud=xyz123", nil)
+	req, err := http.NewRequest("GET", "/login?user=myuser&aud=xyz123", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 400, rr.Code)
@@ -162,28 +162,28 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 	d.Sender = &mockSender{err: errors.New("some err")}
 	handler = d.LoginHandler
 	rr = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/login?user=myuser&address=pppp&aud=xyz123", nil)
+	req, err = http.NewRequest("GET", "/login?user=myuser&address=pppp&aud=xyz123", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 500, rr.Code)
 	assert.Equal(t, `{"error":"failed to send confirmation"}`+"\n", rr.Body.String())
 
 	rr = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/login?token=bad", nil)
+	req, err = http.NewRequest("GET", "/login?token=bad", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusForbidden, rr.Code)
 	assert.Equal(t, `{"error":"failed to verify confirmation token"}`+"\n", rr.Body.String())
 
 	rr = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/login?token="+testConfirmedBadIDToken, nil)
+	req, err = http.NewRequest("GET", "/login?token="+testConfirmedBadIDToken, http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 	assert.Equal(t, `{"error":"invalid handshake token"}`+"\n", rr.Body.String())
 
 	rr = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/login?token="+testConfirmedExpired, nil)
+	req, err = http.NewRequest("GET", "/login?token="+testConfirmedExpired, http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusForbidden, rr.Code)
@@ -193,7 +193,7 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 	d.Sender = &mockSender{}
 	handler = d.LoginHandler
 	rr = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/login?user=myuser&address=pppp&aud=xyz123", nil)
+	req, err = http.NewRequest("GET", "/login?user=myuser&address=pppp&aud=xyz123", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -217,7 +217,7 @@ func TestVerifyHandler_LoginHandlerAvatarFailed(t *testing.T) {
 
 	handler := http.HandlerFunc(d.LoginHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/login?token="+testConfirmedToken, nil)
+	req, err := http.NewRequest("GET", "/login?token="+testConfirmedToken, http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 500, rr.Code)
@@ -228,7 +228,7 @@ func TestVerifyHandler_AuthHandler(t *testing.T) {
 	d := VerifyHandler{}
 	handler := http.HandlerFunc(d.AuthHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/callback", nil)
+	req, err := http.NewRequest("GET", "/callback", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
@@ -248,7 +248,7 @@ func TestVerifyHandler_Logout(t *testing.T) {
 
 	handler := http.HandlerFunc(d.LogoutHandler)
 	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/logout", nil)
+	req, err := http.NewRequest("GET", "/logout", http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)

@@ -442,7 +442,7 @@ func (tg *tgAPI) request(ctx context.Context, method string, data interface{}) e
 	return repeater.NewDefault(3, time.Millisecond*50).Do(ctx, func() error {
 		url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tg.token, method)
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 		if err != nil {
 			return errors.Wrap(err, "failed to create request")
 		}

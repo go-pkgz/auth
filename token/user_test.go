@@ -1,7 +1,7 @@
 package token
 
 import (
-	"crypto/sha1" //nolint
+	"crypto/sha1" // nolint
 	"net/http"
 	"testing"
 
@@ -99,7 +99,7 @@ func TestUser_PaidSubscriber(t *testing.T) {
 }
 
 func TestUser_GetUserInfo(t *testing.T) {
-	r, err := http.NewRequest("GET", "http://blah.com", nil)
+	r, err := http.NewRequest("GET", "http://blah.com", http.NoBody)
 	assert.Nil(t, err)
 	_, err = GetUserInfo(r)
 	assert.EqualError(t, err, "user can't be parsed")
@@ -117,7 +117,7 @@ func TestUser_MustGetUserInfo(t *testing.T) {
 		}
 	}()
 
-	r, err := http.NewRequest("GET", "http://blah.com", nil)
+	r, err := http.NewRequest("GET", "http://blah.com", http.NoBody)
 	assert.Nil(t, err)
 	_ = MustGetUserInfo(r)
 	assert.Fail(t, "should panic")

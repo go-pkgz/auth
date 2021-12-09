@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -119,7 +120,7 @@ Ivx5tHkv
 
 	filePath := filepath.Join(dir, testPrivKeyFileName)
 
-	if err = ioutil.WriteFile(filePath, []byte(testValidKey), 0600); err != nil {
+	if err = os.WriteFile(filePath, []byte(testValidKey), 0o600); err != nil {
 		require.NoError(t, err)
 		return
 	}
@@ -155,7 +156,7 @@ func TestIntegrationProtected(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	assert.Equal(t, "Unauthorized\n", string(body))
 
@@ -164,7 +165,7 @@ func TestIntegrationProtected(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
@@ -187,14 +188,14 @@ func TestIntegrationBasicAuth(t *testing.T) {
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", "http://127.0.0.1:8089/private", nil)
+	req, err := http.NewRequest("GET", "http://127.0.0.1:8089/private", http.NoBody)
 	require.Nil(t, err)
 	resp, err := client.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 	defer resp.Body.Close()
 
-	req, err = http.NewRequest("GET", "http://127.0.0.1:8089/private", nil)
+	req, err = http.NewRequest("GET", "http://127.0.0.1:8089/private", http.NoBody)
 	require.Nil(t, err)
 	req.SetBasicAuth("admin", "password")
 	resp, err = client.Do(req)
@@ -221,7 +222,7 @@ func TestIntegrationAvatar(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, 200, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, 569, len(b))
 }
@@ -235,7 +236,7 @@ func TestIntegrationList(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, `["dev","github","custom123","direct","direct_custom","email"]`+"\n", string(b))
 }
@@ -260,7 +261,7 @@ func TestIntegrationUserInfo(t *testing.T) {
 	defer resp.Body.Close()
 
 	// get user info
-	req, err := http.NewRequest("GET", "http://127.0.0.1:8089/auth/user", nil)
+	req, err := http.NewRequest("GET", "http://127.0.0.1:8089/auth/user", http.NoBody)
 	require.NoError(t, err)
 	t.Log(resp.Cookies())
 	resp, err = client.Do(req)
@@ -313,7 +314,7 @@ func TestLogoutNoProviders(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 400, resp.StatusCode)
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, "{\"error\":\"provides not defined\"}\n", string(b))
 }
@@ -353,7 +354,7 @@ func TestDirectProvider(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
@@ -391,7 +392,7 @@ func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
@@ -431,7 +432,7 @@ func TestVerifProvider(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
@@ -455,7 +456,6 @@ func TestStatus(t *testing.T) {
 	svc, teardown := prepService(t)
 	defer teardown()
 
-	// svc := NewService(Opts{Logger: logger.Std})
 	authRoute, _ := svc.Handlers()
 
 	mux := http.NewServeMux()
@@ -467,7 +467,7 @@ func TestStatus(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, "{\"status\":\"not logged in\"}\n", string(b))
 
@@ -483,7 +483,7 @@ func TestStatus(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	b, err = ioutil.ReadAll(resp.Body)
+	b, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, "{\"status\":\"logged in\",\"user\":\"dev_user\"}\n", string(b))
 

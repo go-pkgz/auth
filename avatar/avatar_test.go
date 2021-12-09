@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"image"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -39,7 +38,7 @@ func TestAvatar_Put(t *testing.T) {
 	}()
 
 	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.test"), L: logger.NoOp}
-	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0700))
+	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0o700))
 	defer os.RemoveAll("/tmp/avatars.test")
 
 	client := &http.Client{Timeout: time.Second}
@@ -120,7 +119,7 @@ func TestAvatar_Routes(t *testing.T) {
 	defer ts.Close()
 
 	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
-	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0700))
+	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0o700))
 	defer os.RemoveAll("/tmp/avatars.test")
 	client := &http.Client{Timeout: time.Second}
 
@@ -130,7 +129,7 @@ func TestAvatar_Routes(t *testing.T) {
 
 	{
 		// status 400
-		req, err := http.NewRequest("GET", "/123aa77b4c04a9551b8781d03191fe098f325e67.image", nil)
+		req, err := http.NewRequest("GET", "/123aa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
 		require.NoError(t, err)
 		rr := httptest.NewRecorder()
 		handler := http.Handler(http.HandlerFunc(p.Handler))
@@ -140,7 +139,7 @@ func TestAvatar_Routes(t *testing.T) {
 
 	{
 		// status 403
-		req, err := http.NewRequest("GET", "../not-allowed.txt", nil)
+		req, err := http.NewRequest("GET", "../not-allowed.txt", http.NoBody)
 		require.NoError(t, err)
 		rr := httptest.NewRecorder()
 		handler := http.Handler(http.HandlerFunc(p.Handler))
@@ -149,7 +148,7 @@ func TestAvatar_Routes(t *testing.T) {
 	}
 
 	{ // status 200
-		req, err := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", nil)
+		req, err := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
 		require.NoError(t, err)
 		rr := httptest.NewRecorder()
 		handler := http.Handler(http.HandlerFunc(p.Handler))
@@ -170,7 +169,7 @@ func TestAvatar_Routes(t *testing.T) {
 
 	{
 		// status 304
-		req, err := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", nil)
+		req, err := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
 		require.NoError(t, err)
 		id := p.Store.ID("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 		req.Header.Add("If-None-Match", p.Store.ID(id)) // hash of `some_random_name.image` since the file doesn't exist
@@ -187,7 +186,7 @@ func TestAvatar_Routes(t *testing.T) {
 
 func TestAvatar_resize(t *testing.T) {
 	checkC := func(t *testing.T, r io.Reader, cExp []byte) {
-		content, err := ioutil.ReadAll(r)
+		content, err := io.ReadAll(r)
 		require.NoError(t, err)
 		assert.Equal(t, cExp, content)
 	}
@@ -216,7 +215,7 @@ func TestAvatar_resize(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		img, err := ioutil.ReadFile(c.file)
+		img, err := os.ReadFile(c.file)
 		require.Nil(t, err, "can't open test file %s", c.file)
 
 		// No need for resize, avatar dimensions are smaller than resize limit.
