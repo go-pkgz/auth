@@ -259,6 +259,22 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 	assert.EqualError(t, tg.ProcessUpdate(context.Background(), ""), "failed to decode provided telegram update: unexpected end of JSON input")
 	assert.Len(t, tg.requests.data, 1, "expired token should be cleaned up despite the error")
 
+	// Verify that get token will return bot name
+	r := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	tg.LoginHandler(w, r)
+
+	assert.Equal(t, http.StatusOK, w.Code, "request should succeed")
+
+	var resp = struct {
+		Token string `json:"token"`
+		Bot   string `json:"bot"`
+	}{}
+
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.Equal(t, "my_auth_bot", resp.Bot)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go tg.Run(ctx)

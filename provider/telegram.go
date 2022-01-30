@@ -70,12 +70,11 @@ func (th *TelegramHandler) Run(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to fetch bot info")
 	}
+	th.username = info.Username
 
 	th.requests.Lock()
 	th.requests.data = make(map[string]tgAuthRequest)
 	th.requests.Unlock()
-
-	th.username = info.Username
 
 	processUpdatedTicker := time.NewTicker(apiPollInterval)
 	cleanupTicker := time.NewTicker(expiredCleanupInterval)
@@ -269,6 +268,16 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 		if err != nil {
 			rest.SendErrorJSON(w, r, th.L, http.StatusInternalServerError, err, "failed to process login request")
 			return
+		}
+
+		// verify that we have a username, which is not set if Run was not used
+		if th.username == "" {
+			info, err := th.Telegram.BotInfo(r.Context())
+			if err != nil {
+				rest.SendErrorJSON(w, r, th.L, http.StatusInternalServerError, err, "failed to fetch bot username")
+				return
+			}
+			th.username = info.Username
 		}
 
 		rest.RenderJSON(w, struct {
