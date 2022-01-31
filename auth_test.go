@@ -489,7 +489,7 @@ func TestStatus(t *testing.T) {
 
 }
 
-func prepService(t *testing.T) (svc *Service, teardown func()) { // nolint unparam
+func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unparam
 
 	options := Opts{
 		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),

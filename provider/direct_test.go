@@ -175,7 +175,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 		},
 		"malformed application/x-www-form-urlencoded body": {
 			makeRequest: func(t *testing.T) *http.Request {
-				req, err := http.NewRequest("POST", "/login?from=http://example.com", nil) // nolint
+				req, err := http.NewRequest("POST", "/login?from=http://example.com", nil) //nolint
 				require.NoError(t, err)
 				req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 				return req

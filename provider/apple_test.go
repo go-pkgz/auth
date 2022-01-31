@@ -258,7 +258,7 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 
 }
 
-// nolint dupl
+//nolint dupl
 func TestAppleHandler_LogoutHandler(t *testing.T) {
 
 	teardown := prepareAppleOauthTest(t, 8691, 8692, nil)
@@ -276,7 +276,7 @@ func TestAppleHandler_LogoutHandler(t *testing.T) {
 
 	req, err = http.NewRequest("GET", "http://localhost:8691/logout", nil)
 	require.NoError(t, err)
-	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err = client.Do(req)
@@ -447,7 +447,7 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
 
-	// nolint dupl
+	//nolint dupl
 	oauth := &http.Server{
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -43,7 +43,7 @@ jobs:
 
       - name: install golangci-lint and goveralls
         run: |
-          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $GITHUB_WORKSPACE v1.43.0
+          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $GITHUB_WORKSPACE v1.44.0
           GO111MODULE=off go get -u -v github.com/mattn/goveralls
 
       - name: run linters

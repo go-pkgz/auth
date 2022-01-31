@@ -129,7 +129,7 @@ func TestOauth1Logout(t *testing.T) {
 
 	req, err = http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/logout", loginPort), http.NoBody)
 	require.NoError(t, err)
-	expiration := int(365 * 24 * time.Hour.Seconds()) // nolint
+	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
 	req.Header.Add("X-XSRF-TOKEN", "random id")
 	resp, err = client.Do(req)
@@ -184,7 +184,7 @@ func TestOauth1MakeRedirURL(t *testing.T) {
 	}
 }
 
-func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { // nolint
+func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 
 	provider := Oauth1Handler{
 		name: "mock",
@@ -232,7 +232,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { // nolint
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
 
-	// nolint
+	//nolint
 	var (
 		requestToken  = "sdjasd09AfdkzztyRadrdR"
 		requestSecret = "asd34q129sjdklAJJAs"
