@@ -1,7 +1,7 @@
 package token
 
 import (
-	"crypto/sha1" // nolint
+	"crypto/sha1" //nolint
 	"net/http"
 	"testing"
 
