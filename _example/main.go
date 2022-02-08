@@ -12,17 +12,17 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-oauth2/oauth2/v4/errors"
+	"github.com/go-oauth2/oauth2/v4/generates"
+	"github.com/go-oauth2/oauth2/v4/manage"
+	"github.com/go-oauth2/oauth2/v4/models"
+	goauth2 "github.com/go-oauth2/oauth2/v4/server"
+	"github.com/go-oauth2/oauth2/v4/store"
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
-	"gopkg.in/oauth2.v3/errors"
-	"gopkg.in/oauth2.v3/generates"
-	"gopkg.in/oauth2.v3/manage"
-	"gopkg.in/oauth2.v3/models"
-	goauth2 "gopkg.in/oauth2.v3/server"
-	"gopkg.in/oauth2.v3/store"
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/auth/avatar"
@@ -287,7 +287,7 @@ func initGoauth2Srv() *goauth2.Server {
 	manager.MustTokenStorage(store.NewMemoryTokenStore())
 
 	// generate jwt access token
-	manager.MapAccessGenerate(generates.NewJWTAccessGenerate([]byte("00000000"), jwt.SigningMethodHS512))
+	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("custom", []byte("00000000"), jwt.SigningMethodHS512))
 
 	// client memory store
 	clientStore := store.NewClientStore()
