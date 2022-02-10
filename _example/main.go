@@ -294,7 +294,7 @@ func initGoauth2Srv() *goauth2.Server {
 	err := clientStore.Set("cid", &models.Client{
 		ID:     "cid",
 		Secret: "csecret",
-		Domain: "http://127.0.0.1:8080",
+		Domain: "http://localhost:8080",
 	})
 	if err != nil {
 		log.Printf("failed to set up a client store for go-oauth2/oauth2 server, %s", err)
