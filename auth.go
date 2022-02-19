@@ -76,7 +76,6 @@ type Opts struct {
 
 // NewService initializes everything
 func NewService(opts Opts) (res *Service) {
-
 	res = &Service{
 		opts:   opts,
 		logger: opts.Logger,
@@ -148,7 +147,6 @@ func NewService(opts Opts) (res *Service) {
 
 // Handlers gets http.Handler for all providers and avatars
 func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
-
 	ah := func(w http.ResponseWriter, r *http.Request) {
 		elems := strings.Split(r.URL.Path, "/")
 		if len(elems) < 2 {
@@ -221,7 +219,6 @@ func (s *Service) Middleware() middleware.Authenticator {
 
 // AddProvider adds provider for given name
 func (s *Service) AddProvider(name, cid, csecret string) {
-
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
