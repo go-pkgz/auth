@@ -316,7 +316,7 @@ func TestLogoutNoProviders(t *testing.T) {
 	assert.Equal(t, 400, resp.StatusCode)
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, "{\"error\":\"provides not defined\"}\n", string(b))
+	assert.Equal(t, "{\"error\":\"providers not defined\"}\n", string(b))
 }
 
 func TestBadRequests(t *testing.T) {
