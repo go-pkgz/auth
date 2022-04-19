@@ -2,13 +2,13 @@ package sender
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/smtp"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -140,7 +140,7 @@ func (f *fakeTestSMTP) Close() error         { f.close = true; return nil }
 
 func (f *fakeTestSMTP) Data() (io.WriteCloser, error) {
 	if f.fail {
-		return nil, errors.New("failed")
+		return nil, fmt.Errorf("failed")
 	}
 	return nopCloser{&f.buff}, nil
 }

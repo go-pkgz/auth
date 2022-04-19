@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -80,7 +79,7 @@ type mockAva struct {
 
 func (m mockAva) Put(u token.User, client *http.Client) (avatarURL string, err error) {
 	if !m.ok {
-		return "", errors.New("some error")
+		return "", fmt.Errorf("some error")
 	}
 	return m.res, nil
 }

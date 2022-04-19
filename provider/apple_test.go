@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -399,7 +398,7 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 
 	filePath, cancelCtx := prepareTestPrivateKey(t)
 	if cancelCtx == nil {
-		t.Fatal(errors.New("failed to create test private key file"))
+		t.Fatal(fmt.Errorf("failed to create test private key file"))
 		return nil
 	}
 

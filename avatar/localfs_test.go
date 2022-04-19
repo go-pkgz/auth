@@ -68,7 +68,6 @@ func TestAvatarStoreFS_Get(t *testing.T) {
 
 	// file not exists
 	r, size, err := p.Get("some_random_name.image")
-	// nil, 0, errors.Wrapf(err, "can't load avatar %s, id")
 	assert.Nil(t, r)
 	assert.Equal(t, 0, size)
 	assert.EqualError(t, err, "can't load avatar some_random_name.image, id: open /tmp/avatars.test/91/some_random_name.image: no such file or directory")

@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -90,7 +89,7 @@ func TestParseAppleJWK(t *testing.T) {
 					  "n": "invalid-value",
 					  "e": "invalid-value"
 					}]}`))
-	assert.Error(t, err, errors.New("failed to decode Apple public key modulus (n)"))
+	assert.Error(t, err, fmt.Errorf("failed to decode Apple public key modulus (n)"))
 
 	testKeySet, err = parseAppleJWK([]byte(`{"keys":[{
 					  "kty": "RSA",
@@ -101,7 +100,7 @@ func TestParseAppleJWK(t *testing.T) {
 					  "e": "invalid-value"
 					}]}`))
 
-	assert.Error(t, err, errors.New("failed to decode Apple public key modulus (e)"))
+	assert.Error(t, err, fmt.Errorf("failed to decode Apple public key modulus (e)"))
 	testKeySet, err = parseAppleJWK([]byte(`{invalid-json}`))
 	assert.Error(t, err)
 }

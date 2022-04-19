@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -147,7 +147,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 				require.NoError(t, err)
 				return req
 			},
-			credChecker: &mockCredsChecker{err: errors.New("some err"), ok: false},
+			credChecker: &mockCredsChecker{err: fmt.Errorf("some err"), ok: false},
 			wantCode:    http.StatusInternalServerError,
 			wantBody:    `{"error":"failed to check user credentials"}`,
 		},
