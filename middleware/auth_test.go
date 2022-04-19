@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -11,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -206,7 +206,7 @@ type badJwtService struct {
 }
 
 func (b *badJwtService) Set(w http.ResponseWriter, claims token.Claims) (token.Claims, error) {
-	return token.Claims{}, errors.New("jwt set fake error")
+	return token.Claims{}, fmt.Errorf("jwt set fake error")
 }
 
 func TestAuthJWTRefreshFailed(t *testing.T) {
@@ -308,7 +308,7 @@ func TestAuthWithBasicChecker(t *testing.T) {
 		if user == "basic_user" && passwd == "123456" {
 			return true, token.User{Name: user, Role: "test_r"}, nil
 		}
-		return false, token.User{}, errors.New("basic auth credentials check failed")
+		return false, token.User{}, fmt.Errorf("basic auth credentials check failed")
 	}
 
 	server := httptest.NewServer(makeTestMux(t, &a, true))

@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -159,7 +158,7 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 	assert.Equal(t, 400, rr.Code)
 	assert.Equal(t, `{"error":"can't get user and address"}`+"\n", rr.Body.String())
 
-	d.Sender = &mockSender{err: errors.New("some err")}
+	d.Sender = &mockSender{err: fmt.Errorf("some err")}
 	handler = d.LoginHandler
 	rr = httptest.NewRecorder()
 	req, err = http.NewRequest("GET", "/login?user=myuser&address=pppp&aud=xyz123", http.NoBody)
@@ -212,7 +211,7 @@ func TestVerifyHandler_LoginHandlerAvatarFailed(t *testing.T) {
 		}),
 		Issuer:      "iss-test",
 		L:           logger.Std,
-		AvatarSaver: mockAvatarSaverVerif{err: errors.New("avatar save error")},
+		AvatarSaver: mockAvatarSaverVerif{err: fmt.Errorf("avatar save error")},
 	}
 
 	handler := http.HandlerFunc(d.LoginHandler)

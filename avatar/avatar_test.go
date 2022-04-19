@@ -2,7 +2,6 @@ package avatar
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"image"
 	"io"
@@ -243,7 +242,7 @@ func TestAvatar_GetGravatarURL(t *testing.T) {
 		url   string
 	}{
 		{"eefretsoul@gmail.com", nil, "https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851.jpg"},
-		{"umputun-xyz@example.com", errors.New("404 Not Found"), ""},
+		{"umputun-xyz@example.com", fmt.Errorf("404 Not Found"), ""},
 	}
 
 	for i, tt := range tbl {
@@ -267,14 +266,14 @@ func TestAvatar_Retry(t *testing.T) {
 			return nil
 		}
 		i++
-		return errors.New("err")
+		return fmt.Errorf("err")
 	})
 	assert.Nil(t, err)
 	assert.Equal(t, 3, i)
 
 	st := time.Now()
 	err = retry(5, time.Millisecond, func() error {
-		return errors.New("err")
+		return fmt.Errorf("err")
 	})
 	assert.NotNil(t, err)
 	assert.True(t, time.Since(st) >= time.Microsecond*5)

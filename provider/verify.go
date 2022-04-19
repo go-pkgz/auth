@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"crypto/sha1"
+	"fmt"
 	"net/http"
 	"strings"
 	"text/template"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
-	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -75,13 +75,13 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if e.TokenService.IsExpired(confClaims) {
-		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, errors.New("expired"), "failed to verify confirmation token")
+		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, fmt.Errorf("expired"), "failed to verify confirmation token")
 		return
 	}
 
 	elems := strings.Split(confClaims.Handshake.ID, "::")
 	if len(elems) != 2 {
-		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, errors.New(confClaims.Handshake.ID), "invalid handshake token")
+		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("%s", confClaims.Handshake.ID), "invalid handshake token")
 		return
 	}
 	user, address := elems[0], elems[1]
@@ -134,7 +134,7 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) {
 	user, address := r.URL.Query().Get("user"), r.URL.Query().Get("address")
 	if user == "" || address == "" {
-		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, errors.New("wrong request"), "can't get user and address")
+		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("wrong request"), "can't get user and address")
 		return
 	}
 	claims := token.Claims{

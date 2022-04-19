@@ -1,6 +1,7 @@
 package token
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,7 +9,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -89,7 +89,7 @@ func TestJWT_Token(t *testing.T) {
 	_, err = j.Token(claims)
 	assert.EqualError(t, err, "secret reader not defined")
 
-	j.SecretReader = SecretFunc(func(string) (string, error) { return "", errors.New("err blah") })
+	j.SecretReader = SecretFunc(func(string) (string, error) { return "", fmt.Errorf("err blah") })
 	_, err = j.Token(claims)
 	assert.EqualError(t, err, "can't get secret: err blah")
 
@@ -135,7 +135,7 @@ func TestJWT_Parse(t *testing.T) {
 	assert.NotNil(t, err, "bad token", "valid token parsed with wrong secret")
 
 	j = NewService(Opts{
-		SecretReader: SecretFunc(func(string) (string, error) { return "", errors.New("err blah") }),
+		SecretReader: SecretFunc(func(string) (string, error) { return "", fmt.Errorf("err blah") }),
 	})
 	_, err = j.Parse(testJwtValid)
 	assert.EqualError(t, err, "can't get secret: err blah")

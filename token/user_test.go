@@ -2,10 +2,10 @@ package token
 
 import (
 	"crypto/sha1" //nolint
+	"fmt"
 	"net/http"
 	"testing"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,7 +28,7 @@ func TestUser_HashID(t *testing.T) {
 
 type mockBadHasher struct{}
 
-func (m *mockBadHasher) Write(p []byte) (n int, err error) { return 0, errors.New("err") }
+func (m *mockBadHasher) Write(p []byte) (n int, err error) { return 0, fmt.Errorf("err") }
 func (m *mockBadHasher) Sum(b []byte) []byte               { return nil }
 func (m *mockBadHasher) Reset()                            {}
 func (m *mockBadHasher) Size() int                         { return 0 }

@@ -2,7 +2,6 @@ package logger
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -22,7 +21,7 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, "blah str 123 something", buff.String())
 
 	Std.Logf("blah %s %d something", "str", 123)
-	Std.Logf("[DEBUG] auth failed, %s", errors.New("blah blah"))
+	Std.Logf("[DEBUG] auth failed, %s", fmt.Errorf("blah blah"))
 }
 
 func TestStd(t *testing.T) {
