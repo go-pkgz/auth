@@ -44,7 +44,7 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 		// put returns avatar base name, like 123456.image
 		avatarID, e := p.Store.Put(userID, p.resize(bytes.NewBuffer(b), p.ResizeLimit))
 		if e != nil {
-			return "", err
+			return "", e
 		}
 
 		p.Logf("[DEBUG] saved identicon avatar to %s, user %q", avatarID, u.Name)
