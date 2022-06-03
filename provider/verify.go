@@ -150,7 +150,7 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
 		StandardClaims: jwt.StandardClaims{
-			Audience:  r.URL.Query().Get("site"),
+			Audience:  e.sanitize(r.URL.Query().Get("site")),
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 			Issuer:    e.Issuer,
