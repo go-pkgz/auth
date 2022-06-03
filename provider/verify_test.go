@@ -83,13 +83,13 @@ func TestVerifyHandler_LoginSendConfirmRejected(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
 	assert.Equal(t, "blah@user.com", emailer.to)
-	assert.Contains(t, emailer.text, "&lt;/div&gt; blah@user.com remark42 token:")
+	assert.Contains(t, emailer.text, "Password :    blah@user.com remark42 token:")
 
 	tknStr := strings.Split(emailer.text, " token:")[1]
 	tkn, err := e.TokenService.Parse(tknStr)
 	assert.NoError(t, err)
 	t.Logf("%s %+v", tknStr, tkn)
-	assert.Equal(t, "&lt;h1&gt; Student Login Form &lt;/h1&gt;              &lt;div&gt;             Username :                          Password :                          Login              Remember me              Cancel             Forgot  password?          &lt;/div&gt;::blah@user.com", tkn.Handshake.ID)
+	assert.Equal(t, "&lt;h1&gt; Student Login Form &lt;/h1&gt;              &lt;div&gt;             Username :                          Password :   ::blah@user.com", tkn.Handshake.ID)
 	assert.Equal(t, "remark42", tkn.Audience)
 	assert.True(t, tkn.ExpiresAt > tkn.NotBefore)
 
