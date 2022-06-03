@@ -221,5 +221,8 @@ func (e VerifyHandler) sanitize(inp string) string {
 	res = strings.Replace(res, "&#39;", "'", -1)
 	res = strings.Replace(res, "\n", "", -1)
 	res = strings.TrimSpace(res)
+	if len(res) > 128 {
+		return res[:128]
+	}
 	return res
 }
