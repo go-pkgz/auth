@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
+	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -132,11 +133,16 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET /login?site=site&user=name&address=someone@example.com
 func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) {
+
 	user, address := r.URL.Query().Get("user"), r.URL.Query().Get("address")
+	user = e.sanitize(user)
+	address = e.sanitize(address)
+
 	if user == "" || address == "" {
 		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("wrong request"), "can't get user and address")
 		return
 	}
+
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: "",
@@ -205,3 +211,15 @@ Confirmation for {{.User}} {{.Address}}, site {{.Site}}
 
 Token: {{.Token}}
 `
+
+func (e VerifyHandler) sanitize(inp string) string {
+	p := bluemonday.UGCPolicy()
+	res := p.Sanitize(inp)
+	res = template.HTMLEscapeString(res)
+	res = strings.Replace(res, "&amp;", "&", -1)
+	res = strings.Replace(res, "&#34;", "\"", -1)
+	res = strings.Replace(res, "&#39;", "'", -1)
+	res = strings.Replace(res, "\n", "", -1)
+	res = strings.TrimSpace(res)
+	return res
+}
