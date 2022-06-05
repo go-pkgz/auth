@@ -216,10 +216,10 @@ func (e VerifyHandler) sanitize(inp string) string {
 	p := bluemonday.UGCPolicy()
 	res := p.Sanitize(inp)
 	res = template.HTMLEscapeString(res)
-	res = strings.Replace(res, "&amp;", "&", -1)
-	res = strings.Replace(res, "&#34;", "\"", -1)
-	res = strings.Replace(res, "&#39;", "'", -1)
-	res = strings.Replace(res, "\n", "", -1)
+	res = strings.ReplaceAll(res, "&amp;", "&")
+	res = strings.ReplaceAll(res, "&#34;", "\"")
+	res = strings.ReplaceAll(res, "&#39;", "'")
+	res = strings.ReplaceAll(res, "\n", "")
 	res = strings.TrimSpace(res)
 	if len(res) > 128 {
 		return res[:128]
