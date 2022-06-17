@@ -213,12 +213,11 @@ func TestMakeRedirURL(t *testing.T) {
 	for i := range cases {
 		c := cases[i]
 		oh := initOauth2Handler(Params{URL: c.rootURL}, Oauth2Handler{})
-		assert.Equal(t, c.out, oh.makeRedirURL(c.route))
+		assert.Equal(t, c.out, oh.makeRedirURLFromPath(c.route))
 	}
 }
 
 func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
-
 	provider := Oauth2Handler{
 		name: "mock",
 		endpoint: oauth2.Endpoint{
