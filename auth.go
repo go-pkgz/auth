@@ -269,7 +269,7 @@ func (s *Service) AddDevProvider(port int) {
 	s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
 }
 
-// AddDevOpenIDProvider with a custom port that is service and using OpenID tokens
+// AddDevOpenIDProvider with a custom port that is using OpenID tokens
 func (s *Service) AddDevOpenIDProvider(port int) {
 	p := provider.Params{
 		URL:         s.opts.URL,
