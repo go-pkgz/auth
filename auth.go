@@ -315,6 +315,23 @@ func (s *Service) AddCustomProvider(name string, client Client, copts provider.C
 	s.authMiddleware.Providers = s.providers
 }
 
+// AddCustomOpenIDProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3) that uses OpenID instead of pure OAuth2
+func (s *Service) AddCustomOpenIDProvider(name string, client Client, copts provider.CustomHandlerOpt) {
+	p := provider.Params{
+		URL:         s.opts.URL,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+		Cid:         client.Cid,
+		Csecret:     client.Csecret,
+		L:           s.logger,
+		UseOpenID:   true,
+	}
+
+	s.providers = append(s.providers, provider.NewService(provider.NewCustom(name, p, copts)))
+	s.authMiddleware.Providers = s.providers
+}
+
 // AddDirectProvider adds provider with direct check against data store
 // it doesn't do any handshake and uses provided credChecker to verify user and password from the request
 func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecker) {
