@@ -94,11 +94,6 @@ func (d *DevAuthServer) Run(ctx context.Context) { //nolint (gocyclo)
 				w.WriteHeader(http.StatusFound)
 
 			case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
-				email := d.username
-				if d.GetEmailFn != nil {
-					email = d.GetEmailFn(d.username)
-				}
-
 				res := `{
 					"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3",
 					"token_type":"bearer",
@@ -109,6 +104,11 @@ func (d *DevAuthServer) Run(ctx context.Context) { //nolint (gocyclo)
 				}`
 
 				if d.Provider.UseOpenID {
+					email := d.username
+					if d.GetEmailFn != nil {
+						email = d.GetEmailFn(d.username)
+					}
+
 					idClaims := map[string]interface{}{
 						// required OpenID claims
 						"iss": "dev-auth",
@@ -255,10 +255,6 @@ func (d *DevAuthServer) Shutdown() {
 	}
 	d.Logf("[DEBUG] shutdown dev oauth2 server completed")
 	d.lock.Unlock()
-}
-
-func (d *DevAuthServer) ParseToken(value string) (claims token.Claims, err error) {
-	return d.Provider.JwtService.Parse(value)
 }
 
 // NewDev makes dev oauth2 provider for admin user

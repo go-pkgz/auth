@@ -45,7 +45,7 @@ type Params struct {
 	Csecret     string
 	Issuer      string
 	AvatarSaver AvatarSaver
-	UseOpenID   bool // switch to OpenID flow instead of pure OAuth2, i.e. load userinfo from an ID token and do not use self-signed JWT tokens
+	UseOpenID   bool // switch to OpenID flow, load user from an ID token instead of userinfo
 
 	Port int // relevant for providers supporting port customization, for example dev oauth2
 }
@@ -85,7 +85,7 @@ func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
 	}
 
 	p.Logf("[DEBUG] created %s oauth2, id=%s, redir=%s, endpoint=%s",
-		service.name, service.Cid, service.makeRedirURLFromPath("/{route}/"+service.name+"/"), service.endpoint)
+		service.name, service.Cid, service.makeRedirURL("/{route}/"+service.name+"/"), service.endpoint)
 	return service
 }
 
@@ -136,7 +136,7 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// setting RedirectURL to rootURL/routingPath/provider/callback
 	// e.g. http://localhost:8080/auth/github/callback
-	p.conf.RedirectURL = p.makeRedirURL(r)
+	p.conf.RedirectURL = p.makeRedirURL(r.URL.Path)
 
 	// return login url
 	loginURL := p.conf.AuthCodeURL(state)
@@ -165,7 +165,7 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.conf.RedirectURL = p.makeRedirURL(r)
+	p.conf.RedirectURL = p.makeRedirURL(r.URL.Path)
 
 	p.Logf("[DEBUG] token with state %s", retrievedState)
 	tok, err := p.conf.Exchange(context.Background(), r.URL.Query().Get("code"))
@@ -285,19 +285,7 @@ func (p Oauth2Handler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	p.JwtService.Reset(w)
 }
 
-func (p Oauth2Handler) makeRedirURL(r *http.Request) string {
-	host := p.URL
-	if host == "" { // Base URL is not configured, use one from the request
-		host = "http://" + r.Host
-	}
-
-	elems := strings.Split(r.URL.Path, "/")
-	newPath := strings.Join(elems[:len(elems)-1], "/")
-
-	return strings.TrimSuffix(host, "/") + strings.TrimSuffix(newPath, "/") + urlCallbackSuffix
-}
-
-func (p Oauth2Handler) makeRedirURLFromPath(path string) string {
+func (p Oauth2Handler) makeRedirURL(path string) string {
 	elems := strings.Split(path, "/")
 	newPath := strings.Join(elems[:len(elems)-1], "/")
 

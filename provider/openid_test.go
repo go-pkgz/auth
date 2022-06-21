@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -20,6 +21,8 @@ import (
 func TestNewOpenID(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	devPort := rand.Intn(10_000) + 50_000
+	testSrvHost := fmt.Sprintf("127.0.0.1:%d", rand.Intn(10_000)+50_000)
+
 	expectedTestUserSub := fmt.Sprintf("test-user-%d", devPort)
 	svc := auth.NewService(auth.Opts{
 		SecretReader: token.SecretFunc(func(aud string) (string, error) {
@@ -27,6 +30,7 @@ func TestNewOpenID(t *testing.T) {
 		}),
 		Logger:      logger.Std,
 		AvatarStore: avatar.NewNoOp(),
+		URL:         fmt.Sprintf("http://%s", testSrvHost),
 	})
 
 	svc.AddDevOpenIDProvider(devPort)
@@ -43,7 +47,11 @@ func TestNewOpenID(t *testing.T) {
 	defer devAuth.Shutdown()
 
 	authHandler, _ := svc.Handlers()
-	server := httptest.NewServer(authHandler)
+	server := httptest.NewUnstartedServer(authHandler)
+	server.Listener, err = net.Listen("tcp", testSrvHost)
+	require.NoError(t, err)
+	server.Start()
+
 	defer server.Close()
 
 	jar, err := cookiejar.New(nil)
@@ -53,7 +61,8 @@ func TestNewOpenID(t *testing.T) {
 		Jar: jar,
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	require.NoError(t, waitFor(testSrvHost))
+	require.NoError(t, waitFor(fmt.Sprintf("localhost:%d", devPort)))
 
 	resp, err := client.Get(server.URL + "/auth/dev/login")
 	require.NoError(t, err)
@@ -69,9 +78,22 @@ func TestNewOpenID(t *testing.T) {
 	}
 
 	require.NotNil(t, cookie)
-	claims, err := devAuth.ParseToken(cookie.Value)
+	claims, err := devAuth.Provider.JwtService.Parse(cookie.Value)
 	require.NoError(t, err)
 
 	// check user details are from the ID token
 	assert.Equal(t, expectedTestUserSub, claims.User.ID)
+}
+
+func waitFor(host string) error {
+	for i := 1; i < 20; i++ {
+		time.Sleep(time.Duration(i*10) * time.Millisecond)
+
+		dial, err := net.Dial("tcp", host)
+		if err == nil {
+			return dial.Close()
+		}
+	}
+
+	return fmt.Errorf("timeout waiting for %s", host)
 }
