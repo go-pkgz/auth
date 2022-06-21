@@ -99,42 +99,53 @@ func (d *DevAuthServer) Run(ctx context.Context) { //nolint (gocyclo)
 					email = d.GetEmailFn(d.username)
 				}
 
-				idClaims := map[string]interface{}{
-					// required OpenID claims
-					"iss": "dev-auth",
-					"sub": "%s",
-					"aud": "client-id",
-					"iat": time.Now().Unix(),
-					"exp": time.Now().Add(1 * time.Hour).Unix(),
-
-					// optional OpenID claims
-					"picture":    fmt.Sprintf("http://127.0.0.1:%d/avatar?user=%s", d.Provider.Port, d.username),
-					"given_name": d.username,
-					"email":      email,
-				}
-
-				if d.CustomizeIdTokenFn != nil {
-					idClaims = d.CustomizeIdTokenFn(idClaims)
-				}
-
-				tk := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims(idClaims))
-				tk.Header["kid"] = "dev-auth-key-1"
-				signedTk, err := tk.SignedString(privateKey)
-				if err != nil {
-					d.Logf("[ERROR] failed to sign ID token")
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-
-				res := fmt.Sprintf(`{
+				res := `{
 					"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3",
-					"id_token": "%s",
 					"token_type":"bearer",
 					"expires_in":3600,
 					"refresh_token":"IwOGYzYTlmM2YxOTQ5MGE3YmNmMDFkNTVk",
 					"scope":"create",
 					"state":"12345678"
-					}`, signedTk)
+				}`
+
+				if d.Provider.UseOpenID {
+					idClaims := map[string]interface{}{
+						// required OpenID claims
+						"iss": "dev-auth",
+						"sub": "%s",
+						"aud": "client-id",
+						"iat": time.Now().Unix(),
+						"exp": time.Now().Add(1 * time.Hour).Unix(),
+
+						// optional OpenID claims
+						"picture":    fmt.Sprintf("http://127.0.0.1:%d/avatar?user=%s", d.Provider.Port, d.username),
+						"given_name": d.username,
+						"email":      email,
+					}
+
+					if d.CustomizeIdTokenFn != nil {
+						idClaims = d.CustomizeIdTokenFn(idClaims)
+					}
+
+					tk := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims(idClaims))
+					tk.Header["kid"] = "dev-auth-key-1"
+					signedTk, err := tk.SignedString(privateKey)
+					if err != nil {
+						d.Logf("[ERROR] failed to sign ID token")
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+
+					res = fmt.Sprintf(`{
+						"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3",
+						"id_token": "%s",
+						"token_type":"bearer",
+						"expires_in":3600,
+						"refresh_token":"IwOGYzYTlmM2YxOTQ5MGE3YmNmMDFkNTVk",
+						"scope":"create",
+						"state":"12345678"
+						}`, signedTk)
+				}
 
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				if _, err = w.Write([]byte(res)); err != nil {
@@ -142,7 +153,7 @@ func (d *DevAuthServer) Run(ctx context.Context) { //nolint (gocyclo)
 					return
 				}
 
-			case strings.HasPrefix(r.URL.Path, "/jwks"):
+			case strings.HasPrefix(r.URL.Path, "/jwks") && d.Provider.UseOpenID:
 				type jwkKey struct {
 					Kty string `json:"kty"`
 					N   string `json:"n"`
@@ -274,12 +285,14 @@ func NewDev(p Params) Oauth2Handler {
 				}
 			}
 
-			return token.User{
+			userInfo := token.User{
 				ID:      data.Value("id"),
 				Name:    data.Value("name"),
 				Picture: data.Value("picture"),
 				Email:   data.Value("email"),
 			}
+
+			return userInfo
 		},
 	})
 

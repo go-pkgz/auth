@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-pkgz/rest"
@@ -32,6 +33,7 @@ type Oauth2Handler struct {
 	mapUser  func(UserData, []byte) token.User // map info from InfoURL to User
 	conf     oauth2.Config
 	keyfunc  jwt.Keyfunc
+	kfLock   *sync.Mutex
 }
 
 // Params to make initialized and ready to use provider
@@ -75,31 +77,10 @@ func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
 	}
 
 	if p.UseOpenID {
-		kf, err := keyfunc.Get(service.jwksURL, keyfunc.Options{
-			Client: http.DefaultClient,
-			Ctx:    context.Background(),
-			RefreshErrorHandler: func(err error) {
-				p.Logf("[WARN] failed to refresh jwks: %s", err)
-			},
-			RefreshInterval:   1 * time.Hour,
-			RefreshRateLimit:  1 * time.Minute,
-			RefreshTimeout:    30 * time.Second,
-			RefreshUnknownKID: true,
-		})
-
+		service.kfLock = &sync.Mutex{}
+		err := service.tryInitJWKSKeyfunc()
 		if err != nil {
-			p.Logf("[ERROR] failed to init jwks: %s", err)
-		}
-
-		service.keyfunc = func(t *jwt.Token) (interface{}, error) {
-			// only to pass kid across, to manage jwt v3 vs v4 compatibility
-			v4token := jwtv4.Token{
-				Header: map[string]interface{}{
-					"kid": t.Header["kid"],
-				},
-			}
-
-			return kf.Keyfunc(&v4token)
+			p.Logf("[ERROR] failed to load JWT keys to enable OpenID, will retry on token request: %s", err)
 		}
 	}
 
@@ -201,6 +182,14 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok || idToken == "" {
 			rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, nil, "id_token is empty")
 			return
+		}
+
+		if p.keyfunc == nil {
+			err = p.tryInitJWKSKeyfunc()
+			if err != nil {
+				rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, nil, "can't load JWKS keys")
+				return
+			}
 		}
 
 		claims := jwt.MapClaims{}
@@ -313,4 +302,36 @@ func (p Oauth2Handler) makeRedirURLFromPath(path string) string {
 	newPath := strings.Join(elems[:len(elems)-1], "/")
 
 	return strings.TrimSuffix(p.URL, "/") + strings.TrimSuffix(newPath, "/") + urlCallbackSuffix
+}
+
+func (p *Oauth2Handler) tryInitJWKSKeyfunc() error {
+	p.kfLock.Lock()
+	defer p.kfLock.Unlock()
+	if p.keyfunc != nil {
+		return nil
+	}
+
+	kf, err := keyfunc.Get(p.jwksURL, keyfunc.Options{
+		Client:            http.DefaultClient,
+		Ctx:               context.Background(),
+		RefreshUnknownKID: true,            // to support key rotation, re-load keys if KID is unknown
+		RefreshRateLimit:  1 * time.Minute, // but no often than once per minute
+	})
+
+	if err != nil {
+		return err
+	}
+
+	p.keyfunc = func(t *jwt.Token) (interface{}, error) {
+		// only to pass kid across, to manage jwt v3 vs v4 compatibility
+		v4token := jwtv4.Token{
+			Header: map[string]interface{}{
+				"kid": t.Header["kid"],
+			},
+		}
+
+		return kf.Keyfunc(&v4token)
+	}
+
+	return nil
 }

@@ -6,7 +6,6 @@ import (
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/provider"
 	"github.com/go-pkgz/auth/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,20 +29,10 @@ func TestNewOpenID(t *testing.T) {
 		AvatarStore: avatar.NewNoOp(),
 	})
 
-	devParams := provider.Params{
-		L:           logger.Std,
-		URL:         fmt.Sprintf("http://localhost:%d", devPort),
-		JwtService:  svc.TokenService(),
-		Cid:         "client-id",
-		Csecret:     "client-secret",
-		Issuer:      "test-issuer",
-		AvatarSaver: svc.AvatarProxy(),
-		UseOpenID:   true,
-		Port:        devPort,
-	}
+	svc.AddDevOpenIDProvider(devPort)
+	devAuth, err := svc.DevAuth()
+	require.NoError(t, err)
 
-	dev := provider.NewDev(devParams)
-	devAuth := &provider.DevAuthServer{Provider: dev, L: logger.Std}
 	devAuth.Automatic = true
 	devAuth.CustomizeIdTokenFn = func(m map[string]interface{}) map[string]interface{} {
 		m["sub"] = expectedTestUserSub
@@ -52,10 +41,6 @@ func TestNewOpenID(t *testing.T) {
 
 	go devAuth.Run(context.Background())
 	defer devAuth.Shutdown()
-
-	time.Sleep(300 * time.Millisecond)
-
-	svc.AddDevProvider(devPort)
 
 	authHandler, _ := svc.Handlers()
 	server := httptest.NewServer(authHandler)
@@ -68,9 +53,11 @@ func TestNewOpenID(t *testing.T) {
 		Jar: jar,
 	}
 
+	time.Sleep(200 * time.Millisecond)
+
 	resp, err := client.Get(server.URL + "/auth/dev/login")
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	cookies := resp.Cookies()
 	var cookie *http.Cookie

@@ -274,6 +274,19 @@ func (s *Service) AddDevProvider(port int) {
 		AvatarSaver: s.avatarProxy,
 		L:           s.logger,
 		Port:        port,
+	}
+	s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
+}
+
+// AddDevOpenIDProvider with a custom port that is service and using OpenID tokens
+func (s *Service) AddDevOpenIDProvider(port int) {
+	p := provider.Params{
+		URL:         s.opts.URL,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+		L:           s.logger,
+		Port:        port,
 		UseOpenID:   true,
 	}
 	s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
