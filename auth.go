@@ -218,16 +218,8 @@ func (s *Service) Middleware() middleware.Authenticator {
 	return s.authMiddleware
 }
 
-func (s *Service) AddOpenIDProvider(name, cid, csecret string) {
-	s.addProvider(name, cid, csecret, true)
-}
-
 // AddProvider adds provider for given name
 func (s *Service) AddProvider(name, cid, csecret string) {
-	s.addProvider(name, cid, csecret, false)
-}
-
-func (s *Service) addProvider(name, cid, csecret string, useOpenID bool) {
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
@@ -236,7 +228,6 @@ func (s *Service) addProvider(name, cid, csecret string, useOpenID bool) {
 		Cid:         cid,
 		Csecret:     csecret,
 		L:           s.logger,
-		UseOpenID:   useOpenID,
 	}
 
 	switch strings.ToLower(name) {
@@ -328,8 +319,8 @@ func (s *Service) AddCustomProvider(name string, client Client, copts provider.C
 	s.authMiddleware.Providers = s.providers
 }
 
-// AddCustomOpenIDProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3) that uses OpenID instead of pure OAuth2
-func (s *Service) AddCustomOpenIDProvider(name string, client Client, copts provider.CustomHandlerOpt) {
+// AddOpenIDProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3) that uses OpenID instead of pure OAuth2
+func (s *Service) AddOpenIDProvider(name string, client Client, copts provider.CustomHandlerOpt) {
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
@@ -339,6 +330,10 @@ func (s *Service) AddCustomOpenIDProvider(name string, client Client, copts prov
 		Csecret:     client.Csecret,
 		L:           s.logger,
 		UseOpenID:   true,
+	}
+
+	if copts.Scopes == nil {
+		copts.Scopes = []string{"openid"}
 	}
 
 	s.providers = append(s.providers, provider.NewService(provider.NewCustom(name, p, copts)))
