@@ -57,10 +57,13 @@ func (d *DevAuthServer) Run(ctx context.Context) { //nolint (gocyclo)
 		return
 	}
 
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		d.Logf("[ERROR] failed to generate keys")
-		return
+	var privateKey *rsa.PrivateKey
+	if d.Provider.UseOpenID {
+		privateKey, err = rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			d.Logf("[ERROR] failed to generate keys")
+			return
+		}
 	}
 
 	d.httpServer = &http.Server{
