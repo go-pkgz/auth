@@ -374,6 +374,35 @@ func TestDirectProvider(t *testing.T) {
 	assert.NoError(t, resp.Body.Close())
 }
 
+func TestDevOpenIDProvider(t *testing.T) {
+	service := NewService(Opts{Logger: logger.Std})
+	service.AddDevOpenIDProvider(18089)
+
+	devAuth, err := service.DevAuth()
+	require.NoError(t, err)
+
+	go devAuth.Run(context.Background())
+	defer devAuth.Shutdown()
+
+	for i := 1; i < 20; i++ {
+		time.Sleep(time.Duration(i*10) * time.Millisecond)
+
+		dial, e := net.Dial("tcp", "localhost:18089")
+		if e == nil {
+			e = dial.Close()
+			require.NoError(t, e)
+
+			break
+		}
+	}
+
+	jwksResp, err := http.Get("http://localhost:18089/jwks")
+	require.NoError(t, err)
+
+	require.Equal(t, 200, jwksResp.StatusCode)
+	// actual OpenID flow is tested in the openid_test.go, but coverage tool isn't picking it up
+}
+
 func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
 	_, teardown := prepService(t)
 	defer teardown()
