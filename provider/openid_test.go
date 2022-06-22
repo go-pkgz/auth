@@ -9,7 +9,6 @@ import (
 	"github.com/go-pkgz/auth/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -19,9 +18,8 @@ import (
 )
 
 func TestNewOpenID(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
-	devPort := rand.Intn(10_000) + 50_000
-	testSrvHost := fmt.Sprintf("127.0.0.1:%d", rand.Intn(10_000)+50_000)
+	testSrvPort := 9091
+	devPort := 9092
 
 	expectedTestUserSub := fmt.Sprintf("test-user-%d", devPort)
 	svc := auth.NewService(auth.Opts{
@@ -30,7 +28,7 @@ func TestNewOpenID(t *testing.T) {
 		}),
 		Logger:      logger.Std,
 		AvatarStore: avatar.NewNoOp(),
-		URL:         fmt.Sprintf("http://%s", testSrvHost),
+		URL:         fmt.Sprintf("http://127.0.0.1:%d", testSrvPort),
 	})
 
 	svc.AddDevOpenIDProvider(devPort)
@@ -38,7 +36,7 @@ func TestNewOpenID(t *testing.T) {
 	require.NoError(t, err)
 
 	devAuth.Automatic = true
-	devAuth.CustomizeIdTokenFn = func(m map[string]interface{}) map[string]interface{} {
+	devAuth.CustomizeIDTokenFn = func(m map[string]interface{}) map[string]interface{} {
 		m["sub"] = expectedTestUserSub
 		return m
 	}
@@ -48,7 +46,7 @@ func TestNewOpenID(t *testing.T) {
 
 	authHandler, _ := svc.Handlers()
 	server := httptest.NewUnstartedServer(authHandler)
-	server.Listener, err = net.Listen("tcp", testSrvHost)
+	server.Listener, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", testSrvPort))
 	require.NoError(t, err)
 	server.Start()
 
@@ -61,8 +59,8 @@ func TestNewOpenID(t *testing.T) {
 		Jar: jar,
 	}
 
-	require.NoError(t, waitFor(testSrvHost))
-	require.NoError(t, waitFor(fmt.Sprintf("localhost:%d", devPort)))
+	require.NoError(t, waitFor(fmt.Sprintf("127.0.0.1:%d", testSrvPort)))
+	require.NoError(t, waitFor(fmt.Sprintf("127.0.0.1:%d", devPort)))
 
 	resp, err := client.Get(server.URL + "/auth/dev/login")
 	require.NoError(t, err)

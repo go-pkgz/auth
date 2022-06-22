@@ -177,64 +177,22 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	client := p.conf.Client(context.Background(), tok)
 
 	var u token.User
-	if p.UseOpenID {
-		idToken, ok := tok.Extra("id_token").(string)
-		if !ok || idToken == "" {
-			rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, nil, "id_token is empty")
-			return
-		}
+	var userData UserData
+	var rawUserData []byte
 
-		if p.keyfunc == nil {
-			err = p.tryInitJWKSKeyfunc()
-			if err != nil {
-				rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, nil, "can't load JWKS keys")
-				return
-			}
-		}
-
-		claims := jwt.MapClaims{}
-		parsedIDToken, err := jwt.ParseWithClaims(idToken, &claims, p.keyfunc)
-		if err != nil {
-			rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to parse id token")
-			return
-		}
-
-		if !parsedIDToken.Valid {
-			rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "invalid id token")
-			return
-		}
-
-		u = p.mapUser(UserData(claims), []byte(idToken))
+	switch p.UseOpenID {
+	case true:
+		userData, rawUserData, err = p.loadUserFromIDToken(tok)
+	case false:
+		userData, rawUserData, err = p.loadUserFromEndpoint(client)
 	}
 
-	if !p.UseOpenID {
-		uinfo, err := client.Get(p.infoURL)
-		if err != nil {
-			rest.SendErrorJSON(w, r, p.L, http.StatusServiceUnavailable, err, "failed to get client info")
-			return
-		}
-
-		defer func() {
-			if e := uinfo.Body.Close(); e != nil {
-				p.Logf("[WARN] failed to close response body, %s", e)
-			}
-		}()
-
-		data, err := io.ReadAll(uinfo.Body)
-		if err != nil {
-			rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to read user info")
-			return
-		}
-
-		jData := map[string]interface{}{}
-		if e := json.Unmarshal(data, &jData); e != nil {
-			rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to unmarshal user info")
-			return
-		}
-		p.Logf("[DEBUG] got raw user info %+v", jData)
-
-		u = p.mapUser(jData, data)
+	if err != nil {
+		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to load user data")
+		return
 	}
+
+	u = p.mapUser(userData, rawUserData)
 
 	if oauthClaims.NoAva {
 		u.Picture = "" // reset picture on no avatar request
@@ -283,6 +241,58 @@ func (p Oauth2Handler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.JwtService.Reset(w)
+}
+
+func (p Oauth2Handler) loadUserFromIDToken(tok *oauth2.Token) (UserData, []byte, error) {
+	idToken, ok := tok.Extra("id_token").(string)
+	if !ok || idToken == "" {
+		return nil, nil, fmt.Errorf("id_token not found")
+	}
+
+	if p.keyfunc == nil {
+		err := p.tryInitJWKSKeyfunc()
+		if err != nil {
+			return nil, nil, fmt.Errorf("can't load JWKS keys")
+		}
+	}
+
+	claims := jwt.MapClaims{}
+	parsedIDToken, err := jwt.ParseWithClaims(idToken, &claims, p.keyfunc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse id token")
+	}
+
+	if !parsedIDToken.Valid {
+		return nil, nil, fmt.Errorf("invalid id token")
+	}
+
+	return UserData(claims), []byte(idToken), nil
+}
+
+func (p Oauth2Handler) loadUserFromEndpoint(client *http.Client) (UserData, []byte, error) {
+	uinfo, err := client.Get(p.infoURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get client info")
+	}
+
+	defer func() {
+		if e := uinfo.Body.Close(); e != nil {
+			p.Logf("[WARN] failed to close response body, %s", e)
+		}
+	}()
+
+	data, err := io.ReadAll(uinfo.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read user info")
+	}
+
+	jData := map[string]interface{}{}
+	if e := json.Unmarshal(data, &jData); e != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal user info")
+	}
+	p.Logf("[DEBUG] got raw user info %+v", jData)
+
+	return jData, data, nil
 }
 
 func (p Oauth2Handler) makeRedirURL(path string) string {

@@ -34,7 +34,7 @@ type DevAuthServer struct {
 	Provider           Oauth2Handler
 	Automatic          bool
 	GetEmailFn         func(string) string
-	CustomizeIdTokenFn func(map[string]interface{}) map[string]interface{}
+	CustomizeIDTokenFn func(map[string]interface{}) map[string]interface{}
 
 	username   string // unsafe, but fine for dev
 	httpServer *http.Server
@@ -126,14 +126,15 @@ func (d *DevAuthServer) Run(ctx context.Context) { //nolint (gocyclo)
 						"email":      email,
 					}
 
-					if d.CustomizeIdTokenFn != nil {
-						idClaims = d.CustomizeIdTokenFn(idClaims)
+					if d.CustomizeIDTokenFn != nil {
+						idClaims = d.CustomizeIDTokenFn(idClaims)
 					}
 
 					tk := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims(idClaims))
 					tk.Header["kid"] = "dev-auth-key-1"
-					signedTk, err := tk.SignedString(privateKey)
-					if err != nil {
+
+					signedTk, e := tk.SignedString(privateKey)
+					if e != nil {
 						d.Logf("[ERROR] failed to sign ID token")
 						w.WriteHeader(http.StatusInternalServerError)
 						return
@@ -174,20 +175,20 @@ func (d *DevAuthServer) Run(ctx context.Context) { //nolint (gocyclo)
 					E:   base64.RawURLEncoding.EncodeToString(e.Bytes()),
 				}
 
-				jwks, err := json.Marshal(struct {
+				jwks, er := json.Marshal(struct {
 					Keys []jwkKey `json:"keys"`
 				}{
 					Keys: []jwkKey{key},
 				})
-				if err != nil {
+				if er != nil {
 					d.Logf("[ERROR] failed to marshal jwks")
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
 
 				w.WriteHeader(http.StatusOK)
-				wr, err := w.Write(jwks)
-				if err != nil || wr == 0 {
+				wr, er := w.Write(jwks)
+				if er != nil || wr == 0 {
 					d.Logf("[ERROR] failed to write jwks")
 					w.WriteHeader(http.StatusInternalServerError)
 				}
