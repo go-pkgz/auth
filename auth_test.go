@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"golang.org/x/oauth2"
 	"io"
 	"io/ioutil"
 	"net"
@@ -375,7 +376,9 @@ func TestDirectProvider(t *testing.T) {
 }
 
 func TestDevOpenIDProvider(t *testing.T) {
-	service := NewService(Opts{Logger: logger.Std})
+	service := NewService(Opts{Logger: logger.Std, SecretReader: token.SecretFunc(func(aud string) (string, error) {
+		return "secret", nil
+	})})
 	service.AddDevOpenIDProvider(18089)
 
 	devAuth, err := service.DevAuth()
@@ -398,9 +401,25 @@ func TestDevOpenIDProvider(t *testing.T) {
 
 	jwksResp, err := http.Get("http://localhost:18089/jwks")
 	require.NoError(t, err)
+	assert.Equal(t, 200, jwksResp.StatusCode)
 
-	require.Equal(t, 200, jwksResp.StatusCode)
-	// actual OpenID flow is tested in the openid_test.go, but coverage tool isn't picking it up
+	service.AddOpenIDProvider("openid", Client{Cid: "cid", Csecret: "csecret"}, provider.CustomHandlerOpt{
+		Endpoint: oauth2.Endpoint{
+			AuthURL:   "http://localhost:18089/login/oauth/authorize",
+			TokenURL:  "http://localhost:18089/login/oauth/access_token",
+			AuthStyle: oauth2.AuthStyleAutoDetect,
+		},
+		InfoURL: "http://localhost:18089/user",
+		JwksURL: "http://localhost:18089/jwks",
+		MapUserFn: func(data provider.UserData, bytes []byte) token.User {
+			return token.User{
+				Name: data.Value("sub"),
+			}
+		},
+	})
+
+	assert.Len(t, service.Providers(), 2)
+	// OpenID flow is tested in the openid_test.go, but coverage tool isn't picking it up
 }
 
 func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
