@@ -9,8 +9,8 @@ require (
 	github.com/go-oauth2/oauth2/v4 v4.4.3
 	github.com/go-pkgz/auth v1.18.0
 	github.com/go-pkgz/lgr v0.10.4
-	github.com/go-pkgz/rest v1.12.2
+	github.com/go-pkgz/rest v1.14.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/tidwall/buntdb v1.2.8 // indirect
-	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
+	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5
 )
