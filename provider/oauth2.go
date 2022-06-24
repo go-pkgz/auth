@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/MicahParks/keyfunc"
+	"github.com/pkg/errors"
 	"io"
 	"net/http"
 	"strings"
@@ -254,7 +255,7 @@ func (p Oauth2Handler) loadUserFromIDToken(tok *oauth2.Token) (UserData, []byte,
 	if p.keyfunc == nil {
 		err := p.tryInitJWKSKeyfunc()
 		if err != nil {
-			return nil, nil, fmt.Errorf("can't load JWKS keys")
+			return nil, nil, errors.Wrap(err, "can't load JWKS keys")
 		}
 	}
 
@@ -267,7 +268,7 @@ func (p Oauth2Handler) loadUserFromIDToken(tok *oauth2.Token) (UserData, []byte,
 
 	parsedIDToken, err := parser.ParseWithClaims(idToken, &claims, p.keyfunc)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse id token")
+		return nil, nil, errors.Wrap(err, "failed to parse id token")
 	}
 
 	if !parsedIDToken.Valid {
@@ -289,7 +290,7 @@ func (p Oauth2Handler) loadUserFromIDToken(tok *oauth2.Token) (UserData, []byte,
 func (p Oauth2Handler) loadUserFromEndpoint(client *http.Client) (UserData, []byte, error) {
 	uinfo, err := client.Get(p.infoURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get client info")
+		return nil, nil, errors.Wrap(err, "failed to get client info")
 	}
 
 	defer func() {
@@ -300,12 +301,12 @@ func (p Oauth2Handler) loadUserFromEndpoint(client *http.Client) (UserData, []by
 
 	data, err := io.ReadAll(uinfo.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read user info")
+		return nil, nil, errors.Wrap(err, "failed to read user info")
 	}
 
 	jData := map[string]interface{}{}
 	if e := json.Unmarshal(data, &jData); e != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal user info")
+		return nil, nil, errors.Wrap(e, "failed to unmarshal user info")
 	}
 	p.Logf("[DEBUG] got raw user info %+v", jData)
 
