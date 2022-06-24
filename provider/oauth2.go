@@ -20,6 +20,8 @@ import (
 	"github.com/go-pkgz/auth/token"
 )
 
+const clockSkew = 10 * time.Second
+
 // Oauth2Handler implements /login, /callback and /logout handlers from aouth2 flow
 type Oauth2Handler struct {
 	Params
@@ -257,13 +259,28 @@ func (p Oauth2Handler) loadUserFromIDToken(tok *oauth2.Token) (UserData, []byte,
 	}
 
 	claims := jwt.MapClaims{}
-	parsedIDToken, err := jwt.ParseWithClaims(idToken, &claims, p.keyfunc)
+	parser := jwt.Parser{
+		// claims validation is not considering clock skew and randomly failing with iat validation
+		// nbf and exp are validated below
+		SkipClaimsValidation: true,
+	}
+
+	parsedIDToken, err := parser.ParseWithClaims(idToken, &claims, p.keyfunc)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse id token")
 	}
 
 	if !parsedIDToken.Valid {
 		return nil, nil, fmt.Errorf("invalid id token")
+	}
+
+	now := time.Now().Add(clockSkew).Unix()
+	if !claims.VerifyExpiresAt(now, false) {
+		return nil, nil, fmt.Errorf("id token expired")
+	}
+
+	if !claims.VerifyNotBefore(now, false) {
+		return nil, nil, fmt.Errorf("id token is not yet valid")
 	}
 
 	return UserData(claims), []byte(idToken), nil

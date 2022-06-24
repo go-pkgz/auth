@@ -38,6 +38,11 @@ func TestNewOpenID(t *testing.T) {
 	devAuth.Automatic = true
 	devAuth.CustomizeIDTokenFn = func(m map[string]interface{}) map[string]interface{} {
 		m["sub"] = expectedTestUserSub
+
+		now := time.Now().Add(1 * time.Second) // simulate clock difference
+		m["iat"] = now.Unix()
+		m["nbf"] = now.Unix()
+		m["exp"] = now.Add(1 * time.Minute).Unix()
 		return m
 	}
 
