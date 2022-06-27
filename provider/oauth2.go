@@ -183,10 +183,11 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	var userData UserData
 	var rawUserData []byte
 
-	switch p.UseOpenID {
-	case true:
+	if p.UseOpenID {
 		userData, rawUserData, err = p.loadUserFromIDToken(tok)
-	case false:
+	}
+
+	if !p.UseOpenID {
 		userData, rawUserData, err = p.loadUserFromEndpoint(client)
 	}
 
