@@ -218,7 +218,6 @@ func TestMakeRedirURL(t *testing.T) {
 }
 
 func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
-
 	provider := Oauth2Handler{
 		name: "mock",
 		endpoint: oauth2.Endpoint{

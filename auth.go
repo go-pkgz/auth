@@ -220,7 +220,6 @@ func (s *Service) Middleware() middleware.Authenticator {
 
 // AddProvider adds provider for given name
 func (s *Service) AddProvider(name, cid, csecret string) {
-
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
@@ -270,6 +269,20 @@ func (s *Service) AddDevProvider(port int) {
 	s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
 }
 
+// AddDevOpenIDProvider with a custom port that is using OpenID tokens
+func (s *Service) AddDevOpenIDProvider(port int) {
+	p := provider.Params{
+		URL:         s.opts.URL,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+		L:           s.logger,
+		Port:        port,
+		UseOpenID:   true,
+	}
+	s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
+}
+
 // AddAppleProvider allow SignIn with Apple ID
 func (s *Service) AddAppleProvider(appleConfig provider.AppleConfig, privKeyLoader provider.PrivateKeyLoaderInterface) error {
 	p := provider.Params{
@@ -300,6 +313,27 @@ func (s *Service) AddCustomProvider(name string, client Client, copts provider.C
 		Cid:         client.Cid,
 		Csecret:     client.Csecret,
 		L:           s.logger,
+	}
+
+	s.providers = append(s.providers, provider.NewService(provider.NewCustom(name, p, copts)))
+	s.authMiddleware.Providers = s.providers
+}
+
+// AddOpenIDProvider adds custom provider (e.g. https://gopkg.in/oauth2.v3) that uses OpenID instead of pure OAuth2
+func (s *Service) AddOpenIDProvider(name string, client Client, copts provider.CustomHandlerOpt) {
+	p := provider.Params{
+		URL:         s.opts.URL,
+		JwtService:  s.jwtService,
+		Issuer:      s.issuer,
+		AvatarSaver: s.avatarProxy,
+		Cid:         client.Cid,
+		Csecret:     client.Csecret,
+		L:           s.logger,
+		UseOpenID:   true,
+	}
+
+	if copts.Scopes == nil {
+		copts.Scopes = []string{"openid"}
 	}
 
 	s.providers = append(s.providers, provider.NewService(provider.NewCustom(name, p, copts)))

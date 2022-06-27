@@ -4,6 +4,7 @@
 This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net, Apple, Patreon and Telegram as well as custom auth providers and email verification.
 
 - Multiple oauth2 providers can be used at the same time
+- Support of ID Tokens (OpenID) for loading user details
 - Special `dev` provider allows local testing and development
 - JWT stored in a secure cookie with XSRF protection. Cookies can be session-only
 - Minimal scopes with user name, id and picture (avatar) only
@@ -319,6 +320,36 @@ In order to add a new oauth2 provider following input is required:
 		```go
 		service.AddCustomProvider("custom123", auth.Client{Cid: "cid", Csecret: "csecret"}, prov.HandlerOpt)
 		```
+
+### Using ID Tokens (OpenID Connect)
+
+Example of configuring OAuth2 with OpenID Connect:
+
+```go
+c := auth.Client{
+    Cid:     os.Getenv("AEXMPL_CIDE"),
+    Csecret: os.Getenv("AEXMPL_CSED"),
+}
+
+service.AddOpenIDProvider("my-openid", c, provider.CustomHandlerOpt{
+    Endpoint: oauth2.Endpoint{
+        AuthURL:  "https://my-open-id-provider.com/oauth2/authorize",
+        TokenURL: "https://my-open-id-provider.com/oauth2/token",
+    },
+    JwksURL: "https://my-open-id-provider.com/.well-known/jwks",
+    InfoURL: "https://my-open-id-provider.com/user/",
+    MapUserFn: func (data provider.UserData, _ []byte) token.User {
+        userInfo := token.User{
+            ID: data.Value("sub"), // standard OpenID Connect claims are available
+            Name: data.Value("given_name"),
+        }
+        return userInfo
+    },
+    Scopes: []string{"openid", "email", "profile"}, // defaulted to "openid" if not specified
+})
+```
+
+JWKS are loaded on application start, and then cached. There is no background refresh, but requesting unknown key (kid) will trigger keys reload. 
 
 ### Self-implemented auth handler
 Additionally it is possible to implement own auth handler. It may be useful if auth provider does not conform to oauth standard. Self-implemented handler has to implement `provider.Provider` interface.

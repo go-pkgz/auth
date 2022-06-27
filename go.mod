@@ -19,9 +19,11 @@ require (
 
 require (
 	cloud.google.com/go/compute v1.6.1 // indirect
+	github.com/MicahParks/keyfunc v1.1.0 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
+	github.com/golang-jwt/jwt/v4 v4.4.1 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.1.2 // indirect
