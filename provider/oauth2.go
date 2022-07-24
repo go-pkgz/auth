@@ -22,12 +22,13 @@ type Oauth2Handler struct {
 	Params
 
 	// all of these fields specific to particular oauth2 provider
-	name     string
-	infoURL  string
-	endpoint oauth2.Endpoint
-	scopes   []string
-	mapUser  func(UserData, []byte) token.User // map info from InfoURL to User
-	conf     oauth2.Config
+	name            string
+	infoURL         string
+	endpoint        oauth2.Endpoint
+	scopes          []string
+	mapUser         func(UserData, []byte) token.User // map info from InfoURL to User
+	bearerTokenHook func(string, oauth2.Token)        // a way to access Bearer token received from oauth2-provider
+	conf            oauth2.Config
 }
 
 // Params to make initialized and ready to use provider
@@ -215,6 +216,11 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err = p.JwtService.Set(w, claims); err != nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to set token")
 		return
+	}
+
+	if p.bearerTokenHook != nil {
+		p.Logf("[DEBUG] pass bearer token %s", tok.TokenType)
+		p.bearerTokenHook(u.ID, *tok)
 	}
 
 	p.Logf("[DEBUG] user info %+v", u)
