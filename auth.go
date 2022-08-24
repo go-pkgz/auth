@@ -371,18 +371,6 @@ func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
 	return &provider.DevAuthServer{Provider: p.Provider.(provider.Oauth2Handler), L: s.logger}, nil
 }
 
-// DevAuthWithCustomHost sets custom host instead of 127.0.0.1
-func (s *Service) DevAuthWithCustomHost(p *provider.DevAuthServer, host string) *provider.DevAuthServer {
-	p.Provider.Host = host
-	return p
-}
-
-// DevAuthWithCustomPort sets custom port instead of 8084
-func (s *Service) DevAuthWithCustomPort(p *provider.DevAuthServer, port int) *provider.DevAuthServer {
-	p.Provider.Port = port
-	return p
-}
-
 // Provider gets provider by name
 func (s *Service) Provider(name string) (provider.Service, error) {
 	for _, p := range s.providers {
