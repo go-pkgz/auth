@@ -257,8 +257,8 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 	s.authMiddleware.Providers = s.providers
 }
 
-// AddDevProvider with a custom port
-func (s *Service) AddDevProvider(port int) {
+// AddDevProvider with a custom host and port
+func (s *Service) AddDevProvider(host string, port int) {
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
@@ -266,6 +266,7 @@ func (s *Service) AddDevProvider(port int) {
 		AvatarSaver: s.avatarProxy,
 		L:           s.logger,
 		Port:        port,
+		Host:        host,
 	}
 	s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
 }
@@ -368,6 +369,18 @@ func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
 	}
 	// make and start dev auth server
 	return &provider.DevAuthServer{Provider: p.Provider.(provider.Oauth2Handler), L: s.logger}, nil
+}
+
+// DevAuthWithCustomHost sets custom host instead of 127.0.0.1
+func (s *Service) DevAuthWithCustomHost(p *provider.DevAuthServer, host string) *provider.DevAuthServer {
+	p.Provider.Host = host
+	return p
+}
+
+// DevAuthWithCustomPort sets custom port instead of 8084
+func (s *Service) DevAuthWithCustomPort(p *provider.DevAuthServer, port int) *provider.DevAuthServer {
+	p.Provider.Port = port
+	return p
 }
 
 // Provider gets provider by name
