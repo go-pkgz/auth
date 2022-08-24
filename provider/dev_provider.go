@@ -171,6 +171,9 @@ func NewDev(p Params) Oauth2Handler {
 	if p.Port == 0 {
 		p.Port = defDevAuthPort
 	}
+	if p.Host == "" {
+		p.Host = defDevAuthHost
+	}
 	oh := initOauth2Handler(p, Oauth2Handler{
 		name: "dev",
 		endpoint: oauth2.Endpoint{
