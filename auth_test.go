@@ -510,7 +510,7 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 	}
 
 	svc = NewService(options)
-	svc.AddDevProvider(18084)                // add dev provider on 18084
+	svc.AddDevProvider("localhost", 18084)   // add dev provider on 18084
 	svc.AddProvider("github", "cid", "csec") // add github provider
 
 	// add go-oauth2/oauth2 provider
