@@ -26,8 +26,8 @@ type Oauth2Handler struct {
 	infoURL         string
 	endpoint        oauth2.Endpoint
 	scopes          []string
-	mapUser         func(UserData, []byte) token.User // map info from InfoURL to User
-	bearerTokenHook func(token.User, oauth2.Token)    // a way to access Bearer token received from oauth2-provider
+	mapUser         func(UserData, []byte) token.User      // map info from InfoURL to User
+	bearerTokenHook func(string, token.User, oauth2.Token) // a way to access Bearer token received from oauth2-provider
 	conf            oauth2.Config
 }
 
@@ -219,8 +219,8 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.bearerTokenHook != nil {
-		p.Logf("[DEBUG] pass bearer token %s", tok.TokenType)
-		p.bearerTokenHook(u, *tok)
+		p.Logf("[DEBUG] pass bearer token %s, %s", p.Name(), tok.TokenType)
+		p.bearerTokenHook(p.Name(), u, *tok)
 	}
 
 	p.Logf("[DEBUG] user info %+v", u)
