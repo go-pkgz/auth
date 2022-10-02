@@ -1,7 +1,5 @@
 package avatar
 
-//go:generate sh -c "mockery -inpkg -name Store -print > /tmp/mock.tmp && mv /tmp/mock.tmp store_mock.go"
-
 import (
 	"context"
 	"crypto/sha1" //nolint gosec
