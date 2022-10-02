@@ -46,14 +46,13 @@ func NewStore(uri string) (Store, error) {
 		return NewLocalFS(strings.TrimPrefix(uri, "file://")), nil
 	case !strings.Contains(uri, "://"):
 		return NewLocalFS(uri), nil
-	case strings.HasPrefix(uri, "mongodb://"):
-
+	case strings.HasPrefix(uri, "mongodb://"), strings.HasPrefix(uri, "mongodb+srv://"):
 		db, bucketName, u, err := parseExtMongoURI(uri)
 		if err != nil {
 			return nil, fmt.Errorf("can't parse mongo store uri %s: %w", uri, err)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
 		client, err := mongo.Connect(ctx, options.Client().ApplyURI(u))
