@@ -14,28 +14,28 @@ var _ TelegramAPI = &TelegramAPIMock{}
 
 // TelegramAPIMock is a mock implementation of TelegramAPI.
 //
-//     func TestSomethingThatUsesTelegramAPI(t *testing.T) {
+//	func TestSomethingThatUsesTelegramAPI(t *testing.T) {
 //
-//         // make and configure a mocked TelegramAPI
-//         mockedTelegramAPI := &TelegramAPIMock{
-//             AvatarFunc: func(ctx context.Context, userID int) (string, error) {
-// 	               panic("mock out the Avatar method")
-//             },
-//             BotInfoFunc: func(ctx context.Context) (*botInfo, error) {
-// 	               panic("mock out the BotInfo method")
-//             },
-//             GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
-// 	               panic("mock out the GetUpdates method")
-//             },
-//             SendFunc: func(ctx context.Context, id int, text string) error {
-// 	               panic("mock out the Send method")
-//             },
-//         }
+//		// make and configure a mocked TelegramAPI
+//		mockedTelegramAPI := &TelegramAPIMock{
+//			AvatarFunc: func(ctx context.Context, userID int) (string, error) {
+//				panic("mock out the Avatar method")
+//			},
+//			BotInfoFunc: func(ctx context.Context) (*botInfo, error) {
+//				panic("mock out the BotInfo method")
+//			},
+//			GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
+//				panic("mock out the GetUpdates method")
+//			},
+//			SendFunc: func(ctx context.Context, id int, text string) error {
+//				panic("mock out the Send method")
+//			},
+//		}
 //
-//         // use mockedTelegramAPI in code that requires TelegramAPI
-//         // and then make assertions.
+//		// use mockedTelegramAPI in code that requires TelegramAPI
+//		// and then make assertions.
 //
-//     }
+//	}
 type TelegramAPIMock struct {
 	// AvatarFunc mocks the Avatar method.
 	AvatarFunc func(ctx context.Context, userID int) (string, error)
@@ -104,7 +104,8 @@ func (mock *TelegramAPIMock) Avatar(ctx context.Context, userID int) (string, er
 
 // AvatarCalls gets all the calls that were made to Avatar.
 // Check the length with:
-//     len(mockedTelegramAPI.AvatarCalls())
+//
+//	len(mockedTelegramAPI.AvatarCalls())
 func (mock *TelegramAPIMock) AvatarCalls() []struct {
 	Ctx    context.Context
 	UserID int
@@ -137,7 +138,8 @@ func (mock *TelegramAPIMock) BotInfo(ctx context.Context) (*botInfo, error) {
 
 // BotInfoCalls gets all the calls that were made to BotInfo.
 // Check the length with:
-//     len(mockedTelegramAPI.BotInfoCalls())
+//
+//	len(mockedTelegramAPI.BotInfoCalls())
 func (mock *TelegramAPIMock) BotInfoCalls() []struct {
 	Ctx context.Context
 } {
@@ -168,7 +170,8 @@ func (mock *TelegramAPIMock) GetUpdates(ctx context.Context) (*telegramUpdate, e
 
 // GetUpdatesCalls gets all the calls that were made to GetUpdates.
 // Check the length with:
-//     len(mockedTelegramAPI.GetUpdatesCalls())
+//
+//	len(mockedTelegramAPI.GetUpdatesCalls())
 func (mock *TelegramAPIMock) GetUpdatesCalls() []struct {
 	Ctx context.Context
 } {
@@ -203,7 +206,8 @@ func (mock *TelegramAPIMock) Send(ctx context.Context, id int, text string) erro
 
 // SendCalls gets all the calls that were made to Send.
 // Check the length with:
-//     len(mockedTelegramAPI.SendCalls())
+//
+//	len(mockedTelegramAPI.SendCalls())
 func (mock *TelegramAPIMock) SendCalls() []struct {
 	Ctx  context.Context
 	ID   int
