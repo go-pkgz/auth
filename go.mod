@@ -5,13 +5,13 @@ go 1.17
 require (
 	github.com/dghubble/oauth1 v0.7.1
 	github.com/go-oauth2/oauth2/v4 v4.5.1
-	github.com/go-pkgz/email v0.4.0
+	github.com/go-pkgz/email v0.4.1
 	github.com/go-pkgz/repeater v1.1.3
 	github.com/go-pkgz/rest v1.16.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/microcosm-cc/bluemonday v1.0.20
 	github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.8.1
 	go.etcd.io/bbolt v1.3.6
 	go.mongodb.org/mongo-driver v1.10.2
 	golang.org/x/image v0.0.0-20220413100746-70e8d0d3baa9
