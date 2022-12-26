@@ -100,13 +100,13 @@ func TestUser_PaidSubscriber(t *testing.T) {
 
 func TestUser_GetUserInfo(t *testing.T) {
 	r, err := http.NewRequest("GET", "http://blah.com", http.NoBody)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	_, err = GetUserInfo(r)
 	assert.EqualError(t, err, "user can't be parsed")
 
 	r = SetUserInfo(r, User{Name: "test", ID: "id"})
 	u, err := GetUserInfo(r)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, User{Name: "test", ID: "id"}, u)
 }
 
@@ -118,12 +118,12 @@ func TestUser_MustGetUserInfo(t *testing.T) {
 	}()
 
 	r, err := http.NewRequest("GET", "http://blah.com", http.NoBody)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	_ = MustGetUserInfo(r)
 	assert.Fail(t, "should panic")
 
 	r = SetUserInfo(r, User{Name: "test", ID: "id"})
 	u := MustGetUserInfo(r)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, User{Name: "test", ID: "id"}, u)
 }

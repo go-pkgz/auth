@@ -31,7 +31,7 @@ func TestBoltDB_PutAndGet(t *testing.T) {
 	assert.Equal(t, "some picture bin data", string(data))
 
 	_, _, err = b.Get("bad avatar")
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// check IDs
 	assert.Equal(t, "fddae9ce556712a6ece0e8951a6e7a05c51ed6bf", b.ID(avatar))
@@ -47,13 +47,13 @@ func TestBoltDB_Remove(t *testing.T) {
 	b, teardown := prepBoltStore(t)
 	defer teardown()
 
-	assert.NotNil(t, b.Remove("no-such-thing.image"))
+	assert.Error(t, b.Remove("no-such-thing.image"))
 
 	avatar, err := b.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
 	assert.Equal(t, "b3daa77b4c04a9551b8781d03191fe098f325e67.image", avatar)
 	assert.NoError(t, b.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "remove real one")
-	assert.NotNil(t, b.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "already removed")
+	assert.Error(t, b.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "already removed")
 }
 
 func TestBoltDB_List(t *testing.T) {
@@ -75,10 +75,10 @@ func TestBoltDB_List(t *testing.T) {
 	assert.Equal(t, []string{"0b7f849446d3383546d15a480966084442cd2193.image", "a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image", "b3daa77b4c04a9551b8781d03191fe098f325e67.image"}, l)
 
 	r, size, err := b.Get("0b7f849446d3383546d15a480966084442cd2193.image")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 23, size)
 	data, err := io.ReadAll(r)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "some picture bin data 3", string(data))
 }
 
@@ -88,7 +88,7 @@ func prepBoltStore(t *testing.T) (blt *BoltDB, teardown func()) {
 	boltStore, err := NewBoltDB(testDB, bolt.Options{})
 	require.Nil(t, err)
 	return boltStore, func() {
-		assert.Nil(t, boltStore.Close())
+		assert.NoError(t, boltStore.Close())
 		_ = os.Remove(testDB)
 	}
 }

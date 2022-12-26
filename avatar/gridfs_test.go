@@ -32,7 +32,7 @@ func TestGridFS_PutAndGet(t *testing.T) {
 	assert.Equal(t, "some picture bin data", string(data))
 
 	_, _, err = p.Get("bad avatar")
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 	assert.Equal(t, "fddae9ce556712a6ece0e8951a6e7a05c51ed6bf", p.ID(avatar))
 	assert.Equal(t, "70c881d4a26984ddce795f6f71817c9cf4480e79", p.ID("aaaa"), "no data, encode avatar id")
 
@@ -47,12 +47,12 @@ func TestGridFS_Remove(t *testing.T) {
 		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
 	}
 	p := prepGFStore(t)
-	assert.NotNil(t, p.Remove("no-such-thing.image"))
+	assert.Error(t, p.Remove("no-such-thing.image"))
 	avatar, err := p.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
 	assert.Equal(t, "b3daa77b4c04a9551b8781d03191fe098f325e67.image", avatar)
 	assert.NoError(t, p.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "remove real one")
-	assert.NotNil(t, p.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "already removed")
+	assert.Error(t, p.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "already removed")
 }
 
 func TestGridFS_List(t *testing.T) {
@@ -76,10 +76,10 @@ func TestGridFS_List(t *testing.T) {
 	assert.Equal(t, []string{"0b7f849446d3383546d15a480966084442cd2193.image", "a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image", "b3daa77b4c04a9551b8781d03191fe098f325e67.image"}, l)
 
 	r, size, err := p.Get("0b7f849446d3383546d15a480966084442cd2193.image")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 23, size)
 	data, err := io.ReadAll(r)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "some picture bin data 3", string(data))
 }
 

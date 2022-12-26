@@ -38,7 +38,7 @@ func TestOauth1Login(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -51,7 +51,7 @@ func TestOauth1Login(t *testing.T) {
 
 	u := token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser1", Picture: "http://example.com/custom.png", IP: ""}, u)
 
 	tk := resp.Cookies()[0].Value
@@ -66,13 +66,13 @@ func TestOauth1Login(t *testing.T) {
 
 	// check admin user
 	resp, err = client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark", loginPort))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	u = token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://example.com/ava12345.png",
 		Attributes: map[string]interface{}{"admin": true}}, u)
 
