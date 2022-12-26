@@ -48,10 +48,10 @@ func TestAvatarStore_Migrate(t *testing.T) {
 
 	// try to read one of migrated avatars
 	r, size, err := pgfs.Get("0b7f849446d3383546d15a480966084442cd2193.image")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 23, size)
 	data, err := io.ReadAll(r)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "some picture bin data 3", string(data))
 }
 

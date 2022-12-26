@@ -85,7 +85,7 @@ func TestCustomProvider(t *testing.T) {
 			assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
 			claims, err := params.JwtService.Parse(resp.Cookies()[0].Value)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
 			assert.Equal(t, token.User{Name: "admin", ID: "admin",
 				Picture: "http://127.0.0.1:9096/avatar?user=admin", IP: ""}, *claims.User)
@@ -124,7 +124,7 @@ func TestCustomProvider(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -133,7 +133,7 @@ func TestCustomProvider(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 960, len(body))
 	t.Logf("headers: %+v", resp.Header)
 

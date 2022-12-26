@@ -82,7 +82,7 @@ func TestJWT_Token(t *testing.T) {
 
 	claims := testClaims
 	res, err := j.Token(claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, res)
 
 	j.SecretReader = nil
@@ -120,7 +120,7 @@ func TestJWT_Parse(t *testing.T) {
 	assert.EqualError(t, err, "token is not valid yet")
 
 	_, err = j.Parse("bad")
-	assert.NotNil(t, err, "bad token")
+	assert.Error(t, err, "bad token")
 
 	_, err = j.Parse(testJwtBadSign)
 	assert.EqualError(t, err, "can't parse token: signature is invalid")
@@ -132,7 +132,7 @@ func TestJWT_Parse(t *testing.T) {
 		SecretReader: SecretFunc(func(string) (string, error) { return "bad 12345", nil }),
 	})
 	_, err = j.Parse(testJwtValid)
-	assert.NotNil(t, err, "bad token", "valid token parsed with wrong secret")
+	assert.Error(t, err, "bad token", "valid token parsed with wrong secret")
 
 	j = NewService(Opts{
 		SecretReader: SecretFunc(func(string) (string, error) { return "", fmt.Errorf("err blah") }),
@@ -160,7 +160,7 @@ func TestJWT_Set(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	c, err := j.Set(rr, claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, claims, c)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
@@ -174,7 +174,7 @@ func TestJWT_Set(t *testing.T) {
 	claims.SessionOnly = true
 	rr = httptest.NewRecorder()
 	_, err = j.Set(rr, claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	cookies = rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 2, len(cookies))
@@ -188,7 +188,7 @@ func TestJWT_Set(t *testing.T) {
 	j.DisableIAT = false
 	rr = httptest.NewRecorder()
 	_, err = j.Set(rr, claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	cookies = rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 2, len(cookies))
@@ -215,7 +215,7 @@ func TestJWT_SetWithDomain(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	c, err := j.Set(rr, claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, claims, c)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
@@ -247,7 +247,7 @@ func TestJWT_SendJWTHeader(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	_, err := j.Set(rr, testClaims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 0, len(cookies), "no cookies set")
@@ -325,7 +325,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(jwtCustomHeaderKey, testJwtValid)
 	claims, token, err := j.Get(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, token)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
@@ -336,7 +336,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	req = httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(jwtCustomHeaderKey, testJwtExpired)
 	_, _, err = j.Get(req)
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	req = httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(jwtCustomHeaderKey, "bad bad token")
@@ -357,7 +357,7 @@ func TestJWT_GetFromQuery(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/blah?token="+testJwtValid, nil)
 	claims, token, err := j.Get(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, token)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
@@ -367,7 +367,7 @@ func TestJWT_GetFromQuery(t *testing.T) {
 
 	req = httptest.NewRequest("GET", "/blah?token="+testJwtExpired, nil)
 	_, _, err = j.Get(req)
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	req = httptest.NewRequest("GET", "/blah?token=blah", nil)
 	_, _, err = j.Get(req)
@@ -414,7 +414,7 @@ func TestJWT_SetAndGetWithCookies(t *testing.T) {
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id")
 	r, _, err := j.Get(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
 		Email: "me@example.com", Audience: "test_sys",
 		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, r.User)
@@ -503,7 +503,7 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id")
 	r, _, err := j.Get(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.True(t, j.IsExpired(r))
 }
 
@@ -569,7 +569,7 @@ func TestAudience(t *testing.T) {
 	assert.EqualError(t, err, `aud "au1" not allowed`)
 
 	err = j.checkAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy", "au1"}, nil }))
-	assert.Nil(t, err, `au1 allowed`)
+	assert.NoError(t, err, `au1 allowed`)
 }
 
 func TestAudReader(t *testing.T) {

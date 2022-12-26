@@ -227,7 +227,7 @@ func TestAvatar_resize(t *testing.T) {
 		assert.NotNil(t, resizedR, "file %s", c.file)
 
 		imgRz, format, err := image.Decode(resizedR)
-		assert.Nil(t, err, "file %s", c.file)
+		assert.NoError(t, err, "file %s", c.file)
 		assert.Equal(t, "png", format, "file %s", c.file)
 		bounds := imgRz.Bounds()
 		assert.Equal(t, c.wr, bounds.Dx(), "file %s", c.file)
@@ -268,13 +268,13 @@ func TestAvatar_Retry(t *testing.T) {
 		i++
 		return fmt.Errorf("err")
 	})
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 3, i)
 
 	st := time.Now()
 	err = retry(5, time.Millisecond, func() error {
 		return fmt.Errorf("err")
 	})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 	assert.True(t, time.Since(st) >= time.Microsecond*5)
 }

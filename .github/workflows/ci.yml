@@ -17,7 +17,7 @@ jobs:
           sudo systemctl disable mono-xsp4.service || true
 
       - name: set up go 1.17
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: 1.17
         id: go
@@ -28,7 +28,7 @@ jobs:
           mongoDBVersion: "4.4"
 
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: build and test
         run: |
@@ -37,19 +37,18 @@ jobs:
           cat $GITHUB_WORKSPACE/profile.cov_tmp | grep -v "_mock.go" > $GITHUB_WORKSPACE/profile.cov
           go build -race
         env:
-          GO111MODULE: "on"
           TZ: "America/Chicago"
           ENABLE_MONGO_TESTS: "true"
 
       - name: install golangci-lint and goveralls
         run: |
-          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $GITHUB_WORKSPACE v1.44.0
-          GO111MODULE=off go get -u -v github.com/mattn/goveralls
+          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $GITHUB_WORKSPACE v1.50.1
+          go install github.com/mattn/goveralls@latest
 
       - name: run linters
         run: $GITHUB_WORKSPACE/golangci-lint run
 
       - name: submit coverage
-        run: $(go env GOPATH)/bin/goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+        run: goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
         env:
           COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}

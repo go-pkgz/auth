@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -71,13 +70,13 @@ func TestAppleHandler_NewApple(t *testing.T) {
 	// check empty params
 	aCfg.ClientID = ""
 	_, err = NewApple(p, aCfg, cl)
-	assert.NotNil(t, err, "required params missed: ClientID")
+	assert.Error(t, err, "required params missed: ClientID")
 	aCfg.TeamID = ""
 	_, err = NewApple(p, aCfg, cl)
-	assert.NotNil(t, err, "required params missed: ClientID, TeamID")
+	assert.Error(t, err, "required params missed: ClientID, TeamID")
 	aCfg.KeyID = ""
 	_, err = NewApple(p, aCfg, cl)
-	assert.NotNil(t, err, "required params missed: ClientID, TeamID, KeyID")
+	assert.Error(t, err, "required params missed: ClientID, TeamID, KeyID")
 }
 
 // TestAppleHandler_LoadPrivateKey need for testing pre-defined loader from local file
@@ -90,7 +89,7 @@ Ivx5tHkv
 -----END PRIVATE KEY-----` // #nosec
 	testPrivKeyFileName := "privKeyTest.tmp"
 
-	dir, err := ioutil.TempDir(os.TempDir(), testPrivKeyFileName)
+	dir, err := os.MkdirTemp(os.TempDir(), testPrivKeyFileName)
 	assert.NoError(t, err)
 	assert.NotNil(t, dir)
 	if err != nil {
@@ -226,7 +225,7 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -239,7 +238,7 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 
 	u := token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	testHashID := token.HashID(sha1.New(), "userid1")
 	testUserID := "apple_" + testHashID
 	testUserName := "noname_" + testUserID[6:12]
@@ -257,7 +256,6 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 
 }
 
-//nolint dupl
 func TestAppleHandler_LogoutHandler(t *testing.T) {
 
 	teardown := prepareAppleOauthTest(t, 8691, 8692, nil)
@@ -267,13 +265,13 @@ func TestAppleHandler_LogoutHandler(t *testing.T) {
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 
-	req, err := http.NewRequest("GET", "http://localhost:8691/logout", nil)
+	req, err := http.NewRequest("GET", "http://localhost:8691/logout", http.NoBody)
 	require.Nil(t, err)
 	resp, err := client.Do(req)
 	require.Nil(t, err)
 	assert.Equal(t, 403, resp.StatusCode, "user not lagged in")
 
-	req, err = http.NewRequest("GET", "http://localhost:8691/logout", nil)
+	req, err = http.NewRequest("GET", "http://localhost:8691/logout", http.NoBody)
 	require.NoError(t, err)
 	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
@@ -348,7 +346,7 @@ Ivx5tHkv
 -----END PRIVATE KEY-----`
 	testPrivKeyFileName := "privKeyTest.tmp"
 
-	dir, err := ioutil.TempDir(os.TempDir(), testPrivKeyFileName)
+	dir, err := os.MkdirTemp(os.TempDir(), testPrivKeyFileName)
 	assert.NoError(t, err)
 	assert.NotNil(t, dir)
 	if err != nil {
@@ -446,7 +444,6 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
 
-	//nolint dupl
 	oauth := &http.Server{
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -476,15 +473,15 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 					"error":"test error occurred"
 					}`
 					w.WriteHeader(http.StatusBadRequest)
-					_, err := w.Write([]byte(res))
-					assert.NoError(t, err)
+					_, e := w.Write([]byte(res))
+					assert.NoError(t, e)
 					return
 
 				case "test-json-error":
 					res = `invalid json data`
 					w.WriteHeader(http.StatusBadRequest)
-					_, err := w.Write([]byte(res))
-					assert.NoError(t, err)
+					_, e := w.Write([]byte(res))
+					assert.NoError(t, e)
 					return
 				}
 
@@ -526,7 +523,6 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 				  ]
 				}`, testJWK)
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				// provider.conf.publicKey = pub // re-define pubKey for JWK test
 				_, err := w.Write([]byte(testKeys))
 				assert.NoError(t, err)
 			default:

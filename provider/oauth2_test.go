@@ -37,7 +37,7 @@ func TestOauth2Login(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -50,7 +50,7 @@ func TestOauth2Login(t *testing.T) {
 
 	u := token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser1", Picture: "http://example.com/custom.png", IP: ""}, u)
 
 	tk := resp.Cookies()[0].Value
@@ -65,13 +65,13 @@ func TestOauth2Login(t *testing.T) {
 
 	// check admin user
 	resp, err = client.Get("http://localhost:8981/login?site=remark")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	u = token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://example.com/ava12345.png",
 		Attributes: map[string]interface{}{"admin": true}}, u)
 }
@@ -265,7 +265,6 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
 
-	//nolint dupl
 	oauth := &http.Server{
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

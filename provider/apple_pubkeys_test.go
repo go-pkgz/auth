@@ -121,7 +121,7 @@ func TestAppleKeySet_Get(t *testing.T) {
 	require.Nil(t, err)
 
 	apk, err := testKeySet.get("86D88Kf")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, apk.ID, "86D88Kf")
 
 	_, err = testKeySet.get("not-found-kid")
@@ -165,7 +165,6 @@ func TestAppleKeySet_KeyFunc(t *testing.T) {
 }
 
 func prepareAppleKeysTestServer(t *testing.T, authPort int) func() {
-	//nolint dupl
 	ts := &http.Server{
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
