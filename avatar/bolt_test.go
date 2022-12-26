@@ -82,6 +82,15 @@ func TestBoltDB_List(t *testing.T) {
 	assert.Equal(t, "some picture bin data 3", string(data))
 }
 
+func TestBoltDB_DoubleClose(t *testing.T) {
+	_ = os.Remove(testDB)
+	boltStore, err := NewBoltDB(testDB, bolt.Options{})
+	require.Nil(t, err)
+	assert.NoError(t, boltStore.Close())
+	assert.NoError(t, boltStore.Close(), "second call should not result in panic or errors")
+	_ = os.Remove(testDB)
+}
+
 // makes new boltdb, put two records
 func prepBoltStore(t *testing.T) (blt *BoltDB, teardown func()) {
 	_ = os.Remove(testDB)

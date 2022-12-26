@@ -20,6 +20,7 @@ func TestGridFS_PutAndGet(t *testing.T) {
 		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
 	}
 	p := prepGFStore(t)
+	defer p.Close()
 	avatar, err := p.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
 	assert.Equal(t, "b3daa77b4c04a9551b8781d03191fe098f325e67.image", avatar)
@@ -47,6 +48,7 @@ func TestGridFS_Remove(t *testing.T) {
 		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
 	}
 	p := prepGFStore(t)
+	defer p.Close()
 	assert.Error(t, p.Remove("no-such-thing.image"))
 	avatar, err := p.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
@@ -60,6 +62,7 @@ func TestGridFS_List(t *testing.T) {
 		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
 	}
 	p := prepGFStore(t)
+	defer p.Close()
 
 	// write some avatars
 	_, err := p.Put("user1", strings.NewReader("some picture bin data 1"))
@@ -83,8 +86,16 @@ func TestGridFS_List(t *testing.T) {
 	assert.Equal(t, "some picture bin data 3", string(data))
 }
 
-func prepGFStore(t *testing.T) *GridFS {
+func TestGridFS_DoubleClose(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
+	p := prepGFStore(t)
+	assert.NoError(t, p.Close())
+	assert.NoError(t, p.Close(), "second call should not result in panic or errors")
+}
 
+func prepGFStore(t *testing.T) *GridFS {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 

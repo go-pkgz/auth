@@ -142,7 +142,7 @@ func (gf *GridFS) List() (ids []string, err error) {
 	return ids, nil
 }
 
-// Close gridfs does nothing but satisfies interface
+// Close gridfs store
 func (gf *GridFS) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), gf.timeout)
 	defer cancel()

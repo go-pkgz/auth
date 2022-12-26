@@ -11,8 +11,8 @@ import (
 
 func TestNoOp_Close(t *testing.T) {
 	p := NewNoOp()
-	err := p.Close()
-	require.NoError(t, err)
+	require.NoError(t, p.Close())
+	require.NoError(t, p.Close(), "second call should not result in panic or errors")
 }
 
 func TestNoOp_Get(t *testing.T) {
