@@ -87,26 +87,38 @@ SJ9XeeC8gqcpE/VLhZHGsnPPiPagCgYIKoZIzj0DAQehRANCAATnwlOv7I6eC3Ec
 /+GeYXT+hbcmhEVveDqLmNcHiXCR9XxJZXtpMRlcRfY8eaJpUdig27dfsbvpnfX5
 Ivx5tHkv
 -----END PRIVATE KEY-----` // #nosec
+	testInvalidKey := `-----BEGIN PRIVATE KEY-----
+MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBAKNwapOQ6rQJHetP
+HRlJBIh1OsOsUBiXb3rXXE3xpWAxAha0MH+UPRblOko+5T2JqIb+xKf9Vi3oTM3t
+KvffaOPtzKXZauscjq6NGzA3LgeiMy6q19pvkUUOlGYK6+Xfl+B7Xw6+hBMkQuGE
+nUS8nkpR5mK4ne7djIyfHFfMu4ptAgMBAAECgYA+s0PPtMq1osG9oi4xoxeAGikf
+JB3eMUptP+2DYW7mRibc+ueYKhB9lhcUoKhlQUhL8bUUFVZYakP8xD21thmQqnC4
+f63asad0ycteJMLb3r+z26LHuCyOdPg1pyLk3oQ32lVQHBCYathRMcVznxOG16VK
+I8BFfstJTaJu0lK/wQJBANYFGusBiZsJQ3utrQMVPpKmloO2++4q1v6ZR4puDQHx
+TjLjAIgrkYfwTJBLBRZxec0E7TmuVQ9uJ+wMu/+7zaUCQQDDf2xMnQqYknJoKGq+
+oAnyC66UqWC5xAnQS32mlnJ632JXA0pf9pb1SXAYExB1p9Dfqd3VAwQDwBsDDgP6
+HD8pAkEA0lscNQZC2TaGtKZk2hXkdcH1SKru/g3vWTkRHxfCAznJUaza1fx0wzdG
+GcES1Bdez0tbW4llI5By/skZc2eE3QJAFl6fOskBbGHde3Oce0F+wdZ6XIJhEgCP
+iukIcKZoZQzoiMJUoVRrA5gqnmaYDI5uRRl/y57zt6YksR3KcLUIuQJAd242M/WF
+6YAZat3q/wEeETeQq1wrooew+8lHl05/Nt0cCpV48RGEhJ83pzBm3mnwHf8lTBJH
+x6XroMXsmbnsEw==
+-----END PRIVATE KEY-----`
 	testPrivKeyFileName := "privKeyTest.tmp"
+	testBadPrivKeyFileName := "privKeyBadTest.tmp"
 
 	dir, err := os.MkdirTemp(os.TempDir(), testPrivKeyFileName)
-	assert.NoError(t, err)
-	assert.NotNil(t, dir)
-	if err != nil {
-		require.NoError(t, err)
-		return
-	}
+	require.NoError(t, err)
 
 	defer func() {
 		require.NoError(t, os.RemoveAll(dir))
 	}()
 
-	tmpfn := filepath.Join(dir, testPrivKeyFileName)
-	if err = os.WriteFile(tmpfn, []byte(testValidKey), 0o600); err != nil {
-		require.NoError(t, err)
-		return
-	}
-	assert.NoError(t, err)
+	tmpFn := filepath.Join(dir, testPrivKeyFileName)
+	err = os.WriteFile(tmpFn, []byte(testValidKey), 0o600)
+	require.NoError(t, err)
+	badTmpFn := filepath.Join(dir, testBadPrivKeyFileName)
+	err = os.WriteFile(badTmpFn, []byte(testInvalidKey), 0o600)
+	require.NoError(t, err)
 	p := Params{
 		URL:     "http://localhost",
 		Issuer:  "test-issuer",
@@ -120,14 +132,25 @@ Ivx5tHkv
 		KeyID:    "BS2A79VCTT",
 	}
 
-	ah, err := NewApple(p, aCfg, LoadApplePrivateKeyFromFile(tmpfn))
+	// test good scenario
+	ah, err := NewApple(p, aCfg, LoadApplePrivateKeyFromFile(tmpFn))
 	assert.NoError(t, err)
 	assert.IsType(t, &AppleHandler{}, ah)
 	assert.Equal(t, ah.name, "apple")
 	assert.Equal(t, ah.conf.ClientID, aCfg.ClientID)
 	assert.NotEmpty(t, ah.conf.privateKey)
+	assert.NotEmpty(t, ah.conf.publicKey)
 	assert.NotEmpty(t, ah.conf.clientSecret)
 
+	// test bad scenario, should not panic
+	ah, err = NewApple(p, aCfg, LoadApplePrivateKeyFromFile(badTmpFn))
+	assert.Error(t, err)
+	assert.IsType(t, &AppleHandler{}, ah)
+	assert.Empty(t, ah.conf.clientSecret, "client secret was not loaded")
+	assert.Empty(t, ah.conf.publicKey, "public key was not loaded")
+	assert.Equal(t, ah.name, "apple")
+	assert.Equal(t, ah.conf.ClientID, aCfg.ClientID)
+	assert.NotEmpty(t, ah.conf.privateKey)
 }
 
 func TestAppleHandlerCreateClientSecret(t *testing.T) {
@@ -355,12 +378,8 @@ Ivx5tHkv
 	}
 
 	filePath = filepath.Join(dir, testPrivKeyFileName)
-	if err = os.WriteFile(filePath, []byte(testValidKey), 0o600); err != nil {
-		assert.NoError(t, err)
-		log.Fatal(err)
-		return "", nil
-	}
-	assert.NoError(t, err)
+	err = os.WriteFile(filePath, []byte(testValidKey), 0o600)
+	require.NoError(t, err)
 	ctx, cancelCtx := context.WithTimeout(context.Background(), time.Second*60)
 
 	go func() {
