@@ -51,8 +51,8 @@ func main() {
 
 	// create auth service with providers
 	service := auth.NewService(options)
-	service.AddProvider("github", "<Client ID>", "<Client Secret>")   // add github provider
-	service.AddProvider("facebook", "<Client ID>", "<Client Secret>") // add facebook provider
+	service.AddProvider(auth.ProviderGithub, "<Client ID>", "<Client Secret>")   // add github provider
+	service.AddProvider(auth.ProviderFacebook, "<Client ID>", "<Client Secret>") // add facebook provider
 
 	// retrieve auth middleware
 	m := service.Middleware()
@@ -387,7 +387,7 @@ In order to allow `aud` support the list of allowed audiences should be passed i
 
 ### Dev provider
 
-Working with oauth2 providers can be a pain, especially during development phase. A special, development-only provider `dev` can make it less painful. This one can be registered directly, i.e. `service.AddProvider("dev", "", "")` or `service.AddDevProvider(port)` and should be activated like this:
+Working with oauth2 providers can be a pain, especially during development phase. A special, development-only provider `dev` can make it less painful. This one can be registered directly, i.e. `service.AddProvider(auth.ProviderDev, "", "")` or `service.AddDevProvider(port)` and should be activated like this:
 
 ```go
 	// runs dev oauth2 server on :8084 by default

@@ -78,11 +78,11 @@ func main() {
 
 	// create auth service
 	service := auth.NewService(options)
-	service.AddProvider("dev", "", "")                                                             // add dev provider
-	service.AddProvider("github", os.Getenv("AEXMPL_GITHUB_CID"), os.Getenv("AEXMPL_GITHUB_CSEC")) // add github provider
-	service.AddProvider("twitter", os.Getenv("AEXMPL_TWITTER_APIKEY"), os.Getenv("AEXMPL_TWITTER_APISEC"))
-	service.AddProvider("microsoft", os.Getenv("AEXMPL_MS_APIKEY"), os.Getenv("AEXMPL_MS_APISEC"))
-	service.AddProvider("patreon", os.Getenv("AEXMPL_PATREON_CID"), os.Getenv("AEXMPL_PATREON_CSEC"))
+	service.AddProvider(auth.ProviderDev, "", "")                                                             // add dev provider
+	service.AddProvider(auth.ProviderGithub, os.Getenv("AEXMPL_GITHUB_CID"), os.Getenv("AEXMPL_GITHUB_CSEC")) // add github provider
+	service.AddProvider(auth.ProviderTwitter, os.Getenv("AEXMPL_TWITTER_APIKEY"), os.Getenv("AEXMPL_TWITTER_APISEC"))
+	service.AddProvider(auth.ProviderMicrosoft, os.Getenv("AEXMPL_MS_APIKEY"), os.Getenv("AEXMPL_MS_APISEC"))
+	service.AddProvider(auth.ProviderPatreon, os.Getenv("AEXMPL_PATREON_CID"), os.Getenv("AEXMPL_PATREON_CSEC"))
 
 	// allow sign with apple id
 	appleCfg := provider.AppleConfig{

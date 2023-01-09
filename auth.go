@@ -34,6 +34,25 @@ type Service struct {
 	useGravatar    bool
 }
 
+// BuiltinProviderType exists to ensure type safety when adding builtin providers
+type BuiltinProviderType string
+
+const (
+	ProviderGithub    BuiltinProviderType = "github"    // ProviderGithub is the GitHub provider type
+	ProviderGoogle    BuiltinProviderType = "google"    // ProviderGoogle is the Google provider type
+	ProviderFacebook  BuiltinProviderType = "facebook"  // ProviderFacebook is the Facebook provider type
+	ProviderYandex    BuiltinProviderType = "yandex"    // ProviderYandex is the Yandex provider type
+	ProviderBattlenet BuiltinProviderType = "battlenet" // ProviderBattlenet is the Battlenet provider type
+	ProviderMicrosoft BuiltinProviderType = "microsoft" // ProviderMicrosoft is the Microsoft provider type
+	ProviderTwitter   BuiltinProviderType = "twitter"   // ProviderTwitter is the twitter provider type
+	ProviderPatreon   BuiltinProviderType = "patreon"   // ProviderPatreon is the Patreon provider type
+	ProviderDev       BuiltinProviderType = "dev"       // ProviderDev is the dev provider type
+)
+
+func (n BuiltinProviderType) String() string {
+	return string(n)
+}
+
 // Opts is a full set of all parameters to initialize Service
 type Opts struct {
 	SecretReader   token.Secret        // reader returns secret for given site id (aud), required
@@ -219,8 +238,7 @@ func (s *Service) Middleware() middleware.Authenticator {
 }
 
 // AddProvider adds provider for given name
-func (s *Service) AddProvider(name, cid, csecret string) {
-
+func (s *Service) AddProvider(name BuiltinProviderType, cid, csecret string) {
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
@@ -231,24 +249,24 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 		L:           s.logger,
 	}
 
-	switch strings.ToLower(name) {
-	case "github":
+	switch name {
+	case ProviderGithub:
 		s.providers = append(s.providers, provider.NewService(provider.NewGithub(p)))
-	case "google":
+	case ProviderGoogle:
 		s.providers = append(s.providers, provider.NewService(provider.NewGoogle(p)))
-	case "facebook":
+	case ProviderFacebook:
 		s.providers = append(s.providers, provider.NewService(provider.NewFacebook(p)))
-	case "yandex":
+	case ProviderYandex:
 		s.providers = append(s.providers, provider.NewService(provider.NewYandex(p)))
-	case "battlenet":
+	case ProviderBattlenet:
 		s.providers = append(s.providers, provider.NewService(provider.NewBattlenet(p)))
-	case "microsoft":
+	case ProviderMicrosoft:
 		s.providers = append(s.providers, provider.NewService(provider.NewMicrosoft(p)))
-	case "twitter":
+	case ProviderTwitter:
 		s.providers = append(s.providers, provider.NewService(provider.NewTwitter(p)))
-	case "patreon":
+	case ProviderPatreon:
 		s.providers = append(s.providers, provider.NewService(provider.NewPatreon(p)))
-	case "dev":
+	case ProviderDev:
 		s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
 	default:
 		return
