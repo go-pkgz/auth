@@ -26,8 +26,8 @@ type Oauth2Handler struct {
 	infoURL         string
 	endpoint        oauth2.Endpoint
 	scopes          []string
-	mapUser         func(UserData, []byte) token.User      // map info from InfoURL to User
-	bearerTokenHook func(string, token.User, oauth2.Token) // a way to access Bearer token received from oauth2-provider
+	mapUser         func(UserData, []byte) token.User // map info from InfoURL to User
+	bearerTokenHook BearerTokenHook
 	conf            oauth2.Config
 }
 
@@ -47,6 +47,9 @@ type Params struct {
 
 // UserData is type for user information returned from oauth2 providers /info API method
 type UserData map[string]interface{}
+
+// A way to get a Bearer token received from oauth2-provider
+type BearerTokenHook func(string, token.User, oauth2.Token)
 
 // Value returns value for key or empty string if not found
 func (u UserData) Value(key string) string {

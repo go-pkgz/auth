@@ -25,7 +25,7 @@ type CustomHandlerOpt struct {
 	Endpoint          oauth2.Endpoint
 	InfoURL           string
 	MapUserFn         func(UserData, []byte) token.User
-	BearerTokenHookFn func(string, token.User, oauth2.Token)
+	BearerTokenHookFn BearerTokenHook
 	Scopes            []string
 }
 

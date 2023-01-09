@@ -23,9 +23,21 @@ var testJwtValid = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyI
 
 var days31 = time.Hour * 24 * 31
 
+type rememberLastBearerTokenHook struct {
+	LastProviderName string       `json:"lastProviderName"`
+	LastUser         token.User   `json:"lastUser"`
+	LastToken        oauth2.Token `json:"lastToken"`
+}
+
+func (h *rememberLastBearerTokenHook) hook(s string, user token.User, o oauth2.Token) {
+	h.LastProviderName = s
+	h.LastUser = user
+	h.LastToken = o
+}
+
 func TestOauth2Login(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982)
+	teardown := prepOauth2Test(t, 8981, 8982, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -76,9 +88,38 @@ func TestOauth2Login(t *testing.T) {
 		Attributes: map[string]interface{}{"admin": true}}, u)
 }
 
+func TestOauth2LoginBearerTokenHook(t *testing.T) {
+
+	btHook := rememberLastBearerTokenHook{}
+	teardown := prepOauth2Test(t, 8981, 8982, btHook.hook)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	// check non-admin, permanent
+	resp, err := client.Get("http://localhost:8981/login?site=remark")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	assert.Equal(t, "mock", btHook.LastProviderName)
+	assert.Equal(t, "mock_myuser1", btHook.LastUser.ID)
+	assert.Equal(t, "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3", btHook.LastToken.AccessToken)
+
+	// check admin user
+	resp, err = client.Get("http://localhost:8981/login?site=remark")
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	assert.Equal(t, "mock", btHook.LastProviderName)
+	assert.Equal(t, "mock_myuser2", btHook.LastUser.ID)
+	assert.Equal(t, "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3", btHook.LastToken.AccessToken)
+}
+
 func TestOauth2LoginSessionOnly(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982)
+	teardown := prepOauth2Test(t, 8981, 8982, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -112,7 +153,7 @@ func TestOauth2LoginSessionOnly(t *testing.T) {
 
 func TestOauth2LoginNoAva(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982)
+	teardown := prepOauth2Test(t, 8981, 8982, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -147,7 +188,7 @@ func TestOauth2LoginNoAva(t *testing.T) {
 
 func TestOauth2Logout(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8691, 8692)
+	teardown := prepOauth2Test(t, 8691, 8692, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -187,7 +228,7 @@ func TestOauth2InitProvider(t *testing.T) {
 }
 
 func TestOauth2InvalidHandler(t *testing.T) {
-	teardown := prepOauth2Test(t, 8691, 8692)
+	teardown := prepOauth2Test(t, 8691, 8692, nil)
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -217,7 +258,7 @@ func TestMakeRedirURL(t *testing.T) {
 	}
 }
 
-func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
+func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook) func() {
 
 	provider := Oauth2Handler{
 		name: "mock",
@@ -235,6 +276,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 			}
 			return userInfo
 		},
+		bearerTokenHook: btHook,
 	}
 
 	jwtService := token.NewService(token.Opts{
