@@ -27,7 +27,7 @@ type Oauth2Handler struct {
 	endpoint        oauth2.Endpoint
 	scopes          []string
 	mapUser         func(UserData, []byte) token.User // map info from InfoURL to User
-	bearerTokenHook BearerTokenHook
+	bearerTokenHook BearerTokenHook                   // a way to get a Bearer token received from oauth2-provider
 	conf            oauth2.Config
 }
 
@@ -48,9 +48,6 @@ type Params struct {
 // UserData is type for user information returned from oauth2 providers /info API method
 type UserData map[string]interface{}
 
-// A way to get a Bearer token received from oauth2-provider
-type BearerTokenHook func(string, token.User, oauth2.Token)
-
 // Value returns value for key or empty string if not found
 func (u UserData) Value(key string) string {
 	// json.Unmarshal converts json "null" value to go's "nil", in this case return empty string
@@ -59,6 +56,9 @@ func (u UserData) Value(key string) string {
 	}
 	return ""
 }
+
+// BearerTokenHook accepts provider name, user and token, received during oauth2 authentication
+type BearerTokenHook func(string, token.User, oauth2.Token)
 
 // initOauth2Handler makes oauth2 handler for given provider
 func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
