@@ -181,7 +181,13 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 			claims, _, err := s.jwtService.Get(r)
 			if err != nil || claims.User == nil {
 				w.WriteHeader(http.StatusUnauthorized)
-				rest.RenderJSON(w, rest.JSON{"error": err.Error()})
+				var msg string
+				if err != nil {
+					msg = err.Error()
+				} else {
+					msg = "User is nil"
+				}
+				rest.RenderJSON(w, rest.JSON{"error": msg})
 				return
 			}
 			rest.RenderJSON(w, claims.User)
