@@ -3,8 +3,8 @@
 ## build and try
 
 - run `go run main.go`
-- open route: http://127.0.0.1:8080/open
-- web application - http://127.0.0.1:8080/web
+- open route: http://localhost:8080/open
+- web application - http://localhost:8080/web
 
 ## parameters
 
