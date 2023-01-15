@@ -46,7 +46,11 @@ jobs:
           go install github.com/mattn/goveralls@latest
 
       - name: run linters
-        run: $GITHUB_WORKSPACE/golangci-lint run
+        run: $GITHUB_WORKSPACE/golangci-lint run ./...
+
+      - name: run linters on example directory
+        working-directory: _example
+        run: $GITHUB_WORKSPACE/golangci-lint --config ../.golangci.yml run ./...
 
       - name: submit coverage
         run: goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
