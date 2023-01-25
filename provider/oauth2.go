@@ -58,7 +58,7 @@ func (u UserData) Value(key string) string {
 }
 
 // BearerTokenHook accepts provider name, user and token, received during oauth2 authentication
-type BearerTokenHook func(string, token.User, oauth2.Token)
+type BearerTokenHook func(provider string, user token.User, token oauth2.Token)
 
 // initOauth2Handler makes oauth2 handler for given provider
 func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
@@ -221,7 +221,7 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if p.bearerTokenHook != nil {
+	if p.bearerTokenHook != nil && tok != nil {
 		p.Logf("[DEBUG] pass bearer token %s, %s", p.Name(), tok.TokenType)
 		p.bearerTokenHook(p.Name(), u, *tok)
 	}
