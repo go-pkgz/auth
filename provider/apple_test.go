@@ -159,7 +159,7 @@ func TestAppleHandlerCreateClientSecret(t *testing.T) {
 	assert.Error(t, err)
 	assert.Empty(t, tkn)
 
-	ah, err = prepareAppleHandlerTest()
+	ah, err = prepareAppleHandlerTest("", []string{})
 	assert.NoError(t, err)
 	assert.IsType(t, &AppleHandler{}, ah)
 
@@ -197,7 +197,7 @@ func TestAppleParseUserData(t *testing.T) {
 }
 
 func TestPrepareLoginURL(t *testing.T) {
-	ah, err := prepareAppleHandlerTest()
+	ah, err := prepareAppleHandlerTest("", []string{})
 	assert.NoError(t, err)
 	assert.IsType(t, &AppleHandler{}, ah)
 
@@ -214,6 +214,34 @@ func TestPrepareLoginURL(t *testing.T) {
 	assert.Equal(t, q.Get("client_id"), ah.conf.ClientID)
 }
 
+func TestPrepareLoginURLWithCustomResponseMode(t *testing.T) {
+	ah, err := prepareAppleHandlerTest("query", []string{})
+	assert.NoError(t, err)
+	assert.IsType(t, &AppleHandler{}, ah)
+
+	lURL, err := ah.prepareLoginURL("1112233", "apple-test/login")
+	assert.NoError(t, err)
+	assert.True(t, strings.HasPrefix(lURL, ah.endpoint.AuthURL))
+
+	checkURL, err := url.Parse(lURL)
+	assert.NoError(t, err)
+	q := checkURL.Query()
+	assert.Equal(t, q.Get("state"), "1112233")
+	assert.Equal(t, q.Get("response_type"), "code")
+	assert.Equal(t, q.Get("response_mode"), "query")
+	assert.Equal(t, q.Get("client_id"), ah.conf.ClientID)
+}
+
+func TestThrowsWhenNotEmptyScopeAndWrongResponseMode(t *testing.T) {
+	ah, err := prepareAppleHandlerTest("query", []string{"email"})
+	assert.NoError(t, err)
+	assert.IsType(t, &AppleHandler{}, ah)
+
+	lURL, err := ah.prepareLoginURL("1112233", "apple-test/login")
+	assert.Equal(t, "", lURL)
+	assert.Error(t, err)
+}
+
 func TestAppleHandlerMakeRedirURL(t *testing.T) {
 	cases := []struct{ rootURL, route, out string }{
 		{"localhost:8080/", "/my/auth/path/apple", "localhost:8080/my/auth/path/callback"},
@@ -224,7 +252,7 @@ func TestAppleHandlerMakeRedirURL(t *testing.T) {
 		{"mysite.com", "", "mysite.com/callback"},
 	}
 
-	ah, err := prepareAppleHandlerTest()
+	ah, err := prepareAppleHandlerTest("", []string{})
 	assert.NoError(t, err)
 	assert.IsType(t, &AppleHandler{}, ah)
 
@@ -316,7 +344,7 @@ func TestAppleHandler_Exchange(t *testing.T) {
 	teardown := prepareAppleOauthTest(t, 8981, 8982, &testResponseToken)
 	defer teardown()
 
-	ah, err := prepareAppleHandlerTest()
+	ah, err := prepareAppleHandlerTest("", []string{})
 	require.Nil(t, err)
 
 	ah.endpoint = oauth2.Endpoint{
@@ -389,8 +417,7 @@ Ivx5tHkv
 	return filePath, cancelCtx
 }
 
-func prepareAppleHandlerTest() (*AppleHandler, error) {
-
+func prepareAppleHandlerTest(responseMode string, scopes []string) (*AppleHandler, error) {
 	p := Params{
 		URL:     "http://localhost",
 		Issuer:  "test-issuer",
@@ -402,14 +429,17 @@ func prepareAppleHandlerTest() (*AppleHandler, error) {
 		ClientID: "auth.example.com",
 		TeamID:   "AA11BB22CC",
 		KeyID:    "BS2A79VCTT",
+		responseMode: responseMode,
+		scopes: scopes,
 	}
+
 	cl := customLoader{}
 	return NewApple(p, aCfg, cl)
 }
 
 func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *string) func() {
 	signKey, testJWK := createTestSignKeyPairs(t)
-	provider, err := prepareAppleHandlerTest()
+	provider, err := prepareAppleHandlerTest("", []string{})
 	assert.NoError(t, err)
 	assert.IsType(t, &AppleHandler{}, provider)
 
