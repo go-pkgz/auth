@@ -96,10 +96,11 @@ func TestGridFS_DoubleClose(t *testing.T) {
 }
 
 func prepGFStore(t *testing.T) *GridFS {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	const timeout = time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017").SetConnectTimeout(timeout))
 	require.NoError(t, err)
 
 	_ = client.Database("test").Collection("ava_fs.chunks").Drop(ctx)
