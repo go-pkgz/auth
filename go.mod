@@ -14,7 +14,7 @@ require (
 	github.com/stretchr/testify v1.8.1
 	go.etcd.io/bbolt v1.3.6
 	go.mongodb.org/mongo-driver v1.11.1
-	golang.org/x/image v0.3.0
+	golang.org/x/image v0.5.0
 	golang.org/x/oauth2 v0.4.0
 )
 
@@ -47,7 +47,7 @@ require (
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
 	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
