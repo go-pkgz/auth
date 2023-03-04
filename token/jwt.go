@@ -299,6 +299,13 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 
 	if fromCookie && claims.User != nil {
 		xsrf := r.Header.Get(j.XSRFHeaderKey)
+		if xsrf == "" {
+			cxsrf, err := r.Cookie(j.XSRFCookieName)
+			if err == nil {
+				xsrf = cxsrf.Value
+			}
+		}
+
 		if claims.Id != xsrf {
 			return Claims{}, "", fmt.Errorf("xsrf mismatch")
 		}
