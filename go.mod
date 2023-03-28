@@ -9,13 +9,13 @@ require (
 	github.com/go-pkgz/repeater v1.1.3
 	github.com/go-pkgz/rest v1.17.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
-	github.com/microcosm-cc/bluemonday v1.0.22
+	github.com/microcosm-cc/bluemonday v1.0.23
 	github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 	go.etcd.io/bbolt v1.3.7
-	go.mongodb.org/mongo-driver v1.11.2
-	golang.org/x/image v0.5.0
-	golang.org/x/oauth2 v0.5.0
+	go.mongodb.org/mongo-driver v1.11.3
+	golang.org/x/image v0.6.0
+	golang.org/x/oauth2 v0.6.0
 )
 
 require (
@@ -44,10 +44,10 @@ require (
 	github.com/xdg-go/stringprep v1.0.3 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
-	golang.org/x/net v0.6.0 // indirect
-	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/net v0.8.0 // indirect
+	golang.org/x/sync v0.1.0 // indirect
+	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/text v0.8.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
