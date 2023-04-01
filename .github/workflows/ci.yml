@@ -19,7 +19,7 @@ jobs:
       - name: set up go 1.18
         uses: actions/setup-go@v3
         with:
-          go-version: 1.18
+          go-version: "1.18"
         id: go
 
       - name: launch mongodb
@@ -30,29 +30,36 @@ jobs:
       - name: checkout
         uses: actions/checkout@v3
 
+      - name: build the example
+        working-directory: _example
+        run: |
+          go build -race
+        env:
+          TZ: "America/Chicago"
+
       - name: build and test
         run: |
-          go get -v
-          go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov_tmp
-          cat $GITHUB_WORKSPACE/profile.cov_tmp | grep -v "_mock.go" > $GITHUB_WORKSPACE/profile.cov
+          go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov
           go build -race
         env:
           TZ: "America/Chicago"
           ENABLE_MONGO_TESTS: "true"
 
-      - name: install golangci-lint and goveralls
-        run: |
-          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $GITHUB_WORKSPACE v1.50.1
-          go install github.com/mattn/goveralls@latest
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
 
-      - name: run linters
-        run: $GITHUB_WORKSPACE/golangci-lint run ./...
-
-      - name: run linters on example directory
-        working-directory: _example
-        run: $GITHUB_WORKSPACE/golangci-lint --config ../.golangci.yml run ./...
+      - name: golangci-lint on example directory
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          args: --config ../.golangci.yml
+          working-directory: _example
 
       - name: submit coverage
-        run: goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+        run: |
+          go install github.com/mattn/goveralls@latest
+          goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
         env:
           COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}

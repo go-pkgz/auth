@@ -274,4 +274,4 @@ type mockCredsChecker struct {
 	err error
 }
 
-func (m *mockCredsChecker) Check(user, password string) (ok bool, err error) { return m.ok, m.err }
+func (m *mockCredsChecker) Check(string, string) (ok bool, err error) { return m.ok, m.err }
