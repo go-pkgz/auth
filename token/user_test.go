@@ -28,11 +28,11 @@ func TestUser_HashID(t *testing.T) {
 
 type mockBadHasher struct{}
 
-func (m *mockBadHasher) Write(p []byte) (n int, err error) { return 0, fmt.Errorf("err") }
-func (m *mockBadHasher) Sum(b []byte) []byte               { return nil }
-func (m *mockBadHasher) Reset()                            {}
-func (m *mockBadHasher) Size() int                         { return 0 }
-func (m *mockBadHasher) BlockSize() int                    { return 0 }
+func (m *mockBadHasher) Write([]byte) (n int, err error) { return 0, fmt.Errorf("err") }
+func (m *mockBadHasher) Sum([]byte) []byte               { return nil }
+func (m *mockBadHasher) Reset()                          {}
+func (m *mockBadHasher) Size() int                       { return 0 }
+func (m *mockBadHasher) BlockSize() int                  { return 0 }
 
 func TestUser_HashIDWithCRC(t *testing.T) {
 	tbl := []struct {

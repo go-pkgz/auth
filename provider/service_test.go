@@ -77,7 +77,7 @@ type mockAva struct {
 	res string
 }
 
-func (m mockAva) Put(u token.User, client *http.Client) (avatarURL string, err error) {
+func (m mockAva) Put(token.User, *http.Client) (avatarURL string, err error) {
 	if !m.ok {
 		return "", fmt.Errorf("some error")
 	}
@@ -87,12 +87,12 @@ func (m mockAva) Put(u token.User, client *http.Client) (avatarURL string, err e
 type mockHandler struct{}
 
 func (n *mockHandler) Name() string { return "mock-handler" }
-func (n *mockHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (n *mockHandler) LoginHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("login"))
 }
-func (n *mockHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
+func (n *mockHandler) AuthHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("callback"))
 }
-func (n *mockHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (n *mockHandler) LogoutHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("logout"))
 }

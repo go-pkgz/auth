@@ -591,6 +591,6 @@ type customHandler struct{}
 func (c customHandler) Name() string {
 	return "telegramBotMySiteCom"
 }
-func (c customHandler) LoginHandler(w http.ResponseWriter, r *http.Request)  {}
-func (c customHandler) AuthHandler(w http.ResponseWriter, r *http.Request)   {}
-func (c customHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {}
+func (c customHandler) LoginHandler(http.ResponseWriter, *http.Request)  {}
+func (c customHandler) AuthHandler(http.ResponseWriter, *http.Request)   {}
+func (c customHandler) LogoutHandler(http.ResponseWriter, *http.Request) {}

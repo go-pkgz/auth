@@ -205,7 +205,7 @@ type badJwtService struct {
 	*token.Service
 }
 
-func (b *badJwtService) Set(w http.ResponseWriter, claims token.Claims) (token.Claims, error) {
+func (b *badJwtService) Set(http.ResponseWriter, token.Claims) (token.Claims, error) {
 	return token.Claims{}, fmt.Errorf("jwt set fake error")
 }
 

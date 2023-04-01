@@ -321,6 +321,6 @@ type mockAvatarSaverVerif struct {
 	url string
 }
 
-func (a mockAvatarSaverVerif) Put(u token.User, client *http.Client) (avatarURL string, err error) {
+func (a mockAvatarSaverVerif) Put(token.User, *http.Client) (avatarURL string, err error) {
 	return a.url, a.err
 }
