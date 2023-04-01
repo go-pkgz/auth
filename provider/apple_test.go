@@ -426,11 +426,11 @@ func prepareAppleHandlerTest(responseMode string, scopes []string) (*AppleHandle
 	}
 
 	aCfg := AppleConfig{
-		ClientID: "auth.example.com",
-		TeamID:   "AA11BB22CC",
-		KeyID:    "BS2A79VCTT",
-		responseMode: responseMode,
-		scopes: scopes,
+		ClientID:     "auth.example.com",
+		TeamID:       "AA11BB22CC",
+		KeyID:        "BS2A79VCTT",
+		ResponseMode: responseMode,
+		scopes:       scopes,
 	}
 
 	cl := customLoader{}
