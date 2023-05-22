@@ -211,7 +211,7 @@ func GetGravatarURL(email string) (res string, err error) {
 	hash := md5.Sum([]byte(strings.ToLower(strings.TrimSpace(email))))
 	hexHash := hex.EncodeToString(hash[:])
 
-	client := http.Client{Timeout: 1 * time.Second}
+	client := http.Client{Timeout: 5 * time.Second}
 	res = "https://www.gravatar.com/avatar/" + hexHash
 	resp, err := client.Get(res + "?d=404&s=80")
 	if err != nil {
