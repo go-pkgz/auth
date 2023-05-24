@@ -222,6 +222,7 @@ func (s *Service) Middleware() middleware.Authenticator {
 	return s.authMiddleware
 }
 
+// AddProviderWithUserAttributes adds provider with user attributes mapping
 func (s *Service) AddProviderWithUserAttributes(name, cid, csecret string, userAttributes provider.UserAttributes) {
 	p := provider.Params{
 		URL:            s.opts.URL,
