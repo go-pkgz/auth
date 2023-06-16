@@ -49,6 +49,11 @@ func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	aud := r.URL.Query().Get("site") // legacy, for back compat
+	if aud == "" {
+		aud = r.URL.Query().Get("aud")
+	}
+
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: requestSecret,
@@ -57,7 +62,7 @@ func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
 		StandardClaims: jwt.StandardClaims{
 			Id:        cid,
-			Audience:  r.URL.Query().Get("site"),
+			Audience:  aud,
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},

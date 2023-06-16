@@ -86,7 +86,12 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, address := elems[0], elems[1]
-	sessOnly := r.URL.Query().Get("sess") == "1"
+
+	sess := r.URL.Query().Get("sess") // legacy, for back compat
+	if sess == "" {
+		sess = r.URL.Query().Get("session")
+	}
+	sessOnly := sess == "1"
 
 	u := token.User{
 		Name: user,
@@ -131,7 +136,7 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, claims.User)
 }
 
-// GET /login?site=site&user=name&address=someone@example.com
+// GET /login?[aud|site]=siteID&user=name&address=someone@example.com
 func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) {
 
 	user, address := r.URL.Query().Get("user"), r.URL.Query().Get("address")
@@ -143,6 +148,11 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	aud := r.URL.Query().Get("site") // legacy, for back compat
+	if aud == "" {
+		aud = r.URL.Query().Get("aud")
+	}
+
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: "",
@@ -150,7 +160,7 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
 		StandardClaims: jwt.StandardClaims{
-			Audience:  e.sanitize(r.URL.Query().Get("site")),
+			Audience:  e.sanitize(aud),
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 			Issuer:    e.Issuer,
@@ -182,7 +192,7 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		User:    user,
 		Address: address,
 		Token:   tkn,
-		Site:    r.URL.Query().Get("site"),
+		Site:    aud,
 	}
 	buf := bytes.Buffer{}
 	if err = emailTmpl.Execute(&buf, tmplData); err != nil {

@@ -81,7 +81,12 @@ func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, p.L, http.StatusBadRequest, err, "failed to parse credentials")
 		return
 	}
-	sessOnly := r.URL.Query().Get("sess") == "1"
+
+	sess := r.URL.Query().Get("sess") // legacy, for back compat
+	if sess == "" {
+		sess = r.URL.Query().Get("session")
+	}
+	sessOnly := sess == "1"
 	if p.CredChecker == nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError,
 			fmt.Errorf("no credential checker"), "no credential checker")
