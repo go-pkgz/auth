@@ -22,7 +22,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 	}{
 		"GET": {
 			makeRequest: func(t *testing.T) *http.Request {
-				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123&from=http://example.com", http.NoBody)
+				req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&site=xyz123&from=http://example.com", http.NoBody)
 				require.NoError(t, err)
 				return req
 			},
@@ -32,7 +32,7 @@ func TestDirect_LoginHandler(t *testing.T) {
 				form := url.Values{
 					"user":   {"myuser"},
 					"passwd": {"pppp"},
-					"aud":    {"xyz123"},
+					"site":   {"xyz123"},
 				}
 				req, err := http.NewRequest("POST", "/login?from=http://example.com", strings.NewReader(form.Encode()))
 				require.NoError(t, err)

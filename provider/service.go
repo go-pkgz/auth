@@ -93,3 +93,27 @@ func randToken() (string, error) {
 	}
 	return fmt.Sprintf("%x", s.Sum(nil)), nil
 }
+
+func getAud(r *http.Request) string {
+	var aud string
+	if r.Method != http.MethodPost {
+		aud = r.URL.Query().Get("site") // legacy, for back compat
+		if aud == "" {
+			aud = r.URL.Query().Get("aud")
+		}
+		return aud
+	}
+	aud = r.Form.Get("site") // legacy, for back compat
+	if aud == "" {
+		aud = r.Form.Get("aud")
+	}
+	return aud
+}
+
+func getSession(r *http.Request) bool {
+	sess := r.URL.Query().Get("sess") // legacy, for back compat
+	if sess == "" {
+		sess = r.URL.Query().Get("session")
+	}
+	return sess != "" && sess != "0"
+}

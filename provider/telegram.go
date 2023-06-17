@@ -300,21 +300,17 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	aud := r.URL.Query().Get("site") // legacy, for back compat
-	if aud == "" {
-		aud = r.URL.Query().Get("aud")
-	}
-
 	claims := authtoken.Claims{
 		User: &u,
 		StandardClaims: jwt.StandardClaims{
-			Audience:  aud,
+			Audience:  getAud(r),
 			Id:        queryToken,
 			Issuer:    th.ProviderName,
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},
 		SessionOnly: false, // TODO review?
+		// SessionOnly: getSession(r),
 	}
 
 	if _, err := th.TokenService.Set(w, claims); err != nil {

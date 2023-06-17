@@ -60,7 +60,7 @@ func (e VerifyHandler) Name() string { return e.ProviderName }
 // In case if confirmation token presented in the query uses it to create auth token
 func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
-	// GET /login?site=site&user=name&address=someone@example.com
+	// GET /login?[site|aud]=site&user=name&address=someone@example.com
 	tkn := r.URL.Query().Get("token")
 	if tkn == "" { // no token, ask confirmation via email
 		e.sendConfirmation(w, r)
@@ -68,7 +68,7 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// confirmation token presented
-	// GET /login?token=confirmation-jwt&sess=1
+	// GET /login?token=confirmation-jwt&[sess|session]=1
 	confClaims, err := e.TokenService.Parse(tkn)
 	if err != nil {
 		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, err, "failed to verify confirmation token")
@@ -87,11 +87,7 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	user, address := elems[0], elems[1]
 
-	sess := r.URL.Query().Get("sess") // legacy, for back compat
-	if sess == "" {
-		sess = r.URL.Query().Get("session")
-	}
-	sessOnly := sess == "1"
+	sessOnly := getSession(r)
 
 	u := token.User{
 		Name: user,
@@ -148,19 +144,14 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	aud := r.URL.Query().Get("site") // legacy, for back compat
-	if aud == "" {
-		aud = r.URL.Query().Get("aud")
-	}
-
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: "",
 			ID:    user + "::" + address,
 		},
-		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
+		SessionOnly: getSession(r),
 		StandardClaims: jwt.StandardClaims{
-			Audience:  e.sanitize(aud),
+			Audience:  e.sanitize(getAud(r)),
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 			Issuer:    e.Issuer,
@@ -192,7 +183,7 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		User:    user,
 		Address: address,
 		Token:   tkn,
-		Site:    aud,
+		Site:    getAud(r),
 	}
 	buf := bytes.Buffer{}
 	if err = emailTmpl.Execute(&buf, tmplData); err != nil {

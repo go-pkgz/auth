@@ -28,7 +28,7 @@ type Oauth1Handler struct {
 // Name returns provider name
 func (h Oauth1Handler) Name() string { return h.name }
 
-// LoginHandler - GET /login?from=redirect-back-url&site=siteID&session=1
+// LoginHandler - GET /login?from=redirect-back-url&[site|aud]=siteID&[sess|session]=1
 func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	h.Logf("[DEBUG] login with %s", h.Name())
 
@@ -49,20 +49,15 @@ func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	aud := r.URL.Query().Get("site") // legacy, for back compat
-	if aud == "" {
-		aud = r.URL.Query().Get("aud")
-	}
-
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: requestSecret,
 			From:  r.URL.Query().Get("from"),
 		},
-		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
+		SessionOnly: getSession(r),
 		StandardClaims: jwt.StandardClaims{
 			Id:        cid,
-			Audience:  aud,
+			Audience:  getAud(r),
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},

@@ -255,20 +255,15 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	aud := r.URL.Query().Get("site") // legacy, for back compat
-	if aud == "" {
-		aud = r.URL.Query().Get("aud")
-	}
-
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: state,
 			From:  r.URL.Query().Get("from"),
 		},
-		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
+		SessionOnly: getSession(r),
 		StandardClaims: jwt.StandardClaims{
 			Id:        cid,
-			Audience:  aud,
+			Audience:  getAud(r),
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},

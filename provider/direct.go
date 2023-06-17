@@ -60,13 +60,13 @@ func (p DirectHandler) Name() string { return p.ProviderName }
 
 // LoginHandler checks "user" and "passwd" against data store and makes jwt if all passed.
 //
-// GET /something?user=name&passwd=xyz&aud=bar&sess=[0|1]
+// GET /something?user=name&passwd=xyz&[site|aud]=bar&[sess|session]=[0|1]
 //
-// POST /something?sess[0|1]
+// POST /something?[sess|session][0|1]
 // Accepts application/x-www-form-urlencoded or application/json encoded requests.
 //
 // application/x-www-form-urlencoded body example:
-// user=name&passwd=xyz&aud=bar
+// user=name&passwd=xyz&[aud|site]=bar
 //
 // application/json body example:
 //
@@ -82,11 +82,6 @@ func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := r.URL.Query().Get("sess") // legacy, for back compat
-	if sess == "" {
-		sess = r.URL.Query().Get("session")
-	}
-	sessOnly := sess == "1"
 	if p.CredChecker == nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError,
 			fmt.Errorf("no credential checker"), "no credential checker")
@@ -130,7 +125,7 @@ func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			Issuer:   p.Issuer,
 			Audience: creds.Audience,
 		},
-		SessionOnly: sessOnly,
+		SessionOnly: getSession(r),
 	}
 
 	if _, err = p.TokenService.Set(w, claims); err != nil {
@@ -143,12 +138,12 @@ func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 // getCredentials extracts user and password from request
 func (p DirectHandler) getCredentials(w http.ResponseWriter, r *http.Request) (credentials, error) {
 
-	// GET /something?user=name&passwd=xyz&aud=bar
+	// GET /something?user=name&passwd=xyz&[aud|site]=bar
 	if r.Method == "GET" {
 		return credentials{
 			User:     r.URL.Query().Get("user"),
 			Password: r.URL.Query().Get("passwd"),
-			Audience: r.URL.Query().Get("aud"),
+			Audience: getAud(r),
 		}, nil
 	}
 
@@ -185,7 +180,7 @@ func (p DirectHandler) getCredentials(w http.ResponseWriter, r *http.Request) (c
 	return credentials{
 		User:     r.Form.Get("user"),
 		Password: r.Form.Get("passwd"),
-		Audience: r.Form.Get("aud"),
+		Audience: getAud(r),
 	}, nil
 }
 

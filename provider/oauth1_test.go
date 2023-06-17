@@ -88,7 +88,7 @@ func TestOauth1LoginSessionOnly(t *testing.T) {
 	client := &http.Client{Jar: jar, Timeout: timeout * time.Second}
 
 	// check non-admin, session
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark&session=1", loginPort))
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?aud=remark&session=1", loginPort))
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.Equal(t, 2, len(resp.Cookies()))
