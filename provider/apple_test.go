@@ -218,7 +218,7 @@ func TestPrepareLoginURLWithCustomResponseMode(t *testing.T) {
 	ah, err := prepareAppleHandlerTest("query", []string{})
 	assert.NoError(t, err)
 	assert.IsType(t, &AppleHandler{}, ah)
-
+	ah.conf.scopes = []string{""}
 	lURL, err := ah.prepareLoginURL("1112233", "apple-test/login")
 	assert.NoError(t, err)
 	assert.True(t, strings.HasPrefix(lURL, ah.endpoint.AuthURL))
