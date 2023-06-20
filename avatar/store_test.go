@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -57,21 +56,22 @@ func TestAvatarStore_Migrate(t *testing.T) {
 
 func TestStore_NewStore(t *testing.T) {
 	tbl := []struct {
-		uri string
-		res string
-		err error
+		name string
+		uri  string
+		res  string
+		err  error
 	}{
-		{"/tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
-		{"file:///tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
-		{"bolt:///tmp/ava_tmp", "boltdb, path=/tmp/ava_tmp", nil},
-		{"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), db=db1, bucket=coll1", nil},
-		{"mongodb://127.0.0.10:27017/test?ava_db=db1&ava_coll=coll1", "", fmt.Errorf("failed to connect to mongo server")},
-		{"blah:///tmp/ava_tmp", "", fmt.Errorf("can't parse store url blah:///tmp/ava_tmp")},
+		{"local fs, default", "/tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
+		{"local fs, file: prefix", "file:///tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
+		{"bolt", "bolt:///tmp/ava_tmp", "boltdb, path=/tmp/ava_tmp", nil},
+		{"valid mongo", "mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), db=db1, bucket=coll1", nil},
+		{"invalid mongo", "mongodb://127.0.0.1:27018/test?ava_db=db1&ava_coll=coll1", "", fmt.Errorf("failed to connect to mongo server")},
+		{"unknown store", "blah:///tmp/ava_tmp", "", fmt.Errorf("can't parse store url blah:///tmp/ava_tmp")},
 	}
 
-	for i, tt := range tbl {
+	for _, tt := range tbl {
 		tt := tt
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			if strings.Contains(tt.uri, "mongodb://") && tt.err == nil {
 				if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
 					t.Skip("ENABLE_MONGO_TESTS env variable is not set")
