@@ -65,7 +65,7 @@ func TestStore_NewStore(t *testing.T) {
 		{"file:///tmp/ava_tmp", "localfs, path=/tmp/ava_tmp", nil},
 		{"bolt:///tmp/ava_tmp", "boltdb, path=/tmp/ava_tmp", nil},
 		{"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1", "mongo (grid fs), db=db1, bucket=coll1", nil},
-		{"mongodb://127.0.0.2:27017/test?ava_db=db1&ava_coll=coll1", "", fmt.Errorf("failed to connect to mongo server")},
+		{"mongodb://127.0.0.10:27017/test?ava_db=db1&ava_coll=coll1", "", fmt.Errorf("failed to connect to mongo server")},
 		{"blah:///tmp/ava_tmp", "", fmt.Errorf("can't parse store url blah:///tmp/ava_tmp")},
 	}
 
