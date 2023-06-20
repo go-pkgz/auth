@@ -164,6 +164,7 @@ func TestAppleKeySet_KeyFunc(t *testing.T) {
 	assert.Error(t, err, "get JWT kid header not found")
 }
 
+//nolint:gosec //this is a test, we don't care about ReadHeaderTimeout
 func prepareAppleKeysTestServer(t *testing.T, authPort int) func() {
 	ts := &http.Server{
 		Addr: fmt.Sprintf(":%d", authPort),

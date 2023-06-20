@@ -100,7 +100,7 @@ func TestCustomProvider(t *testing.T) {
 
 	router := http.NewServeMux()
 	router.Handle("/auth/customprov/", http.HandlerFunc(s.Handler))
-	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router}
+	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router} //nolint:gosec
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

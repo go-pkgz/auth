@@ -227,7 +227,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 	provider = initOauth1Handler(params, provider)
 	svc := Service{Provider: provider}
 
-	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)}
+	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)} //nolint:gosec
 
 	count := 0
 	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
@@ -241,7 +241,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 		accessSecret  = "qfr1239UJAkmpaf3l"
 	)
 
-	oauth := &http.Server{
+	oauth := &http.Server{ //nolint:gosec
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[MOCK OAUTH] request %s %s %+v", r.Method, r.URL, r.Header)

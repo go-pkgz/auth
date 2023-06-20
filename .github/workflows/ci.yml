@@ -39,7 +39,7 @@ jobs:
 
       - name: build and test
         run: |
-          go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov
+          go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...
           go build -race
         env:
           TZ: "America/Chicago"
