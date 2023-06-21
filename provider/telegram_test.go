@@ -25,7 +25,7 @@ var botInfoFunc = func(ctx context.Context) (*botInfo, error) {
 func TestTgLoginHandlerErrors(t *testing.T) {
 	tg := TelegramHandler{Telegram: NewTelegramAPI("test", http.DefaultClient)}
 
-	r := httptest.NewRequest("GET", "/login?site=remark", nil)
+	r := httptest.NewRequest("GET", "/login?site=remark", http.NoBody)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 	assert.Equal(t, http.StatusInternalServerError, w.Code, "request should fail")
@@ -51,7 +51,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	defer cleanup()
 
 	// Get token
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
@@ -69,7 +69,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	token := resp.Token
 
 	// Make sure we get error without first confirming auth request
-	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
+	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), http.NoBody)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
@@ -79,7 +79,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	time.Sleep(tgAuthRequestLifetime)
 
 	// Confirm auth request expired
-	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
+	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), http.NoBody)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
@@ -123,7 +123,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	defer cleanup()
 
 	// Get token
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
@@ -145,7 +145,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	time.Sleep(apiPollInterval * 2)
 
 	// The token should be confirmed by now
-	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
+	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), http.NoBody)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
@@ -164,7 +164,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.Equal(t, "http://example.com/ava12345.png", info.Picture)
 
 	// Test request has been invalidated
-	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
+	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), http.NoBody)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 
@@ -260,7 +260,7 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 	assert.Len(t, tg.requests.data, 1, "expired token should be cleaned up despite the error")
 
 	// Verify that get token will return bot name
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
 

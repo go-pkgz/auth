@@ -325,7 +325,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 		}),
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/", http.NoBody)
 	req.Header.Add(jwtCustomHeaderKey, testJwtValid)
 	claims, token, err := j.Get(req)
 	assert.NoError(t, err)
@@ -336,12 +336,12 @@ func TestJWT_GetFromHeader(t *testing.T) {
 		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
 	assert.Equal(t, "remark42", claims.Issuer)
 
-	req = httptest.NewRequest("GET", "/", nil)
+	req = httptest.NewRequest("GET", "/", http.NoBody)
 	req.Header.Add(jwtCustomHeaderKey, testJwtExpired)
 	_, _, err = j.Get(req)
 	assert.Error(t, err)
 
-	req = httptest.NewRequest("GET", "/", nil)
+	req = httptest.NewRequest("GET", "/", http.NoBody)
 	req.Header.Add(jwtCustomHeaderKey, "bad bad token")
 	_, _, err = j.Get(req)
 	require.NotNil(t, err)
@@ -358,7 +358,7 @@ func TestJWT_GetFromQuery(t *testing.T) {
 		}),
 	})
 
-	req := httptest.NewRequest("GET", "/blah?token="+testJwtValid, nil)
+	req := httptest.NewRequest("GET", "/blah?token="+testJwtValid, http.NoBody)
 	claims, token, err := j.Get(req)
 	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, token)
@@ -368,11 +368,11 @@ func TestJWT_GetFromQuery(t *testing.T) {
 		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
 	assert.Equal(t, "remark42", claims.Issuer)
 
-	req = httptest.NewRequest("GET", "/blah?token="+testJwtExpired, nil)
+	req = httptest.NewRequest("GET", "/blah?token="+testJwtExpired, http.NoBody)
 	_, _, err = j.Get(req)
 	assert.Error(t, err)
 
-	req = httptest.NewRequest("GET", "/blah?token=blah", nil)
+	req = httptest.NewRequest("GET", "/blah?token=blah", http.NoBody)
 	_, _, err = j.Get(req)
 	require.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token contains an invalid number of segments"), err.Error())
@@ -380,7 +380,7 @@ func TestJWT_GetFromQuery(t *testing.T) {
 
 func TestJWT_GetFailed(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false})
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/", http.NoBody)
 	_, _, err := j.Get(req)
 	assert.Error(t, err, "token cookie was not presented")
 }
@@ -413,7 +413,7 @@ func TestJWT_SetAndGetWithCookies(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	req := httptest.NewRequest("GET", "/valid", nil)
+	req := httptest.NewRequest("GET", "/valid", http.NoBody)
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id")
 	r, _, err := j.Get(req)
@@ -455,14 +455,14 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	req := httptest.NewRequest("GET", "/valid", nil)
+	req := httptest.NewRequest("GET", "/valid", http.NoBody)
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
 	_, _, err = j.Get(req)
 	assert.EqualError(t, err, "xsrf mismatch")
 
 	j.DisableXSRF = true
-	req = httptest.NewRequest("GET", "/valid", nil)
+	req = httptest.NewRequest("GET", "/valid", http.NoBody)
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
 	c, _, err := j.Get(req)
@@ -502,7 +502,7 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	req := httptest.NewRequest("GET", "/expired", nil)
+	req := httptest.NewRequest("GET", "/expired", http.NoBody)
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id")
 	r, _, err := j.Get(req)
