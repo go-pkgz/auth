@@ -292,7 +292,7 @@ func TestTelegram_TokenVerification(t *testing.T) {
 	}
 
 	tg, cleanup := setupHandler(t, m)
-	defer cleanup()
+	cleanup() // we don't need tg.Run goroutine
 	assert.NotNil(t, tg)
 	tg.requests.data = make(map[string]tgAuthRequest) // usually done in Run()
 	err := tg.addToken("token", time.Now().Add(time.Minute))

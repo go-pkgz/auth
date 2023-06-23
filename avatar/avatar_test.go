@@ -241,7 +241,7 @@ func TestAvatar_GetGravatarURL(t *testing.T) {
 		err   error
 		url   string
 	}{
-		{"eefretsoul@gmail.com", nil, "https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851.jpg"},
+		{"eefretsoul@gmail.com", nil, "https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851"},
 		{"umputun-xyz@example.com", fmt.Errorf("404 Not Found"), ""},
 	}
 
@@ -254,7 +254,7 @@ func TestAvatar_GetGravatarURL(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-			assert.Equal(t, url, tt.url)
+			assert.Equal(t, tt.url, url)
 		})
 	}
 }

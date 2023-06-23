@@ -148,7 +148,7 @@ func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
-	assert.Equal(t, `{"name":"grava","id":"test_47dbf92d92954b1297cae73a864c159b4d847b9f","picture":"https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851.jpg"}`+"\n", rr.Body.String())
+	assert.Equal(t, `{"name":"grava","id":"test_47dbf92d92954b1297cae73a864c159b4d847b9f","picture":"https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851"}`+"\n", rr.Body.String())
 }
 
 func TestVerifyHandler_LoginAcceptConfirmWithGrAvatarDisabled(t *testing.T) {
