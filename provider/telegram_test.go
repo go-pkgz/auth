@@ -142,14 +142,13 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	servedToken = resp.Token
 	mu.Unlock()
 
-	time.Sleep(apiPollInterval * 2)
-
-	// The token should be confirmed by now
-	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
-	w = httptest.NewRecorder()
-	tg.LoginHandler(w, r)
-
-	assert.Equal(t, http.StatusOK, w.Code, "response code should be 200")
+	// Check the token confirmation
+	assert.Eventually(t, func() bool {
+		r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
+		w = httptest.NewRecorder()
+		tg.LoginHandler(w, r)
+		return w.Code == http.StatusOK
+	}, apiPollInterval*10, apiPollInterval, "response code should be 200")
 
 	info := struct {
 		Name    string `name:"name"`
