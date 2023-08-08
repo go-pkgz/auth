@@ -29,7 +29,11 @@ type Oauth2Handler struct {
 	mapUser         func(UserData, []byte) token.User // map info from InfoURL to User
 	bearerTokenHook BearerTokenHook                   // a way to get a Bearer token received from oauth2-provider
 	conf            oauth2.Config
+	authCodeOptions AuthCodeOption
+	exchangeOptions AuthCodeOption
 }
+
+type AuthCodeOption func() map[string]string
 
 // Params to make initialized and ready to use provider
 type Params struct {
@@ -123,8 +127,18 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// e.g. http://localhost:8080/auth/github/callback
 	p.conf.RedirectURL = p.makeRedirURL(r.URL.Path)
 
+	// support PKCE challenge for oauth2 providers auth code flow
+	aco := make([]oauth2.AuthCodeOption, 0)
+	if p.authCodeOptions != nil {
+		ss := p.authCodeOptions()
+
+		for k, v := range ss {
+			aco = append(aco, oauth2.SetAuthURLParam(k, v))
+		}
+	}
+
 	// return login url
-	loginURL := p.conf.AuthCodeURL(state)
+	loginURL := p.conf.AuthCodeURL(state, aco...)
 	p.Logf("[DEBUG] login url %s, claims=%+v", loginURL, claims)
 
 	http.Redirect(w, r, loginURL, http.StatusFound)
@@ -153,7 +167,18 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	p.conf.RedirectURL = p.makeRedirURL(r.URL.Path)
 
 	p.Logf("[DEBUG] token with state %s", retrievedState)
-	tok, err := p.conf.Exchange(context.Background(), r.URL.Query().Get("code"))
+
+	// support PKCE challenge for oauth2 providers exchange code flow
+	aco := make([]oauth2.AuthCodeOption, 0)
+	if p.authCodeOptions != nil {
+		ss := p.authCodeOptions()
+
+		for k, v := range ss {
+			aco = append(aco, oauth2.SetAuthURLParam(k, v))
+		}
+	}
+
+	tok, err := p.conf.Exchange(context.Background(), r.URL.Query().Get("code"), aco...)
 	if err != nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "exchange failed")
 		return

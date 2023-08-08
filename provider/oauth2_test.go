@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grokify/go-pkce"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -35,9 +36,28 @@ func (h *rememberLastBearerTokenHook) hook(s string, user token.User, o oauth2.T
 	h.LastToken = o
 }
 
+var codeVerifier string
+
+func preAuthCodeOps() map[string]string {
+	// Create a code_verifier with default 32 byte length.
+	codeVerifier, _ = pkce.NewCodeVerifier(-1)
+
+	codeChallenge := pkce.CodeChallengeS256(codeVerifier)
+	return map[string]string{
+		"code_challenge":         codeChallenge,
+		"code_challenge_method:": pkce.MethodS256,
+	}
+}
+
+func postAuthCodeOps() map[string]string {
+	return map[string]string{
+		"code_verifier": codeVerifier,
+	}
+}
+
 func TestOauth2Login(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982, nil)
+	teardown := prepOauth2Test(t, 8981, 8982, nil, nil, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -91,7 +111,7 @@ func TestOauth2Login(t *testing.T) {
 func TestOauth2LoginBearerTokenHook(t *testing.T) {
 
 	btHook := rememberLastBearerTokenHook{}
-	teardown := prepOauth2Test(t, 8981, 8982, btHook.hook)
+	teardown := prepOauth2Test(t, 8981, 8982, btHook.hook, nil, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -116,10 +136,28 @@ func TestOauth2LoginBearerTokenHook(t *testing.T) {
 	assert.Equal(t, "mock_myuser2", btHook.LastUser.ID)
 	assert.Equal(t, "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3", btHook.LastToken.AccessToken)
 }
+func TestOauth2LoginAuthCodeOption(t *testing.T) {
+
+	teardown := prepOauth2Test(t, 8981, 8982, nil, preAuthCodeOps, postAuthCodeOps)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	// check non-admin, permanent
+	resp, err := client.Get("http://localhost:8981/login?site=remark")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	t.Logf("resp %s", string(body))
+
+}
 
 func TestOauth2LoginSessionOnly(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982, nil)
+	teardown := prepOauth2Test(t, 8981, 8982, nil, nil, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -153,7 +191,7 @@ func TestOauth2LoginSessionOnly(t *testing.T) {
 
 func TestOauth2LoginNoAva(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982, nil)
+	teardown := prepOauth2Test(t, 8981, 8982, nil, nil, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -188,7 +226,7 @@ func TestOauth2LoginNoAva(t *testing.T) {
 
 func TestOauth2Logout(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8691, 8692, nil)
+	teardown := prepOauth2Test(t, 8691, 8692, nil, nil, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -228,7 +266,7 @@ func TestOauth2InitProvider(t *testing.T) {
 }
 
 func TestOauth2InvalidHandler(t *testing.T) {
-	teardown := prepOauth2Test(t, 8691, 8692, nil)
+	teardown := prepOauth2Test(t, 8691, 8692, nil, nil, nil)
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -258,7 +296,7 @@ func TestMakeRedirURL(t *testing.T) {
 	}
 }
 
-func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook) func() {
+func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook, preaco, postaco AuthCodeOption) func() {
 
 	provider := Oauth2Handler{
 		name: "mock",
@@ -277,6 +315,8 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHoo
 			return userInfo
 		},
 		bearerTokenHook: btHook,
+		authCodeOptions: preaco,
+		exchangeOptions: postaco,
 	}
 
 	jwtService := token.NewService(token.Opts{
