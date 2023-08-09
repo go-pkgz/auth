@@ -27,6 +27,8 @@ type CustomHandlerOpt struct {
 	MapUserFn         func(UserData, []byte) token.User
 	BearerTokenHookFn BearerTokenHook
 	Scopes            []string
+	AuthCodeOptions   AuthCodeOption
+	ExchangeOptions   AuthCodeOption
 }
 
 // CustomServerOpt are options to initialize a custom go-oauth2/oauth2 server
@@ -212,6 +214,8 @@ func NewCustom(name string, p Params, copts CustomHandlerOpt) Oauth2Handler {
 		infoURL:         copts.InfoURL,
 		mapUser:         copts.MapUserFn,
 		bearerTokenHook: copts.BearerTokenHookFn,
+		authCodeOptions: copts.AuthCodeOptions,
+		exchangeOptions: copts.ExchangeOptions,
 	})
 }
 
