@@ -52,20 +52,20 @@ func TestProvider(t *testing.T) {
 	_, err := svc.Provider("some provider")
 	assert.EqualError(t, err, "provider some provider not found")
 
-	svc.AddProvider("dev", "cid", "csecret")
-	svc.AddProvider("github", "cid", "csecret")
-	svc.AddProvider("google", "cid", "csecret")
-	svc.AddProvider("facebook", "cid", "csecret")
-	svc.AddProvider("yandex", "cid", "csecret")
-	svc.AddProvider("microsoft", "cid", "csecret")
-	svc.AddProvider("battlenet", "cid", "csecret")
-	svc.AddProvider("patreon", "cid", "csecret")
+	svc.AddProvider(ProviderDev, "cid", "csecret")
+	svc.AddProvider(ProviderGithub, "cid", "csecret")
+	svc.AddProvider(ProviderGoogle, "cid", "csecret")
+	svc.AddProvider(ProviderFacebook, "cid", "csecret")
+	svc.AddProvider(ProviderYandex, "cid", "csecret")
+	svc.AddProvider(ProviderMicrosoft, "cid", "csecret")
+	svc.AddProvider(ProviderBattlenet, "cid", "csecret")
+	svc.AddProvider(ProviderPatreon, "cid", "csecret")
 	svc.AddProvider("bad", "cid", "csecret")
 
 	c := customHandler{}
 	svc.AddCustomHandler(c)
 
-	p, err := svc.Provider("dev")
+	p, err := svc.Provider(ProviderDev.String())
 	assert.NoError(t, err)
 	op := p.Provider.(provider.Oauth2Handler)
 	assert.Equal(t, "dev", op.Name())
@@ -509,8 +509,8 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 	}
 
 	svc = NewService(options)
-	svc.AddDevProvider("localhost", 18084)   // add dev provider on 18084
-	svc.AddProvider("github", "cid", "csec") // add github provider
+	svc.AddDevProvider("localhost", 18084)         // add dev provider on 18084
+	svc.AddProvider(ProviderGithub, "cid", "csec") // add github provider
 
 	// add go-oauth2/oauth2 provider
 	svc.AddCustomProvider("custom123", Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
