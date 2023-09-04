@@ -224,8 +224,7 @@ func (s *Service) Middleware() middleware.Authenticator {
 
 // AddProvider adds provider for given name
 func (s *Service) AddProvider(name, cid, csecret string) {
-
-	p := provider.Params{
+	s.addProviderWithParams(name, provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
 		Issuer:      s.issuer,
@@ -233,8 +232,25 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 		Cid:         cid,
 		Csecret:     csecret,
 		L:           s.logger,
-	}
+	})
+}
 
+// AddProviderWithOptions adds provider for given name with extra options
+func (s *Service) AddProviderWithOptions(name, cid, csecret string, extraScopes []string, extraUserInfoFn provider.ExtraUserInfoFunc) {
+	s.addProviderWithParams(name, provider.Params{
+		URL:             s.opts.URL,
+		JwtService:      s.jwtService,
+		Issuer:          s.issuer,
+		AvatarSaver:     s.avatarProxy,
+		Cid:             cid,
+		Csecret:         csecret,
+		ExtraScopes:     extraScopes,
+		ExtraUserInfoFn: extraUserInfoFn,
+		L:               s.logger,
+	})
+}
+
+func (s *Service) addProviderWithParams(name string, p provider.Params) {
 	switch strings.ToLower(name) {
 	case "github":
 		s.providers = append(s.providers, provider.NewService(provider.NewGithub(p)))

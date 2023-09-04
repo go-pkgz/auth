@@ -218,13 +218,14 @@ func TestOauth2Logout(t *testing.T) {
 }
 
 func TestOauth2InitProvider(t *testing.T) {
-	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", Issuer: "app-test"}
-	provider := Oauth2Handler{name: "test"}
+	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", Issuer: "app-test", ExtraScopes: []string{"extra-scope"}}
+	provider := Oauth2Handler{name: "test", scopes: []string{"minimal-scope"}}
 	res := initOauth2Handler(params, provider)
 	assert.Equal(t, "cid", res.conf.ClientID)
 	assert.Equal(t, "csecret", res.conf.ClientSecret)
 	assert.Equal(t, "test", res.name)
 	assert.Equal(t, "app-test", res.Issuer)
+	assert.Equal(t, []string{"minimal-scope", "extra-scope"}, res.conf.Scopes)
 }
 
 func TestOauth2InvalidHandler(t *testing.T) {
