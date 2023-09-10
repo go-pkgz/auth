@@ -17,7 +17,7 @@ import (
 	"golang.org/x/oauth2/yandex"
 )
 
-//Type that will be used to map user data from provider to token.User
+// UserAttributes is the type that will be used to map user data from provider to token.User
 type UserAttributes map[string]string
 
 // NewGoogle makes google oauth2 provider
