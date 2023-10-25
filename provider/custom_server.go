@@ -163,7 +163,7 @@ func (c *CustomServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	user := token.User{
 		ID:      userID,
 		Name:    userID,
-		Picture: fmt.Sprintf(c.URL+"/avatar?user=%s", userID),
+		Picture: fmt.Sprintf(c.URL+"/avatar?user=%s", url.QueryEscape(userID)),
 	}
 	res, err := json.Marshal(user)
 	if err != nil {
