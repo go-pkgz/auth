@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/dghubble/oauth1 v0.7.2
 	github.com/go-oauth2/oauth2/v4 v4.5.2
-	github.com/go-pkgz/email v0.4.1
+	github.com/go-pkgz/email v0.4.2-0.20231201080243-58c9950a4232
 	github.com/go-pkgz/repeater v1.1.3
 	github.com/go-pkgz/rest v1.17.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
