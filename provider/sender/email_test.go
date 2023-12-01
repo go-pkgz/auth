@@ -38,16 +38,17 @@ func TestEmailSend(t *testing.T) {
 
 func TestEmail_New(t *testing.T) {
 	p := EmailParams{
-		Host:         "127.0.0.2",
-		From:         "from@example.com",
-		SMTPUserName: "user",
-		SMTPPassword: "pass",
-		Subject:      "subj",
-		ContentType:  "text/html",
-		Charset:      "UTF-8",
-		LoginAuth:    true,
-		StartTLS:     true,
-		TLS:          true,
+		Host:               "127.0.0.2",
+		From:               "from@example.com",
+		SMTPUserName:       "user",
+		SMTPPassword:       "pass",
+		Subject:            "subj",
+		ContentType:        "text/html",
+		Charset:            "UTF-8",
+		LoginAuth:          true,
+		StartTLS:           true,
+		TLS:                true,
+		InsecureSkipVerify: true,
 	}
 	e := NewEmailClient(p, logger.Std)
 	assert.Equal(t, p, e.EmailParams)
@@ -62,7 +63,7 @@ func TestEmail_SendFailed(t *testing.T) {
 	require.NotNil(t, err, "failed to make smtp client")
 
 	p = EmailParams{Host: "127.0.0.1", Port: 225, From: "from@example.com", Subject: "subj", ContentType: "text/html",
-		TLS: true}
+		TLS: true, InsecureSkipVerify: true}
 	e = NewEmailClient(p, logger.Std)
 	err = e.Send("to@example.com", "some text")
 	require.NotNil(t, err)
