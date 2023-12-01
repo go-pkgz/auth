@@ -63,7 +63,7 @@ func TestEmail_SendFailed(t *testing.T) {
 	require.NotNil(t, err, "failed to make smtp client")
 
 	p = EmailParams{Host: "127.0.0.1", Port: 225, From: "from@example.com", Subject: "subj", ContentType: "text/html",
-		TLS: true, InsecureSkipVerify: true}
+		TLS: true}
 	e = NewEmailClient(p, logger.Std)
 	err = e.Send("to@example.com", "some text")
 	require.NotNil(t, err)
