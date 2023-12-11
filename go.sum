@@ -23,8 +23,6 @@ github.com/gavv/httpexpect v2.0.0+incompatible h1:1X9kcRshkSKEjNJJxX9Y9mQ5BRfbxU
 github.com/gavv/httpexpect v2.0.0+incompatible/go.mod h1:x+9tiU1YnrOvnB725RkpoLv1M62hOWzwo5OXotisrKc=
 github.com/go-oauth2/oauth2/v4 v4.5.2 h1:CuZhD3lhGuI6aNLyUbRHXsgG2RwGRBOuCBfd4WQKqBQ=
 github.com/go-oauth2/oauth2/v4 v4.5.2/go.mod h1:wk/2uLImWIa9VVQDgxz99H2GDbhmfi/9/Xr+GvkSUSQ=
-github.com/go-pkgz/email v0.4.1 h1:2vtP2gibsSzqhz6eD5DklSp11m657XEVf17fuXaxMvk=
-github.com/go-pkgz/email v0.4.1/go.mod h1:BdxglsQnymzhfdbnncEE72a6DrucZHy6I+42LK2jLEc=
 github.com/go-pkgz/email v0.4.2-0.20231201080243-58c9950a4232 h1:yfe3v+ai3DYyHl39xCQRB8+uJa1AbaVd1+2m51ZDq6s=
 github.com/go-pkgz/email v0.4.2-0.20231201080243-58c9950a4232/go.mod h1:BdxglsQnymzhfdbnncEE72a6DrucZHy6I+42LK2jLEc=
 github.com/go-pkgz/repeater v1.1.3 h1:q6+JQF14ESSy28Dd7F+wRelY4F+41HJ0LEy/szNnMiE=
