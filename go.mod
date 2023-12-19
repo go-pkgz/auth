@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/dghubble/oauth1 v0.7.2
 	github.com/go-oauth2/oauth2/v4 v4.5.2
-	github.com/go-pkgz/email v0.4.2-0.20231201080243-58c9950a4232
+	github.com/go-pkgz/email v0.5.0
 	github.com/go-pkgz/repeater v1.1.3
 	github.com/go-pkgz/rest v1.17.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
@@ -15,11 +15,11 @@ require (
 	go.etcd.io/bbolt v1.3.7
 	go.mongodb.org/mongo-driver v1.12.1
 	golang.org/x/image v0.13.0
-	golang.org/x/oauth2 v0.13.0
+	golang.org/x/oauth2 v0.9.0
 )
 
 require (
-	cloud.google.com/go/compute v1.23.1 // indirect
+	cloud.google.com/go/compute v1.14.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
