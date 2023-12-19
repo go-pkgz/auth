@@ -611,6 +611,7 @@ func createTestResponseToken(privKey interface{}) (string, error) {
 }
 
 func createTestSignKeyPairs(t *testing.T) (privKey *rsa.PrivateKey, jwk string) {
+	//nolint:gosec // test example and not a real key
 	privateStr := `-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA4f5wg5l2hKsTeNem/V41fGnJm6gOdrj8ym3rFkEU/wT8RDtn
 SgFEZOQpHEgQ7JL38xUfU0Y3g6aYw9QT0hJ7mCpz9Er5qLaMXJwZxzHzAahlfA0i
