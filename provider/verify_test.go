@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -59,7 +60,7 @@ func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 	assert.Equal(t, "test", e.Name())
 }
 
-func TestVerifyHandler_LoginSendConfirmRejected(t *testing.T) {
+func TestVerifyHandler_LoginSendConfirmEscapesBadInput(t *testing.T) {
 
 	emailer := mockSender{}
 	e := VerifyHandler{
@@ -77,20 +78,22 @@ func TestVerifyHandler_LoginSendConfirmRejected(t *testing.T) {
 
 	handler := http.HandlerFunc(e.LoginHandler)
 	rr := httptest.NewRecorder()
-	badUser := "%3C%21DOCTYPE%20html%3E%20%0A%3Chtml%3E%20%0A%3Chead%3E%0A%3Cmeta%20name%3D%22viewport%22%20content%3D%22width%3Ddevice-width%2C%20initial-scale%3D1%22%3E%0A%3Ctitle%3E%20Login%20Page%20%3C%2Ftitle%3E%0A%3Cstyle%3E%20%0ABody%20%7B%0A%20%20font-family%3A%20Calibri%2C%20Helvetica%2C%20sans-serif%3B%0A%20%20background-color%3A%20pink%3B%0A%7D%0Abutton%20%7B%20%0A%20%20%20%20%20%20%20background-color%3A%20%234CAF50%3B%20%0A%20%20%20%20%20%20%20width%3A%20100%25%3B%0A%20%20%20%20%20%20%20%20color%3A%20orange%3B%20%0A%20%20%20%20%20%20%20%20padding%3A%2015px%3B%20%0A%20%20%20%20%20%20%20%20margin%3A%2010px%200px%3B%20%0A%20%20%20%20%20%20%20%20border%3A%20none%3B%20%0A%20%20%20%20%20%20%20%20cursor%3A%20pointer%3B%20%0A%20%20%20%20%20%20%20%20%20%7D%20%0A%20form%20%7B%20%0A%20%20%20%20%20%20%20%20border%3A%203px%20solid%20%23f1f1f1%3B%20%0A%20%20%20%20%7D%20%0A%20input%5Btype%3Dtext%5D%2C%20input%5Btype%3Dpassword%5D%20%7B%20%0A%20%20%20%20%20%20%20%20width%3A%20100%25%3B%20%0A%20%20%20%20%20%20%20%20margin%3A%208px%200%3B%0A%20%20%20%20%20%20%20%20padding%3A%2012px%2020px%3B%20%0A%20%20%20%20%20%20%20%20display%3A%20inline-block%3B%20%0A%20%20%20%20%20%20%20%20border%3A%202px%20solid%20green%3B%20%0A%20%20%20%20%20%20%20%20box-sizing%3A%20border-box%3B%20%0A%20%20%20%20%7D%0A%20button%3Ahover%20%7B%20%0A%20%20%20%20%20%20%20%20opacity%3A%200.7%3B%20%0A%20%20%20%20%7D%20%0A%20%20.cancelbtn%20%7B%20%0A%20%20%20%20%20%20%20%20width%3A%20auto%3B%20%0A%20%20%20%20%20%20%20%20padding%3A%2010px%2018px%3B%0A%20%20%20%20%20%20%20%20margin%3A%2010px%205px%3B%0A%20%20%20%20%7D%20%0A%20%20%20%20%20%20%0A%20%20%20%0A%20.container%20%7B%20%0A%20%20%20%20%20%20%20%20padding%3A%2025px%3B%20%0A%20%20%20%20%20%20%20%20background-color%3A%20lightblue%3B%0A%20%20%20%20%7D%20%0A%3C%2Fstyle%3E%20%0A%3C%2Fhead%3E%20%20%0A%3Cbody%3E%20%20%0A%20%20%20%20%3Ccenter%3E%20%3Ch1%3E%20Student%20Login%20Form%20%3C%2Fh1%3E%20%3C%2Fcenter%3E%20%0A%20%20%20%20%3Cform%3E%0A%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22container%22%3E%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Clabel%3EUsername%20%3A%20%3C%2Flabel%3E%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22text%22%20placeholder%3D%22Enter%20Username%22%20name%3D%22username%22%20required%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Clabel%3EPassword%20%3A%20%3C%2Flabel%3E%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22password%22%20placeholder%3D%22Enter%20Password%22%20name%3D%22password%22%20required%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20type%3D%22submit%22%3ELogin%3C%2Fbutton%3E%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22checkbox%22%20checked%3D%22checked%22%3E%20Remember%20me%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20type%3D%22button%22%20class%3D%22cancelbtn%22%3E%20Cancel%3C%2Fbutton%3E%20%0A%20%20%20%20%20%20%20%20%20%20%20%20Forgot%20%3Ca%20href%3D%22%23%22%3E%20password%3F%20%3C%2Fa%3E%20%0A%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%20%0A%20%20%20%20%3C%2Fform%3E%20%20%20%0A%3C%2Fbody%3E%20%20%20%0A%3C%2Fhtml%3E%0A%0A%20%0A"
-	req, err := http.NewRequest("GET", "/login?address=blah@user.com&user="+badUser+"&site=remark42", http.NoBody)
+	badData := "<html><script>nasty stuff</script>&lt;escaped&gt;</html>"
+	req, err := http.NewRequest("GET", "/login?address=blah@user.com&user="+url.QueryEscape(badData)+"&site="+url.QueryEscape(badData), http.NoBody)
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
 	assert.Equal(t, "blah@user.com", emailer.to)
-	assert.Contains(t, emailer.text, "Password :    blah@user.com remark42 token:")
+	expectedEscaped := "&lt;html&gt;&lt;script&gt;nasty stuff&lt;/script&gt;&amp;lt;escaped&amp;gt;&lt;/html&gt;"
+	assert.Contains(t, emailer.text, expectedEscaped+" blah@user.com "+expectedEscaped+" token:")
 
 	tknStr := strings.Split(emailer.text, " token:")[1]
 	tkn, err := e.TokenService.Parse(tknStr)
 	assert.NoError(t, err)
 	t.Logf("%s %+v", tknStr, tkn)
-	assert.Equal(t, "&lt;h1&gt; Student Login Form &lt;/h1&gt;              &lt;div&gt;             Username :                          Password :   ::blah@user.com", tkn.Handshake.ID)
-	assert.Equal(t, "remark42", tkn.Audience)
+	// not escaped in these fields as they are not rendered as HTML
+	assert.Equal(t, badData+"::blah@user.com", tkn.Handshake.ID)
+	assert.Equal(t, badData, tkn.Audience)
 	assert.True(t, tkn.ExpiresAt > tkn.NotBefore)
 
 	assert.Equal(t, "test", e.Name())
