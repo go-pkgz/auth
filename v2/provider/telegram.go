@@ -17,7 +17,7 @@ import (
 
 	"github.com/go-pkgz/repeater"
 	"github.com/go-pkgz/rest"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/go-pkgz/auth/v2/logger"
 	authtoken "github.com/go-pkgz/auth/v2/token"
@@ -302,12 +302,12 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 
 	claims := authtoken.Claims{
 		User: &u,
-		StandardClaims: jwt.StandardClaims{
-			Audience:  r.URL.Query().Get("site"),
-			Id:        queryToken,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  []string{r.URL.Query().Get("site")},
+			ID:        queryToken,
 			Issuer:    th.ProviderName,
-			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
-			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * time.Minute)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
 		},
 		SessionOnly: false, // TODO review?
 	}

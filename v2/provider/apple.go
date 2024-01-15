@@ -24,7 +24,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/rest"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/go-pkgz/auth/v2/logger"
 	"github.com/go-pkgz/auth/v2/token"
@@ -261,11 +261,11 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			From:  r.URL.Query().Get("from"),
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
-		StandardClaims: jwt.StandardClaims{
-			Id:        cid,
-			Audience:  r.URL.Query().Get("site"),
-			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
-			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        cid,
+			Audience:  jwt.ClaimStrings{r.URL.Query().Get("site")},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * time.Minute)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
 		},
 	}
 
@@ -370,9 +370,9 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims{
 		User: &u,
-		StandardClaims: jwt.StandardClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:   ah.Issuer,
-			Id:       cid,
+			ID:       cid,
 			Audience: oauthClaims.Audience,
 		},
 		SessionOnly: false,
@@ -467,13 +467,13 @@ func (ah *AppleHandler) createClientSecret() (string, error) {
 	}
 	// Create a claims
 	now := time.Now()
-	exp := now.Add(time.Minute * 30).Unix() // default value
+	exp := now.Add(time.Minute * 30) // default value
 
-	claims := &jwt.StandardClaims{
+	claims := &jwt.RegisteredClaims{
 		Issuer:    ah.conf.TeamID,
-		IssuedAt:  now.Unix(),
-		ExpiresAt: exp,
-		Audience:  "https://appleid.apple.com",
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(exp),
+		Audience:  []string{"https://appleid.apple.com"},
 		Subject:   ah.conf.ClientID,
 	}
 
