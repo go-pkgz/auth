@@ -8,7 +8,7 @@ require (
 	github.com/go-pkgz/email v0.5.0
 	github.com/go-pkgz/repeater v1.1.3
 	github.com/go-pkgz/rest v1.18.2
-	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt v3.2.1+incompatible
 	github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022
 	github.com/stretchr/testify v1.8.4
 	go.etcd.io/bbolt v1.3.8
