@@ -10,7 +10,7 @@ require (
 	github.com/go-pkgz/auth v1.22.0
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/go-pkgz/rest v1.18.2
-	github.com/golang-jwt/jwt/v4 v4.5.0
+	github.com/golang-jwt/jwt/v5 v5.2.0
 	golang.org/x/oauth2 v0.15.0
 )
 
