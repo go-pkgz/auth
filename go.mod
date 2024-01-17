@@ -8,7 +8,7 @@ require (
 	github.com/go-pkgz/email v0.5.0
 	github.com/go-pkgz/repeater v1.1.3
 	github.com/go-pkgz/rest v1.18.2
-	github.com/golang-jwt/jwt v3.2.1+incompatible
+	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022
 	github.com/stretchr/testify v1.8.4
 	go.etcd.io/bbolt v1.3.8
@@ -21,6 +21,7 @@ require (
 	cloud.google.com/go/compute v1.23.3 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/golang-jwt/jwt v3.2.1+incompatible // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.1.1 // indirect

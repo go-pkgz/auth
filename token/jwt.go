@@ -3,13 +3,18 @@ package token
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 )
+
+func init() {
+	jwt.MarshalSingleStringAsArray = false
+}
 
 // Service wraps jwt operations
 // supports both header and cookie tokens
@@ -19,7 +24,7 @@ type Service struct {
 
 // Claims stores user info for token and state & from from login
 type Claims struct {
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 	User        *User      `json:"user,omitempty"` // user info
 	SessionOnly bool       `json:"sess_only,omitempty"`
 	Handshake   *Handshake `json:"handshake,omitempty"` // used for oauth handshake
@@ -121,7 +126,7 @@ func (j *Service) Token(claims Claims) (string, error) {
 		return "", fmt.Errorf("aud rejected: %w", err)
 	}
 
-	secret, err := j.SecretReader.Get(claims.Audience) // get secret via consumer defined SecretReader
+	secret, err := j.SecretReader.Get(claims.Audience[0]) // get secret via consumer defined SecretReader
 	if err != nil {
 		return "", fmt.Errorf("can't get secret: %w", err)
 	}
@@ -135,7 +140,7 @@ func (j *Service) Token(claims Claims) (string, error) {
 
 // Parse token string and verify. Not checking for expiration
 func (j *Service) Parse(tokenString string) (Claims, error) {
-	parser := jwt.Parser{SkipClaimsValidation: true} // allow parsing of expired tokens
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
 
 	if j.SecretReader == nil {
 		return Claims{}, fmt.Errorf("secret reader not defined")
@@ -179,7 +184,7 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 // aud pre-parse token and extracts aud from the claim
 // important! this step ignores token verification, should not be used for any validations
 func (j *Service) aud(tokenString string) (string, error) {
-	parser := jwt.Parser{}
+	parser := jwt.NewParser()
 	token, _, err := parser.ParseUnverified(tokenString, &Claims{})
 	if err != nil {
 		return "", fmt.Errorf("can't pre-parse token: %w", err)
@@ -188,34 +193,44 @@ func (j *Service) aud(tokenString string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("invalid token")
 	}
-	if strings.TrimSpace(claims.Audience) == "" {
+
+	if len(claims.Audience) == 0 {
 		return "", fmt.Errorf("empty aud")
 	}
-	return claims.Audience, nil
+	aud := claims.Audience[0]
+
+	if strings.TrimSpace(aud) == "" {
+		return "", fmt.Errorf("empty aud")
+	}
+	return aud, nil
 }
 
 func (j *Service) validate(claims *Claims) error {
-	cerr := claims.Valid()
+	validator := jwt.NewValidator()
+	err := validator.Validate(claims)
 
-	if cerr == nil {
+	if err == nil {
 		return nil
 	}
 
-	if e, ok := cerr.(*jwt.ValidationError); ok {
-		if e.Errors == jwt.ValidationErrorExpired {
-			return nil // allow expired tokens
+	// Ignore "ErrTokenExpired" if it is the only error.
+	if errors.Is(err, jwt.ErrTokenExpired) {
+		if uw, ok := err.(interface{ Unwrap() []error }); ok && len(uw.Unwrap()) == 1 {
+			return nil
 		}
 	}
 
-	return cerr
+	return err
 }
 
 // Set creates token cookie with xsrf cookie and put it to ResponseWriter
 // accepts claims and sets expiration if none defined. permanent flag means long-living cookie,
 // false makes it session only.
 func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
-	if claims.ExpiresAt == 0 {
-		claims.ExpiresAt = time.Now().Add(j.TokenDuration).Unix()
+	nowUnix := time.Now().Unix()
+
+	if claims.ExpiresAt == nil || claims.ExpiresAt.Time.Unix() == 0 {
+		claims.ExpiresAt = jwt.NewNumericDate(time.Unix(nowUnix, 0).Add(j.TokenDuration))
 	}
 
 	if claims.Issuer == "" {
@@ -223,7 +238,7 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 	}
 
 	if !j.DisableIAT {
-		claims.IssuedAt = time.Now().Unix()
+		claims.IssuedAt = jwt.NewNumericDate(time.Unix(nowUnix, 0))
 	}
 
 	tokenString, err := j.Token(claims)
@@ -245,7 +260,7 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite}
 	http.SetCookie(w, &jwtCookie)
 
-	xsrfCookie := http.Cookie{Name: j.XSRFCookieName, Value: claims.Id, HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain,
+	xsrfCookie := http.Cookie{Name: j.XSRFCookieName, Value: claims.ID, HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain,
 		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite}
 	http.SetCookie(w, &xsrfCookie)
 
@@ -286,7 +301,10 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 
 	// promote claim's aud to User.Audience
 	if claims.User != nil {
-		claims.User.Audience = claims.Audience
+		if len(claims.Audience) != 1 {
+			return Claims{}, "", fmt.Errorf("aud is not of size 1")
+		}
+		claims.User.Audience = claims.Audience[0]
 	}
 
 	if !fromCookie && j.IsExpired(claims) {
@@ -299,7 +317,7 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 
 	if fromCookie && claims.User != nil {
 		xsrf := r.Header.Get(j.XSRFHeaderKey)
-		if claims.Id != xsrf {
+		if claims.ID != xsrf {
 			return Claims{}, "", fmt.Errorf("xsrf mismatch")
 		}
 	}
@@ -309,7 +327,9 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 
 // IsExpired returns true if claims expired
 func (j *Service) IsExpired(claims Claims) bool {
-	return !claims.VerifyExpiresAt(time.Now().Unix(), true)
+	validator := jwt.NewValidator(jwt.WithExpirationRequired())
+	err := validator.Validate(claims)
+	return errors.Is(err, jwt.ErrTokenExpired)
 }
 
 // Reset token's cookies
@@ -325,25 +345,32 @@ func (j *Service) Reset(w http.ResponseWriter) {
 
 // checkAuds verifies if claims.Audience in the list of allowed by audReader
 func (j *Service) checkAuds(claims *Claims, audReader Audience) error {
+	// marshal the audience.
 	if audReader == nil { // lack of any allowed means any
 		return nil
 	}
+
+	if len(claims.Audience) == 0 {
+		return fmt.Errorf("no audience provided")
+	}
+	claimsAudience := claims.Audience[0]
+
 	auds, err := audReader.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get auds: %w", err)
 	}
 	for _, a := range auds {
-		if strings.EqualFold(a, claims.Audience) {
+		if strings.EqualFold(a, claimsAudience) {
 			return nil
 		}
 	}
-	return fmt.Errorf("aud %q not allowed", claims.Audience)
+	return fmt.Errorf("aud %q not allowed", claimsAudience)
 }
 
 func (c Claims) String() string {
 	b, err := json.Marshal(c)
 	if err != nil {
-		return fmt.Sprintf("%+v %+v", c.StandardClaims, c.User)
+		return fmt.Sprintf("%+v %+v", c.RegisteredClaims, c.User)
 	}
 	return string(b)
 }

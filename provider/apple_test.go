@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -303,7 +303,7 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 	require.NoError(t, err)
 	t.Log(claims)
 	assert.Equal(t, "go-pkgz/auth", claims.Issuer)
-	assert.Equal(t, "remark", claims.Audience)
+	assert.Equal(t, "remark", claims.Audience[0])
 
 }
 

@@ -22,7 +22,7 @@ import (
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth"
