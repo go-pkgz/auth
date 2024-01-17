@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-pkgz/rest"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -75,6 +77,10 @@ type Opts struct {
 
 // NewService initializes everything
 func NewService(opts Opts) (res *Service) {
+	var once sync.Once
+	once.Do(func() {
+		jwt.MarshalSingleStringAsArray = false
+	})
 
 	res = &Service{
 		opts:   opts,
