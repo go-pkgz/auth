@@ -10,7 +10,7 @@ require (
 	github.com/go-pkgz/auth v1.22.0
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/go-pkgz/rest v1.18.2
-	github.com/golang-jwt/jwt/v5 v5.2.0
+	github.com/golang-jwt/jwt v3.2.1+incompatible
 	golang.org/x/oauth2 v0.15.0
 )
 
@@ -19,7 +19,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	github.com/dghubble/oauth1 v0.7.2 // indirect
 	github.com/go-pkgz/repeater v1.1.3 // indirect
-	github.com/golang-jwt/jwt v3.2.1+incompatible // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.5.0 // indirect
