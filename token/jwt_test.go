@@ -88,7 +88,7 @@ func TestJWT_Token(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, res)
 
-	newClaims, err := j.Parse(res)
+	newClaims, _ := j.Parse(res)
 	assert.Equal(t, claims, newClaims)
 	fmt.Println(claims)
 	fmt.Println(newClaims)
