@@ -18,7 +18,7 @@ import (
 	"github.com/go-oauth2/oauth2/v4/models"
 	goauth2 "github.com/go-oauth2/oauth2/v4/server"
 	"github.com/go-oauth2/oauth2/v4/store"
-	"github.com/golang-jwt/jwt"
+	oldjwt "github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -192,7 +192,7 @@ func initGoauth2Srv(t *testing.T) *goauth2.Server {
 	manager.MustTokenStorage(store.NewMemoryTokenStore())
 
 	// generate jwt access token
-	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("", []byte("00000000"), jwt.SigningMethodHS512))
+	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("", []byte("00000000"), oldjwt.SigningMethodHS512))
 
 	// client memory store
 	clientStore := store.NewClientStore()

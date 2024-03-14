@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-pkgz/rest"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -111,8 +111,8 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims{
 		User: &u,
-		StandardClaims: jwt.StandardClaims{
-			Id:       cid,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:       cid,
 			Issuer:   e.Issuer,
 			Audience: confClaims.Audience,
 		},
@@ -146,10 +146,10 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 			ID:    user + "::" + address,
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
-		StandardClaims: jwt.StandardClaims{
-			Audience:  site,
-			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
-			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  []string{site},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * time.Minute)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
 			Issuer:    e.Issuer,
 		},
 	}
