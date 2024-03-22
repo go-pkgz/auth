@@ -230,7 +230,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)} //nolint:gosec
 
 	count := 0
-	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
+	useIDs := []string{"myuser1", "myuser2"} // user for first ans second calls
 
 	//nolint
 	var (
@@ -270,7 +270,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 					"id": "%s",
 					"name":"blah",
 					"picture":"http://exmple.com/pic1.png"
-					}`, useIds[count])
+					}`, useIDs[count])
 				count++
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				_, err := w.Write([]byte(res))
