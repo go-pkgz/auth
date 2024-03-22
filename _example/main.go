@@ -22,7 +22,7 @@ import (
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
-	oldjwt "github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth"
@@ -295,7 +295,7 @@ func initGoauth2Srv() *goauth2.Server {
 	manager.MustTokenStorage(store.NewMemoryTokenStore())
 
 	// generate jwt access token
-	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("custom", []byte("00000000"), oldjwt.SigningMethodHS512))
+	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("custom", []byte("00000000"), &signingMethodHMACWrapperV1{SigningMethodHMAC: jwt.SigningMethodHS512}))
 
 	// client memory store
 	clientStore := store.NewClientStore()
@@ -328,4 +328,19 @@ func initGoauth2Srv() *goauth2.Server {
 	})
 
 	return srv
+}
+
+type signingMethodHMACWrapperV1 struct {
+	*jwt.SigningMethodHMAC
+}
+
+// Verify the way it was implemented in v1, wrapper for v5
+func (s *signingMethodHMACWrapperV1) Verify(signingString string, signature string, key interface{}) error {
+	return s.SigningMethodHMAC.Verify(signingString, []byte(signature), key)
+}
+
+// Sign the way it was implemented in v1, wrapper for v5
+func (s signingMethodHMACWrapperV1) Sign(signingString string, key interface{}) (string, error) {
+	sig, err := s.SigningMethodHMAC.Sign(signingString, key)
+	return string(sig), err
 }
