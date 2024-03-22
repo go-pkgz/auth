@@ -311,7 +311,7 @@ func initGoauth2Srv() *goauth2.Server {
 
 	srv := goauth2.NewServer(goauth2.NewConfig(), manager)
 
-	srv.SetUserAuthorizationHandler(func(w http.ResponseWriter, r *http.Request) (string, error) {
+	srv.SetUserAuthorizationHandler(func(_ http.ResponseWriter, r *http.Request) (string, error) {
 		if r.Form.Get("username") != "admin" || r.Form.Get("password") != "admin" {
 			return "", fmt.Errorf("wrong creds. Use: admin admin")
 		}
