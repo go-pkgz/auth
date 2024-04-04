@@ -19,8 +19,8 @@ import (
 	"github.com/rrivera/identicon"
 	"golang.org/x/image/draw"
 
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/auth/v2/logger"
+	"github.com/go-pkgz/auth/v2/token"
 )
 
 // Proxy provides http handler for avatars from avatar.Store

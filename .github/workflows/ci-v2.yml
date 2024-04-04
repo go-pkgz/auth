@@ -1,14 +1,14 @@
-name: build
+name: build-v2
 
 on:
   push:
     branches:
     tags:
-    paths-ignore:
+    paths:
       - ".github/workflows/ci-v2.yml"
       - "v2/**"
   pull_request:
-    paths-ignore:
+    paths:
       - ".github/workflows/ci-v2.yml"
       - "v2/**"
 
@@ -36,17 +36,11 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
-      - name: build the example
-        working-directory: _example
-        run: |
-          go build -race
-        env:
-          TZ: "America/Chicago"
-
       - name: build and test
         run: |
           go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...
           go build -race
+        working-directory: v2
         env:
           TZ: "America/Chicago"
           ENABLE_MONGO_TESTS: "true"
@@ -55,13 +49,8 @@ jobs:
         uses: golangci/golangci-lint-action@v4
         with:
           version: latest
-
-      - name: golangci-lint on example directory
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
           args: --config ../.golangci.yml
-          working-directory: _example
+          working-directory: v2
 
       - name: submit coverage
         run: |

@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	authtoken "github.com/go-pkgz/auth/token"
+	authtoken "github.com/go-pkgz/auth/v2/token"
 )
 
 // same across all tests

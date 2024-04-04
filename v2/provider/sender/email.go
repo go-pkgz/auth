@@ -4,7 +4,7 @@ package sender
 import (
 	"time"
 
-	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/v2/logger"
 	"github.com/go-pkgz/email"
 )
 

@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-pkgz/auth/avatar"
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/provider"
-	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/auth/v2/avatar"
+	"github.com/go-pkgz/auth/v2/logger"
+	"github.com/go-pkgz/auth/v2/provider"
+	"github.com/go-pkgz/auth/v2/token"
 )
 
 func TestNewService(t *testing.T) {

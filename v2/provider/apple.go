@@ -26,8 +26,8 @@ import (
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
 
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/auth/v2/logger"
+	"github.com/go-pkgz/auth/v2/token"
 )
 
 const (
@@ -41,7 +41,7 @@ const (
 	appleRequestContentType = "application/x-www-form-urlencoded"
 
 	// UserAgent required to every request to Apple REST API
-	defaultUserAgent = "github.com/go-pkgz/auth"
+	defaultUserAgent = "github.com/go-pkgz/auth/v2"
 
 	// AcceptJSONHeader is the content to accept from response
 	AcceptJSONHeader = "application/json"

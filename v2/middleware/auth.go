@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/provider"
-	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/auth/v2/logger"
+	"github.com/go-pkgz/auth/v2/provider"
+	"github.com/go-pkgz/auth/v2/token"
 )
 
 // Authenticator is top level auth object providing middlewares

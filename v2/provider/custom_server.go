@@ -15,9 +15,9 @@ import (
 	goauth2 "github.com/go-oauth2/oauth2/v4/server"
 	"golang.org/x/oauth2"
 
-	"github.com/go-pkgz/auth/avatar"
-	"github.com/go-pkgz/auth/logger"
-	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/auth/v2/avatar"
+	"github.com/go-pkgz/auth/v2/logger"
+	"github.com/go-pkgz/auth/v2/token"
 )
 
 // CustomHandlerOpt are options to initialize a handler for oauth2 server

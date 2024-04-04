@@ -19,8 +19,8 @@ import (
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
 
-	"github.com/go-pkgz/auth/logger"
-	authtoken "github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/auth/v2/logger"
+	authtoken "github.com/go-pkgz/auth/v2/token"
 )
 
 // TelegramHandler implements login via telegram

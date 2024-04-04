@@ -1,4 +1,4 @@
-module github.com/go-pkgz/auth
+module github.com/go-pkgz/auth/v2
 
 go 1.21
 
