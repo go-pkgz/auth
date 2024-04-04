@@ -28,8 +28,8 @@ type Authenticator struct {
 
 // RefreshCache defines interface storing and retrieving refreshed tokens
 type RefreshCache interface {
-	Get(key interface{}) (value interface{}, ok bool)
-	Set(key, value interface{})
+	Get(key string) (value token.Claims, ok bool)
+	Set(key string, value token.Claims)
 }
 
 // TokenService defines interface accessing tokens
@@ -173,7 +173,7 @@ func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.
 	if a.RefreshCache != nil {
 		if c, ok := a.RefreshCache.Get(tkn); ok {
 			// already in cache
-			return c.(token.Claims), nil
+			return c, nil
 		}
 	}
 

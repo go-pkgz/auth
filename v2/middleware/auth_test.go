@@ -543,16 +543,16 @@ func makeTestAuth(_ *testing.T) Authenticator {
 }
 
 type testRefreshCache struct {
-	data map[interface{}]interface{}
+	data map[string]token.Claims
 	sync.RWMutex
 	hits, misses int32
 }
 
 func newTestRefreshCache() *testRefreshCache {
-	return &testRefreshCache{data: make(map[interface{}]interface{})}
+	return &testRefreshCache{data: make(map[string]token.Claims)}
 }
 
-func (c *testRefreshCache) Get(key interface{}) (value interface{}, ok bool) {
+func (c *testRefreshCache) Get(key string) (value token.Claims, ok bool) {
 	c.RLock()
 	defer c.RUnlock()
 	value, ok = c.data[key]
@@ -564,7 +564,7 @@ func (c *testRefreshCache) Get(key interface{}) (value interface{}, ok bool) {
 	return value, ok
 }
 
-func (c *testRefreshCache) Set(key, value interface{}) {
+func (c *testRefreshCache) Set(key string, value token.Claims) {
 	c.Lock()
 	defer c.Unlock()
 	c.data[key] = value
