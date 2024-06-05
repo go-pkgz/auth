@@ -52,12 +52,13 @@ func TestProvider(t *testing.T) {
 	_, err := svc.Provider("some provider")
 	assert.EqualError(t, err, "provider some provider not found")
 
-	svc.AddProvider("dev", "cid", "csecret")
+	svc.AddProviderWithUserAttributes("dev", "cid", "csecret", provider.UserAttributes{"attrName": "attrValue"})
 	svc.AddProvider("github", "cid", "csecret")
 	svc.AddProvider("google", "cid", "csecret")
 	svc.AddProvider("facebook", "cid", "csecret")
 	svc.AddProvider("yandex", "cid", "csecret")
 	svc.AddProvider("microsoft", "cid", "csecret")
+	svc.AddProvider("twitter", "cid", "csecret")
 	svc.AddProvider("battlenet", "cid", "csecret")
 	svc.AddProvider("patreon", "cid", "csecret")
 	svc.AddProvider("bad", "cid", "csecret")
@@ -72,6 +73,7 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "cid", op.Cid)
 	assert.Equal(t, "csecret", op.Csecret)
 	assert.Equal(t, "go-pkgz/auth", op.Issuer)
+	assert.Equal(t, provider.UserAttributes{"attrName": "attrValue"}, op.Params.UserAttributes)
 
 	p, err = svc.Provider("github")
 	assert.NoError(t, err)
@@ -79,7 +81,7 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "github", op.Name())
 
 	pp := svc.Providers()
-	assert.Equal(t, 9, len(pp))
+	assert.Equal(t, 10, len(pp))
 
 	ch, err := svc.Provider("telegramBotMySiteCom")
 	assert.NoError(t, err)
@@ -505,6 +507,15 @@ func TestStatus(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "{\"status\":\"logged in\",\"user\":\"dev_user\"}\n", string(b))
 
+}
+
+func TestDevAuthServerWithoutDevProvider(t *testing.T) {
+	svc := NewService(Opts{})
+	assert.NotNil(t, svc)
+
+	_, err := svc.DevAuth()
+	require.NotNil(t, err)
+	assert.EqualError(t, err, "dev provider not registered: provider dev not found")
 }
 
 func prepService(t *testing.T, providerConfigFunctions ...func(svc *Service)) (svc *Service, teardown func()) { //nolint unparam
