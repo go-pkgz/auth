@@ -54,8 +54,8 @@ func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 	assert.NoError(t, err)
 	t.Logf("%s %+v", tknStr, tkn)
 	assert.Equal(t, "test123::blah@user.com", tkn.Handshake.ID)
-	assert.Equal(t, "remark42", tkn.Audience)
-	assert.True(t, tkn.ExpiresAt > tkn.NotBefore)
+	assert.Equal(t, "remark42", tkn.Audience[0])
+	assert.True(t, tkn.ExpiresAt.After(tkn.NotBefore.Time))
 
 	assert.Equal(t, "test", e.Name())
 }
@@ -93,8 +93,8 @@ func TestVerifyHandler_LoginSendConfirmEscapesBadInput(t *testing.T) {
 	t.Logf("%s %+v", tknStr, tkn)
 	// not escaped in these fields as they are not rendered as HTML
 	assert.Equal(t, badData+"::blah@user.com", tkn.Handshake.ID)
-	assert.Equal(t, badData, tkn.Audience)
-	assert.True(t, tkn.ExpiresAt > tkn.NotBefore)
+	assert.Equal(t, badData, tkn.Audience[0])
+	assert.True(t, tkn.ExpiresAt.After(tkn.NotBefore.Time))
 
 	assert.Equal(t, "test", e.Name())
 }
@@ -125,9 +125,9 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	claims, err := e.TokenService.Parse(c.Value)
 	require.NoError(t, err)
 	t.Logf("%+v", claims)
-	assert.Equal(t, "remark42", claims.Audience)
+	assert.Equal(t, "remark42", claims.Audience[0])
 	assert.Equal(t, "iss-test", claims.Issuer)
-	assert.True(t, claims.ExpiresAt > time.Now().Unix())
+	assert.True(t, claims.ExpiresAt.After(time.Now()))
 	assert.Equal(t, "test123", claims.User.Name)
 	assert.Equal(t, true, claims.SessionOnly)
 }

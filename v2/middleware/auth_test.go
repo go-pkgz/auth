@@ -166,9 +166,8 @@ func TestAuthJWTRefresh(t *testing.T) {
 
 	claims, err := a.JWTService.Parse(resp.Cookies()[0].Value)
 	assert.NoError(t, err)
-	ts := time.Unix(claims.ExpiresAt, 0)
-	assert.True(t, ts.After(time.Now()), "expiration in the future")
-	log.Print(time.Unix(claims.ExpiresAt, 0))
+	assert.True(t, claims.ExpiresAt.After(time.Now()), "expiration in the future")
+	log.Print(claims.ExpiresAt)
 }
 
 func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
