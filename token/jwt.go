@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -35,12 +36,11 @@ type Handshake struct {
 
 const (
 	// default names for cookies and headers
-	defaultJWTCookieName     = "JWT"
-	defaultJWTCookieDomain   = ""
-	defaultJWTHeaderKey      = "X-JWT"
-	defaultXSRFCookieName    = "XSRF-TOKEN"
-	defaultXSRFHeaderKey     = "X-XSRF-TOKEN"
-	defaultXSRFIgnoreMethods = ""
+	defaultJWTCookieName   = "JWT"
+	defaultJWTCookieDomain = ""
+	defaultJWTHeaderKey    = "X-JWT"
+	defaultXSRFCookieName  = "XSRF-TOKEN"
+	defaultXSRFHeaderKey   = "X-XSRF-TOKEN"
 
 	defaultIssuer = "go-pkgz/auth"
 
@@ -48,6 +48,10 @@ const (
 	defaultCookieDuration = time.Hour * 24 * 31
 
 	defaultTokenQuery = "token"
+)
+
+var (
+	defaultXSRFIgnoreMethods = []string{}
 )
 
 // Opts holds constructor params
@@ -65,7 +69,7 @@ type Opts struct {
 	JWTHeaderKey      string
 	XSRFCookieName    string
 	XSRFHeaderKey     string
-	XSRFIgnoreMethods string
+	XSRFIgnoreMethods []string
 	JWTQuery          string
 	AudienceReader    Audience      // allowed aud values
 	Issuer            string        // optional value for iss claim, usually application name
@@ -91,7 +95,10 @@ func NewService(opts Opts) *Service {
 	setDefault(&res.JWTQuery, defaultTokenQuery)
 	setDefault(&res.Issuer, defaultIssuer)
 	setDefault(&res.JWTCookieDomain, defaultJWTCookieDomain)
-	setDefault(&res.XSRFIgnoreMethods, defaultXSRFIgnoreMethods)
+
+	if opts.XSRFIgnoreMethods == nil {
+		opts.XSRFIgnoreMethods = defaultXSRFIgnoreMethods
+	}
 
 	if opts.TokenDuration == 0 {
 		res.TokenDuration = defaultTokenDuration
@@ -296,7 +303,7 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 		return Claims{}, "", fmt.Errorf("token expired")
 	}
 
-	if j.DisableXSRF || strings.Contains(j.XSRFIgnoreMethods, r.Method) {
+	if j.DisableXSRF || slices.Contains[[]string, string](j.XSRFIgnoreMethods, r.Method) {
 		return claims, tokenString, nil
 	}
 

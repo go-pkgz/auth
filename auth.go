@@ -51,7 +51,7 @@ type Opts struct {
 	JWTHeaderKey      string        // default "X-JWT"
 	XSRFCookieName    string        // default "XSRF-TOKEN"
 	XSRFHeaderKey     string        // default "X-XSRF-TOKEN"
-	XSRFIgnoreMethods string        // disable XSRF protection for the specified request methods (ex. "GET,POST"), default empty
+	XSRFIgnoreMethods []string      // disable XSRF protection for the specified request methods (ex. []string{"GET", "POST")}, default empty
 	JWTQuery          string        // default "token"
 	SendJWTHeader     bool          // if enabled send JWT as a header instead of cookie
 	SameSiteCookie    http.SameSite // limit cross-origin requests with SameSite cookie attribute

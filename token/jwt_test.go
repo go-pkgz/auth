@@ -500,7 +500,7 @@ func TestJWT_GetWithXsrfMismatchOnIgnoredMethod(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	j.XSRFIgnoreMethods = "GET"
+	j.XSRFIgnoreMethods = []string{"GET"}
 	req := httptest.NewRequest("GET", "/valid", nil)
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
@@ -508,7 +508,7 @@ func TestJWT_GetWithXsrfMismatchOnIgnoredMethod(t *testing.T) {
 	require.NoError(t, err, "xsrf mismatch, but ignored")
 
 	j.DisableXSRF = true
-	j.XSRFIgnoreMethods = ""
+	j.XSRFIgnoreMethods = []string{}
 	req = httptest.NewRequest("GET", "/valid", nil)
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
