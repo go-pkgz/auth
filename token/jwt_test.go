@@ -471,6 +471,53 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 	assert.Equal(t, claims, c)
 }
 
+func TestJWT_GetWithXsrfMismatchOnIgnoredMethod(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31,
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
+		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
+			claims.User.SetStrAttr("stra", "stra-val")
+			claims.User.SetBoolAttr("boola", true)
+			return claims
+		}),
+		Issuer:     "remark42",
+		DisableIAT: true,
+	})
+
+	claims := testClaims
+	claims.SessionOnly = true
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/valid" {
+			_, e := j.Set(w, claims)
+			require.NoError(t, e)
+			w.WriteHeader(200)
+		}
+	}))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/valid")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	j.XSRFIgnoreMethods = "GET"
+	req := httptest.NewRequest("GET", "/valid", nil)
+	req.AddCookie(resp.Cookies()[0])
+	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
+	_, _, err = j.Get(req)
+	require.NoError(t, err, "xsrf mismatch, but ignored")
+
+	j.DisableXSRF = true
+	j.XSRFIgnoreMethods = ""
+	req = httptest.NewRequest("GET", "/valid", nil)
+	req.AddCookie(resp.Cookies()[0])
+	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
+	c, _, err := j.Get(req)
+	require.NoError(t, err, "xsrf mismatch, but ignored")
+	claims.User.Audience = c.Audience // set aud to user because we don't do the normal Get call
+	assert.Equal(t, claims, c)
+}
+
 func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31,

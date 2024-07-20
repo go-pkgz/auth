@@ -35,11 +35,12 @@ type Handshake struct {
 
 const (
 	// default names for cookies and headers
-	defaultJWTCookieName   = "JWT"
-	defaultJWTCookieDomain = ""
-	defaultJWTHeaderKey    = "X-JWT"
-	defaultXSRFCookieName  = "XSRF-TOKEN"
-	defaultXSRFHeaderKey   = "X-XSRF-TOKEN"
+	defaultJWTCookieName     = "JWT"
+	defaultJWTCookieDomain   = ""
+	defaultJWTHeaderKey      = "X-JWT"
+	defaultXSRFCookieName    = "XSRF-TOKEN"
+	defaultXSRFHeaderKey     = "X-XSRF-TOKEN"
+	defaultXSRFIgnoreMethods = ""
 
 	defaultIssuer = "go-pkgz/auth"
 
@@ -59,17 +60,18 @@ type Opts struct {
 	DisableXSRF    bool
 	DisableIAT     bool // disable IssuedAt claim
 	// optional (custom) names for cookies and headers
-	JWTCookieName   string
-	JWTCookieDomain string
-	JWTHeaderKey    string
-	XSRFCookieName  string
-	XSRFHeaderKey   string
-	JWTQuery        string
-	AudienceReader  Audience      // allowed aud values
-	Issuer          string        // optional value for iss claim, usually application name
-	AudSecrets      bool          // uses different secret for differed auds. important: adds pre-parsing of unverified token
-	SendJWTHeader   bool          // if enabled send JWT as a header instead of cookie
-	SameSite        http.SameSite // define a cookie attribute making it impossible for the browser to send this cookie cross-site
+	JWTCookieName     string
+	JWTCookieDomain   string
+	JWTHeaderKey      string
+	XSRFCookieName    string
+	XSRFHeaderKey     string
+	XSRFIgnoreMethods string
+	JWTQuery          string
+	AudienceReader    Audience      // allowed aud values
+	Issuer            string        // optional value for iss claim, usually application name
+	AudSecrets        bool          // uses different secret for differed auds. important: adds pre-parsing of unverified token
+	SendJWTHeader     bool          // if enabled send JWT as a header instead of cookie
+	SameSite          http.SameSite // define a cookie attribute making it impossible for the browser to send this cookie cross-site
 }
 
 // NewService makes JWT service
@@ -89,6 +91,7 @@ func NewService(opts Opts) *Service {
 	setDefault(&res.JWTQuery, defaultTokenQuery)
 	setDefault(&res.Issuer, defaultIssuer)
 	setDefault(&res.JWTCookieDomain, defaultJWTCookieDomain)
+	setDefault(&res.XSRFIgnoreMethods, defaultXSRFIgnoreMethods)
 
 	if opts.TokenDuration == 0 {
 		res.TokenDuration = defaultTokenDuration
@@ -293,7 +296,7 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 		return Claims{}, "", fmt.Errorf("token expired")
 	}
 
-	if j.DisableXSRF {
+	if j.DisableXSRF || strings.Contains(j.XSRFIgnoreMethods, r.Method) {
 		return claims, tokenString, nil
 	}
 

@@ -46,14 +46,15 @@ type Opts struct {
 	DisableIAT  bool // disable IssuedAt claim
 
 	// optional (custom) names for cookies and headers
-	JWTCookieName   string        // default "JWT"
-	JWTCookieDomain string        // default empty
-	JWTHeaderKey    string        // default "X-JWT"
-	XSRFCookieName  string        // default "XSRF-TOKEN"
-	XSRFHeaderKey   string        // default "X-XSRF-TOKEN"
-	JWTQuery        string        // default "token"
-	SendJWTHeader   bool          // if enabled send JWT as a header instead of cookie
-	SameSiteCookie  http.SameSite // limit cross-origin requests with SameSite cookie attribute
+	JWTCookieName     string        // default "JWT"
+	JWTCookieDomain   string        // default empty
+	JWTHeaderKey      string        // default "X-JWT"
+	XSRFCookieName    string        // default "XSRF-TOKEN"
+	XSRFHeaderKey     string        // default "X-XSRF-TOKEN"
+	XSRFIgnoreMethods string        // disable XSRF protection for the specified request methods (ex. "GET,POST"), default empty
+	JWTQuery          string        // default "token"
+	SendJWTHeader     bool          // if enabled send JWT as a header instead of cookie
+	SameSiteCookie    http.SameSite // limit cross-origin requests with SameSite cookie attribute
 
 	Issuer string // optional value for iss claim, usually the application name, default "go-pkgz/auth"
 
