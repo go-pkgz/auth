@@ -303,7 +303,7 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 		return Claims{}, "", fmt.Errorf("token expired")
 	}
 
-	if j.DisableXSRF || slices.Contains[[]string, string](j.XSRFIgnoreMethods, r.Method) {
+	if j.DisableXSRF || slices.Contains(j.XSRFIgnoreMethods, r.Method) {
 		return claims, tokenString, nil
 	}
 
