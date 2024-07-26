@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -244,6 +245,206 @@ func TestIntegrationList(t *testing.T) {
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, `["dev","github","custom123"]`+"\n", string(b))
+}
+
+type testAuthErrorHttpHandler struct {
+	wasCalled    bool
+	statusCode   int
+	contentType  string
+	responseBody string
+}
+
+func (h *testAuthErrorHttpHandler) ServeAuthError(
+	w http.ResponseWriter,
+	r *http.Request,
+	authError error,
+	reason string,
+	statusCode int,
+) {
+	h.wasCalled = true
+	w.Header().Set("Content-Type", h.contentType)
+	w.WriteHeader(h.statusCode)
+	fmt.Fprint(w, h.responseBody)
+}
+
+func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
+	testErrorHandler1 := &testAuthErrorHttpHandler{
+		statusCode:   401,
+		contentType:  "application/json",
+		responseBody: `{"code": 401, "message": "from general error handler"}`,
+	}
+	testErrorHandler2 := &testAuthErrorHttpHandler{
+		statusCode:   403,
+		contentType:  "text/html",
+		responseBody: `<html><body><h1>from private2 error handler</h1></body></html>`,
+	}
+	testErrorHandler3 := &testAuthErrorHttpHandler{
+		statusCode:   403,
+		contentType:  "application/json",
+		responseBody: `{"code": 401, "message": "from admin error handler"}`,
+	}
+	testErrorHandler4 := &testAuthErrorHttpHandler{
+		statusCode:   403,
+		contentType:  "text/html",
+		responseBody: `<html><body><h1>from RBAC error handler</h1></body></html>`,
+	}
+
+	options := Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		Issuer:       "my-test-app",
+		URL:          "http://127.0.0.1:8089",
+	}
+
+	svc := NewService(options)
+	svc.AddDevProvider("localhost", 18084) // add dev provider on 18084
+	svc.authMiddleware.AuthErrorHttpHandler = testErrorHandler1
+
+	// setup http server
+	m := svc.Middleware()
+	mux := http.NewServeMux()
+	mux.Handle("/private1",
+		m.Auth(
+			http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) { // token required
+					_, _ = w.Write([]byte("protected route1\n"))
+				},
+			),
+		),
+	)
+	mux.Handle("/private2",
+		m.AuthWithErrorHttpHandler(
+			http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) { // token required
+					_, _ = w.Write([]byte("protected route2\n"))
+				},
+			),
+			testErrorHandler2,
+		),
+	)
+	mux.Handle("/admin1",
+		m.Auth(
+			http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) { // token required
+					_, _ = w.Write([]byte("admin route1\n"))
+				},
+			),
+		),
+	)
+	mux.Handle("/admin2",
+		m.AdminOnlyWithErrorHttpHandler(
+			http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) { // token required
+					_, _ = w.Write([]byte("admin route2\n"))
+				},
+			),
+			testErrorHandler3,
+		),
+	)
+	mux.Handle("/rbac1",
+		m.RBAC("role1", "role2")(
+			http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) { // token required
+					_, _ = w.Write([]byte("rbac route1\n"))
+				},
+			),
+		),
+	)
+	mux.Handle("/rbac2",
+		m.RBACwithErrorHttpHandler(testErrorHandler4, "role1", "role2")(
+			http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) { // token required
+					_, _ = w.Write([]byte("rbac route2\n"))
+				},
+			),
+		),
+	)
+
+	l, err := net.Listen("tcp", "127.0.0.1:8089")
+	require.Nil(t, err)
+	ts := httptest.NewUnstartedServer(mux)
+	assert.NoError(t, ts.Listener.Close())
+	ts.Listener = l
+	ts.Start()
+	defer func() {
+		ts.Close()
+	}()
+
+	assertBodyEquals := func(t *testing.T, r *http.Response, expectedBody string) {
+		b, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		assert.Equal(t, expectedBody, string(b))
+	}
+	assertContentTypeEquals := func(t *testing.T, r *http.Response, expectedContentType string) {
+		assert.Equal(t, expectedContentType, r.Header.Get("Content-Type"))
+	}
+
+	// private1
+	resp, err := http.Get("http://127.0.0.1:8089/private1")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.True(t, testErrorHandler1.wasCalled)
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assertContentTypeEquals(t, resp, "application/json")
+	assertBodyEquals(t, resp, `{"code": 401, "message": "from general error handler"}`)
+
+	// private2
+	resp, err = http.Get("http://127.0.0.1:8089/private2")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.True(t, testErrorHandler2.wasCalled)
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assertContentTypeEquals(t, resp, "text/html")
+	assertBodyEquals(t, resp, `<html><body><h1>from private2 error handler</h1></body></html>`)
+
+	// admin1
+	testErrorHandler1.wasCalled = false
+	resp, err = http.Get("http://127.0.0.1:8089/admin1")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.True(t, testErrorHandler1.wasCalled)
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assertContentTypeEquals(t, resp, "application/json")
+	assertBodyEquals(t, resp, `{"code": 401, "message": "from general error handler"}`)
+
+	// admin2
+	resp, err = http.Get("http://127.0.0.1:8089/admin2")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.True(t, testErrorHandler3.wasCalled)
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assertContentTypeEquals(t, resp, "application/json")
+	assertBodyEquals(t, resp, `{"code": 401, "message": "from admin error handler"}`)
+
+	// rbac1
+	testErrorHandler1.wasCalled = false
+	resp, err = http.Get("http://127.0.0.1:8089/rbac1")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.True(t, testErrorHandler1.wasCalled)
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assertContentTypeEquals(t, resp, "application/json")
+	assertBodyEquals(t, resp, `{"code": 401, "message": "from general error handler"}`)
+
+	// rbac2
+	resp, err = http.Get("http://127.0.0.1:8089/rbac2")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.True(t, testErrorHandler4.wasCalled)
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assertContentTypeEquals(t, resp, "text/html")
+	assertBodyEquals(t, resp, `<html><body><h1>from RBAC error handler</h1></body></html>`)
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
