@@ -108,10 +108,20 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 			return &upd, nil
 		},
 		AvatarFunc: func(ctx context.Context, userID int) (string, error) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			default:
+			}
 			assert.Equal(t, 313131313, userID)
 			return "http://t.me/avatar.png", nil
 		},
 		SendFunc: func(ctx context.Context, id int, text string) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 			assert.Equal(t, 313131313, id)
 			assert.Equal(t, "success", text)
 			return nil
@@ -213,10 +223,20 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 			return &telegramUpdate{}, nil
 		},
 		SendFunc: func(ctx context.Context, id int, text string) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 			assert.Equal(t, 313131313, id)
 			return nil
 		},
 		AvatarFunc: func(ctx context.Context, userID int) (string, error) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			default:
+			}
 			assert.Equal(t, 313131313, userID)
 			return "http://t.me/avatar.png", nil
 		},
