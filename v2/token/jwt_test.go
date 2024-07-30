@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,9 +17,9 @@ import (
 // ("secret" in most cases here, "xyz 12345" in makeTestAuth), and alter the fields you want to be changed.
 
 var (
-	testJwtValid            = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJoYW5kc2hha2UiOnsic3RhdGUiOiIxMjM0NTYiLCJmcm9tIjoiZnJvbSIsImlkIjoibXlpZC0xMjM0NTYifX0._2X1cAEoxjLA7XuN8xW8V9r7rYfP_m9lSRz_9_UFzac"
-	testJwtValidNoHandshake = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19fQ.OWPdibrSSSHuOV3DzzLH5soO6kUcERELL7_GLf7Ja_E"
-	testJwtValidSess        = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJzZXNzX29ubHkiOnRydWV9.SjPlVgca_bijC2wbaite2_eNHk66VXgsxUKLy7eqlXM"
+	testJwtValid            = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJyZW1hcms0MiIsImF1ZCI6InRlc3Rfc3lzIiwiZXhwIjoyNzg5MTkxODIyLCJuYmYiOjE1MjY4ODQyMjIsImp0aSI6InJhbmRvbSBpZCIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJoYW5kc2hha2UiOnsic3RhdGUiOiIxMjM0NTYiLCJmcm9tIjoiZnJvbSIsImlkIjoibXlpZC0xMjM0NTYifX0.Ln7P2rEO-kWLN8AuKddWzjKC9l_kpw_yWfSO12MYo0o"
+	testJwtValidNoHandshake = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJyZW1hcms0MiIsImF1ZCI6InRlc3Rfc3lzIiwiZXhwIjoyNzg5MTkxODIyLCJuYmYiOjE1MjY4ODQyMjIsImp0aSI6InJhbmRvbSBpZCIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19fQ.D7fO3tzq3y-uSnh3Mae-Mqp8w9WdkH9s4zPTh44k8Gs"
+	testJwtValidSess        = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJyZW1hcms0MiIsImF1ZCI6InRlc3Rfc3lzIiwiZXhwIjoyNzg5MTkxODIyLCJuYmYiOjE1MjY4ODQyMjIsImp0aSI6InJhbmRvbSBpZCIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJzZXNzX29ubHkiOnRydWV9.RtQ6uBksqtMTd9GDLJen_eDUlLAYLh9uH0GBO_OIf4M"
 	testJwtExpired          = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE1MjY4ODc4MjIsImp0aSI6InJhbmRvbSBpZCIs" +
 		"ImlzcyI6InJlbWFyazQyIiwibmJmIjoxNTI2ODg0MjIyLCJ1c2VyIjp7Im5hbWUiOiJuYW1lMSIsImlkIjoiaWQxIiwicGljdHVyZSI6IiI" +
 		"sImFkbWluIjpmYWxzZX0sInN0YXRlIjoiMTIzNDU2IiwiZnJvbSI6ImZyb20ifQ.4_dCrY9ihyfZIedz-kZwBTxmxU1a52V7IqeJrOqTzE4"
@@ -88,6 +88,11 @@ func TestJWT_Token(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, res)
 
+	newClaims, _ := j.Parse(res)
+	assert.Equal(t, claims, newClaims)
+	fmt.Println(claims)
+	fmt.Println(newClaims)
+
 	j.SecretReader = nil
 	_, err = j.Token(claims)
 	assert.EqualError(t, err, "secret reader not defined")
@@ -126,10 +131,10 @@ func TestJWT_Parse(t *testing.T) {
 	assert.Error(t, err, "bad token")
 
 	_, err = j.Parse(testJwtBadSign)
-	assert.EqualError(t, err, "can't parse token: signature is invalid")
+	assert.EqualError(t, err, "can't parse token: token signature is invalid: signature is invalid")
 
 	_, err = j.Parse(testJwtNoneAlg)
-	assert.EqualError(t, err, "can't parse token: unexpected signing method: none")
+	assert.EqualError(t, err, "can't parse token: token is unverifiable: error while executing keyfunc: unexpected signing method: none")
 
 	j = NewService(Opts{
 		SecretReader: SecretFunc(func(string) (string, error) { return "bad 12345", nil }),
@@ -271,7 +276,7 @@ func TestJWT_SetProlonged(t *testing.T) {
 
 	claims := testClaims
 	claims.Handshake = nil
-	claims.ExpiresAt = 0
+	claims.ExpiresAt = nil
 
 	rr := httptest.NewRecorder()
 	_, err := j.Set(rr, claims)
@@ -282,7 +287,7 @@ func TestJWT_SetProlonged(t *testing.T) {
 
 	cc, err := j.Parse(cookies[0].Value)
 	assert.NoError(t, err)
-	assert.True(t, cc.ExpiresAt > time.Now().Unix())
+	assert.True(t, cc.ExpiresAt.After(time.Now().UTC()))
 }
 
 func TestJWT_NoIssuer(t *testing.T) {
@@ -345,7 +350,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	req.Header.Add(jwtCustomHeaderKey, "bad bad token")
 	_, _, err = j.Get(req)
 	require.NotNil(t, err)
-	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token contains an invalid number of segments"), err.Error())
+	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token is malformed: token contains an invalid number of segments"), err.Error())
 }
 
 func TestJWT_GetFromQuery(t *testing.T) {
@@ -375,7 +380,7 @@ func TestJWT_GetFromQuery(t *testing.T) {
 	req = httptest.NewRequest("GET", "/blah?token=blah", nil)
 	_, _, err = j.Get(req)
 	require.NotNil(t, err)
-	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token contains an invalid number of segments"), err.Error())
+	assert.True(t, strings.Contains(err.Error(), "failed to get token: can't parse token: token is malformed: token contains an invalid number of segments"), err.Error())
 }
 
 func TestJWT_GetFailed(t *testing.T) {
@@ -467,7 +472,7 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
 	c, _, err := j.Get(req)
 	require.NoError(t, err, "xsrf mismatch, but ignored")
-	claims.User.Audience = c.Audience // set aud to user because we don't do the normal Get call
+	claims.User.Audience = c.Audience[0] // set aud to user because we don't do the normal Get call
 	assert.Equal(t, claims, c)
 }
 
@@ -514,7 +519,7 @@ func TestJWT_GetWithXsrfMismatchOnIgnoredMethod(t *testing.T) {
 	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
 	c, _, err := j.Get(req)
 	require.NoError(t, err, "xsrf mismatch, but ignored")
-	claims.User.Audience = c.Audience // set aud to user because we don't do the normal Get call
+	claims.User.Audience = c.Audience[0] // set aud to user because we don't do the normal Get call
 	assert.Equal(t, claims, c)
 }
 
@@ -532,8 +537,8 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	})
 
 	claims := testClaims
-	claims.StandardClaims.ExpiresAt = time.Date(2018, 5, 21, 1, 35, 22, 0, time.Local).Unix()
-	claims.StandardClaims.NotBefore = time.Date(2018, 5, 21, 1, 30, 22, 0, time.Local).Unix()
+	claims.RegisteredClaims.ExpiresAt = jwt.NewNumericDate(time.Date(2018, 5, 21, 1, 35, 22, 0, time.Local))
+	claims.RegisteredClaims.NotBefore = jwt.NewNumericDate(time.Date(2018, 5, 21, 1, 30, 22, 0, time.Local))
 	claims.SessionOnly = true
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -607,8 +612,8 @@ func TestAudience(t *testing.T) {
 	})
 
 	c := Claims{
-		StandardClaims: jwt.StandardClaims{
-			Audience: "au1",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience: []string{"au1"},
 			Issuer:   "test iss",
 		},
 	}
@@ -639,7 +644,7 @@ func TestAudReader(t *testing.T) {
 	assert.EqualError(t, err, "empty aud")
 
 	_, err = j.aud("blah bad bad")
-	assert.EqualError(t, err, "can't pre-parse token: token contains an invalid number of segments")
+	assert.EqualError(t, err, "can't pre-parse token: token is malformed: token contains an invalid number of segments")
 }
 
 func TestParseWithAud(t *testing.T) {
@@ -655,19 +660,19 @@ func TestParseWithAud(t *testing.T) {
 
 	claims, err = j.Parse(testJwtValidAud)
 	assert.NoError(t, err)
-	assert.Equal(t, "test_aud_only", claims.Audience)
+	assert.Equal(t, "test_aud_only", claims.Audience[0])
 
 	claims, err = j.Parse(testJwtNonAudSign)
-	assert.EqualError(t, err, "can't parse token: signature is invalid")
+	assert.EqualError(t, err, "can't parse token: token signature is invalid: signature is invalid")
 }
 
 var testClaims = Claims{
-	StandardClaims: jwt.StandardClaims{
-		Id:        "random id",
+	RegisteredClaims: jwt.RegisteredClaims{
+		ID:        "random id",
 		Issuer:    "remark42",
-		Audience:  "test_sys",
-		ExpiresAt: time.Date(2058, 5, 21, 7, 30, 22, 0, time.UTC).Unix(),
-		NotBefore: time.Date(2018, 5, 21, 6, 30, 22, 0, time.UTC).Unix(),
+		Audience:  []string{"test_sys"},
+		ExpiresAt: jwt.NewNumericDate(time.Date(2058, 5, 21, 7, 30, 22, 0, time.UTC).Local()),
+		NotBefore: jwt.NewNumericDate(time.Date(2018, 5, 21, 6, 30, 22, 0, time.UTC).Local()),
 	},
 
 	User: &User{

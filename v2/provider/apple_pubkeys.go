@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // appleKeysURL is the endpoint URL for fetch Apple’s public key

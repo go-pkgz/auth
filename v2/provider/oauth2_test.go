@@ -73,7 +73,7 @@ func TestOauth2Login(t *testing.T) {
 	require.NoError(t, err)
 	t.Log(claims)
 	assert.Equal(t, "remark42", claims.Issuer)
-	assert.Equal(t, "remark", claims.Audience)
+	assert.Equal(t, "remark", claims.Audience[0])
 
 	// check admin user
 	resp, err = client.Get("http://localhost:8981/login?site=remark")

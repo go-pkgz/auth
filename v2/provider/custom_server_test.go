@@ -18,7 +18,7 @@ import (
 	"github.com/go-oauth2/oauth2/v4/models"
 	goauth2 "github.com/go-oauth2/oauth2/v4/server"
 	"github.com/go-oauth2/oauth2/v4/store"
-	"github.com/golang-jwt/jwt"
+	oldjwt "github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -80,7 +80,7 @@ func TestCustomProvider(t *testing.T) {
 				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 				return
 			}
-			assert.Equal(t, 2, len(resp.Cookies()))
+			require.Equal(t, 2, len(resp.Cookies()))
 			assert.Equal(t, "JWT", resp.Cookies()[0].Name)
 			assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
 			assert.Equal(t, 2678400, resp.Cookies()[0].MaxAge)
@@ -192,7 +192,7 @@ func initGoauth2Srv(t *testing.T) *goauth2.Server {
 	manager.MustTokenStorage(store.NewMemoryTokenStore())
 
 	// generate jwt access token
-	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("", []byte("00000000"), jwt.SigningMethodHS512))
+	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("", []byte("00000000"), oldjwt.SigningMethodHS512))
 
 	// client memory store
 	clientStore := store.NewClientStore()

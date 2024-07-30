@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/go-pkgz/rest"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/go-pkgz/auth/v2/logger"
 	"github.com/go-pkgz/auth/v2/token"
@@ -120,10 +120,10 @@ func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims{
 		User: &u,
-		StandardClaims: jwt.StandardClaims{
-			Id:       cid,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:       cid,
 			Issuer:   p.Issuer,
-			Audience: creds.Audience,
+			Audience: []string{creds.Audience},
 		},
 		SessionOnly: sessOnly,
 	}

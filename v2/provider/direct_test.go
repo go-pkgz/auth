@@ -90,9 +90,9 @@ func TestDirect_LoginHandler(t *testing.T) {
 			claims, err := d.TokenService.Parse(c.Value)
 			require.NoError(t, err)
 			t.Logf("%+v", claims)
-			assert.Equal(t, "xyz123", claims.Audience)
+			assert.Equal(t, "xyz123", claims.Audience[0])
 			assert.Equal(t, "iss-test", claims.Issuer)
-			assert.True(t, claims.ExpiresAt > time.Now().Unix())
+			assert.True(t, claims.ExpiresAt.After(time.Now()))
 			assert.Equal(t, "myuser", claims.User.Name)
 		})
 	}
