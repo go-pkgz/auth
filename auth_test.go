@@ -267,7 +267,7 @@ func (h *testAuthErrorHTTPHandler) ServeAuthError(
 	fmt.Fprint(w, h.responseBody)
 }
 
-func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
+func TestIntegrationAuthErrorHTTPHandler(t *testing.T) {
 	testErrorHandler1 := &testAuthErrorHTTPHandler{
 		statusCode:   401,
 		contentType:  "application/json",
@@ -322,7 +322,7 @@ func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
 		),
 	)
 	mux.Handle("/admin1",
-		m.Auth(
+		m.AdminOnly(
 			http.HandlerFunc(
 				func(w http.ResponseWriter, _ *http.Request) { // token required
 					_, _ = w.Write([]byte("admin route1\n"))
