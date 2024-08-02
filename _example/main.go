@@ -22,7 +22,7 @@ import (
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
-	"github.com/golang-jwt/jwt"
+	oldjwt "github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth"
@@ -295,7 +295,7 @@ func initGoauth2Srv() *goauth2.Server {
 	manager.MustTokenStorage(store.NewMemoryTokenStore())
 
 	// generate jwt access token
-	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("custom", []byte("00000000"), jwt.SigningMethodHS512))
+	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("custom", []byte("00000000"), oldjwt.SigningMethodHS512))
 
 	// client memory store
 	clientStore := store.NewClientStore()
