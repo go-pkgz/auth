@@ -72,7 +72,7 @@ type Opts struct {
 	AudSecrets           bool                            // allow multiple secrets (secret per aud)
 	Logger               logger.L                        // logger interface, default is no logging at all
 	RefreshCache         middleware.RefreshCache         // optional cache to keep refreshed tokens
-	AuthErrorHttpHandler middleware.AuthErrorHttpHandler // optional HTTP handler for authentication errors
+	AuthErrorHTTPHandler middleware.AuthErrorHTTPHandler // optional HTTP handler for authentication errors
 }
 
 // NewService initializes everything
@@ -86,7 +86,7 @@ func NewService(opts Opts) (res *Service) {
 			AdminPasswd:          opts.AdminPasswd,
 			BasicAuthChecker:     opts.BasicAuthChecker,
 			RefreshCache:         opts.RefreshCache,
-			AuthErrorHttpHandler: opts.AuthErrorHttpHandler,
+			AuthErrorHTTPHandler: opts.AuthErrorHTTPHandler,
 		},
 		issuer:      opts.Issuer,
 		useGravatar: opts.UseGravatar,

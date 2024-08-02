@@ -247,16 +247,16 @@ func TestIntegrationList(t *testing.T) {
 	assert.Equal(t, `["dev","github","custom123"]`+"\n", string(b))
 }
 
-type testAuthErrorHttpHandler struct {
+type testAuthErrorHTTPHandler struct {
 	wasCalled    bool
 	statusCode   int
 	contentType  string
 	responseBody string
 }
 
-func (h *testAuthErrorHttpHandler) ServeAuthError(
+func (h *testAuthErrorHTTPHandler) ServeAuthError(
 	w http.ResponseWriter,
-	r *http.Request,
+	_ *http.Request,
 	authError error,
 	reason string,
 	statusCode int,
@@ -268,22 +268,22 @@ func (h *testAuthErrorHttpHandler) ServeAuthError(
 }
 
 func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
-	testErrorHandler1 := &testAuthErrorHttpHandler{
+	testErrorHandler1 := &testAuthErrorHTTPHandler{
 		statusCode:   401,
 		contentType:  "application/json",
 		responseBody: `{"code": 401, "message": "from general error handler"}`,
 	}
-	testErrorHandler2 := &testAuthErrorHttpHandler{
+	testErrorHandler2 := &testAuthErrorHTTPHandler{
 		statusCode:   403,
 		contentType:  "text/html",
 		responseBody: `<html><body><h1>from private2 error handler</h1></body></html>`,
 	}
-	testErrorHandler3 := &testAuthErrorHttpHandler{
+	testErrorHandler3 := &testAuthErrorHTTPHandler{
 		statusCode:   403,
 		contentType:  "application/json",
 		responseBody: `{"code": 401, "message": "from admin error handler"}`,
 	}
-	testErrorHandler4 := &testAuthErrorHttpHandler{
+	testErrorHandler4 := &testAuthErrorHTTPHandler{
 		statusCode:   403,
 		contentType:  "text/html",
 		responseBody: `<html><body><h1>from RBAC error handler</h1></body></html>`,
@@ -297,7 +297,7 @@ func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
 
 	svc := NewService(options)
 	svc.AddDevProvider("localhost", 18084) // add dev provider on 18084
-	svc.authMiddleware.AuthErrorHttpHandler = testErrorHandler1
+	svc.authMiddleware.AuthErrorHTTPHandler = testErrorHandler1
 
 	// setup http server
 	m := svc.Middleware()
@@ -312,7 +312,7 @@ func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
 		),
 	)
 	mux.Handle("/private2",
-		m.AuthWithErrorHttpHandler(
+		m.AuthWithErrorHTTPHandler(
 			http.HandlerFunc(
 				func(w http.ResponseWriter, _ *http.Request) { // token required
 					_, _ = w.Write([]byte("protected route2\n"))
@@ -331,7 +331,7 @@ func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
 		),
 	)
 	mux.Handle("/admin2",
-		m.AdminOnlyWithErrorHttpHandler(
+		m.AdminOnlyWithErrorHTTPHandler(
 			http.HandlerFunc(
 				func(w http.ResponseWriter, _ *http.Request) { // token required
 					_, _ = w.Write([]byte("admin route2\n"))
@@ -350,7 +350,7 @@ func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
 		),
 	)
 	mux.Handle("/rbac2",
-		m.RBACwithErrorHttpHandler(testErrorHandler4, "role1", "role2")(
+		m.RBACwithErrorHTTPHandler(testErrorHandler4, "role1", "role2")(
 			http.HandlerFunc(
 				func(w http.ResponseWriter, _ *http.Request) { // token required
 					_, _ = w.Write([]byte("rbac route2\n"))
