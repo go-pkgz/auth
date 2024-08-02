@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-pkgz/rest"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth/v2/logger"
@@ -111,11 +111,11 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			From:  r.URL.Query().Get("from"),
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
-		StandardClaims: jwt.StandardClaims{
-			Id:        cid,
-			Audience:  aud,
-			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
-			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        cid,
+			Audience:  []string{aud},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * time.Minute)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
 		},
 		NoAva: r.URL.Query().Get("noava") == "1",
 	}
@@ -208,9 +208,9 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	claims := token.Claims{
 		User: &u,
-		StandardClaims: jwt.StandardClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:   p.Issuer,
-			Id:       cid,
+			ID:       cid,
 			Audience: oauthClaims.Audience,
 		},
 		SessionOnly: oauthClaims.SessionOnly,
