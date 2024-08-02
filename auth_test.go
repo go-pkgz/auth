@@ -359,8 +359,8 @@ func TestIntegrationAuthErrorHttpHandler(t *testing.T) {
 		),
 	)
 
-	l, err := net.Listen("tcp", "127.0.0.1:8089")
-	require.Nil(t, err)
+	l, listenErr := net.Listen("tcp", "127.0.0.1:8089")
+	require.Nil(t, listenErr)
 	ts := httptest.NewUnstartedServer(mux)
 	assert.NoError(t, ts.Listener.Close())
 	ts.Listener = l
