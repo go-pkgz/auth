@@ -502,6 +502,70 @@ func TestRBAC(t *testing.T) {
 	assert.Equal(t, "Access denied\n", string(data))
 }
 
+type testAuthErrorHTTPHandler struct {
+	wasCalled  bool
+	statusCode int
+}
+
+func (h *testAuthErrorHTTPHandler) ServeAuthError(
+	w http.ResponseWriter,
+	_ *http.Request,
+	_ error,
+	_ string,
+	_ int,
+) {
+	h.wasCalled = true
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(h.statusCode)
+	fmt.Fprint(w, "Unauthorized")
+}
+
+func TestAuthErrorHTTPHandler(t *testing.T) {
+	testErrorHandler1 := &testAuthErrorHTTPHandler{statusCode: 401}
+	testErrorHandler2 := &testAuthErrorHTTPHandler{statusCode: 402}
+	testErrorHandler3 := &testAuthErrorHTTPHandler{statusCode: 403}
+	testErrorHandler4 := &testAuthErrorHTTPHandler{statusCode: 404}
+
+	a := makeTestAuth(t)
+	a.AuthErrorHTTPHandler = testErrorHandler1
+
+	handler := http.HandlerFunc(
+		func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("must not be called\n"))
+			t.Error("auth error must be raised before this HTTP handler is called")
+		},
+	)
+
+	mux := http.NewServeMux()
+	mux.Handle("/private1", a.Auth(handler))
+	mux.Handle("/private2", a.AuthWithErrorHTTPHandler(handler, testErrorHandler2))
+	mux.Handle("/admin1", a.AdminOnly(handler))
+	mux.Handle("/admin2", a.AdminOnlyWithErrorHTTPHandler(handler, testErrorHandler3))
+	mux.Handle("/rbac1", a.RBAC("role1")(handler))
+	mux.Handle("/rbac2", a.RBACwithErrorHTTPHandler(testErrorHandler4, "role1")(handler))
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	assertThatHandlerWasCalledProperly := func(t *testing.T, errorHandler *testAuthErrorHTTPHandler, path string) {
+		errorHandler.wasCalled = false
+
+		resp, err := http.Get(server.URL + path)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.True(t, errorHandler.wasCalled, "error handler must be called")
+		require.Equal(t, errorHandler.statusCode, resp.StatusCode, "error handler must produce proper status code")
+	}
+
+	assertThatHandlerWasCalledProperly(t, testErrorHandler1, "/private1")
+	assertThatHandlerWasCalledProperly(t, testErrorHandler2, "/private2")
+	assertThatHandlerWasCalledProperly(t, testErrorHandler1, "/admin1")
+	assertThatHandlerWasCalledProperly(t, testErrorHandler3, "/admin2")
+	assertThatHandlerWasCalledProperly(t, testErrorHandler1, "/rbac1")
+	assertThatHandlerWasCalledProperly(t, testErrorHandler4, "/rbac2")
+}
+
 func makeTestMux(_ *testing.T, a *Authenticator, required bool) http.Handler {
 	mux := http.NewServeMux()
 	authMiddleware := a.Auth
