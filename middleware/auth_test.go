@@ -532,7 +532,8 @@ func TestAuthErrorHTTPHandler(t *testing.T) {
 
 	handler := http.HandlerFunc(
 		func(w http.ResponseWriter, _ *http.Request) { // token required
-			_, _ = w.Write([]byte("response body\n"))
+			_, _ = w.Write([]byte("must not be called\n"))
+			t.Error("auth error must be raised before this HTTP handler is called")
 		},
 	)
 
