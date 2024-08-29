@@ -311,7 +311,7 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 		},
 		SessionOnly: false, // TODO review?
 		AuthProvider: &authtoken.AuthProvider{
-			Name: th.Name(),
+			Name: th.ProviderName,
 		},
 	}
 
