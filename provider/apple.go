@@ -267,6 +267,9 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},
+		AuthProvider: &token.AuthProvider{
+			Name: ah.name,
+		},
 	}
 
 	if _, err = ah.JwtService.Set(w, claims); err != nil {
@@ -376,6 +379,9 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 			Audience: oauthClaims.Audience,
 		},
 		SessionOnly: false,
+		AuthProvider: &token.AuthProvider{
+			Name: ah.name,
+		},
 	}
 
 	if _, err = ah.JwtService.Set(w, claims); err != nil {
