@@ -5,11 +5,11 @@ import (
 	"crypto/rsa"
 	"crypto/sha1"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -659,8 +659,8 @@ ODIRe1AuTyHceAbewn8b462yEWKARdpd9AjQW5SIVPfdsz5B6GlYQ5LdYKtznTuy
 	n := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(publicKey.N.Bytes())
 
 	// convert exponent
-	eBuff := make([]byte, 4)
-	binary.LittleEndian.PutUint32(eBuff, uint32(publicKey.E))
+	require.Positive(t, publicKey.E, "RSA exponent must be positive")
+	eBuff := big.NewInt(int64(publicKey.E)).Bytes()
 	e := base64.StdEncoding.WithPadding(base64.NoPadding).EncodeToString(eBuff)
 
 	JWK := struct {
@@ -670,7 +670,7 @@ ODIRe1AuTyHceAbewn8b462yEWKARdpd9AjQW5SIVPfdsz5B6GlYQ5LdYKtznTuy
 		Kid string `json:"kid"`
 		E   string `json:"e"`
 		N   string `json:"n"`
-	}{Alg: "RS256", Kty: "RSA", Use: "sig", Kid: "112233", N: n, E: e[:4]}
+	}{Alg: "RS256", Kty: "RSA", Use: "sig", Kid: "112233", N: n, E: e}
 
 	var buffJwk []byte
 	buffJwk, err = json.Marshal(JWK)
