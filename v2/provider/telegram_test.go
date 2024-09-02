@@ -89,22 +89,36 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 
 func TestTelegramConfirmedRequest(t *testing.T) {
 	var servedToken string
-	var mu sync.Mutex
+	// is set when token becomes used,
+	// no sync is required because only a single goroutine in TelegramHandler.Run() reads and writes it
+	var tokenAlreadyUsed bool
+
+	var wgToken sync.WaitGroup
+	wgToken.Add(1)
+	defer func() {
+		if t.Failed() && servedToken == "" {
+			wgToken.Done() // for the case when test fails before token is generated
+		}
+	}()
 
 	m := &TelegramAPIMock{
 		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
-			var upd telegramUpdate
+			wgToken.Wait()
 
-			mu.Lock()
-			defer mu.Unlock()
-			if servedToken != "" {
-				resp := fmt.Sprintf(getUpdatesResp, servedToken)
-
-				err := json.Unmarshal([]byte(resp), &upd)
-				if err != nil {
-					t.Fatal(err)
-				}
+			if tokenAlreadyUsed || t.Failed() {
+				return nil, fmt.Errorf("token %s has been already used", servedToken)
 			}
+
+			var upd telegramUpdate
+			resp := fmt.Sprintf(getUpdatesResp, servedToken)
+			err := json.Unmarshal([]byte(resp), &upd)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// token is served only once
+			tokenAlreadyUsed = true
+
 			return &upd, nil
 		},
 		AvatarFunc: func(ctx context.Context, userID int) (string, error) {
@@ -147,10 +161,10 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
 	assert.Equal(t, "my_auth_bot", resp.Bot)
+	assert.NotEmpty(t, resp.Token)
 
-	mu.Lock()
 	servedToken = resp.Token
-	mu.Unlock()
+	wgToken.Done()
 
 	// Check the token confirmation
 	assert.Eventually(t, func() bool {
