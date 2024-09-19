@@ -298,7 +298,7 @@ func TestLogout(t *testing.T) {
 	resp, err = client.Get("http://127.0.0.1:8089/auth/logout")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 	defer resp.Body.Close()
 
 	resp, err = client.Get("http://127.0.0.1:8089/private")
