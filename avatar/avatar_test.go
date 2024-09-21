@@ -107,7 +107,7 @@ func TestAvatar_Routes(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/pic.png" {
-			w.Header().Set("Content-Type", "image/*")
+			w.Header().Set("Content-Type", "image/jpg")
 			w.Header().Set("Custom-Header", "xyz")
 			_, err := fmt.Fprint(w, "some picture bin data")
 			require.NoError(t, err)
@@ -128,8 +128,8 @@ func TestAvatar_Routes(t *testing.T) {
 
 	{
 		// status 400
-		req, err := http.NewRequest("GET", "/123aa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
-		require.NoError(t, err)
+		req, e := http.NewRequest("GET", "/123aa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
+		require.NoError(t, e)
 		rr := httptest.NewRecorder()
 		handler := http.Handler(http.HandlerFunc(p.Handler))
 		handler.ServeHTTP(rr, req)
@@ -138,8 +138,8 @@ func TestAvatar_Routes(t *testing.T) {
 
 	{
 		// status 403
-		req, err := http.NewRequest("GET", "../not-allowed.txt", http.NoBody)
-		require.NoError(t, err)
+		req, e := http.NewRequest("GET", "../not-allowed.txt", http.NoBody)
+		require.NoError(t, e)
 		rr := httptest.NewRecorder()
 		handler := http.Handler(http.HandlerFunc(p.Handler))
 		handler.ServeHTTP(rr, req)
@@ -147,8 +147,8 @@ func TestAvatar_Routes(t *testing.T) {
 	}
 
 	{ // status 200
-		req, err := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
-		require.NoError(t, err)
+		req, e := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
+		require.NoError(t, e)
 		rr := httptest.NewRecorder()
 		handler := http.Handler(http.HandlerFunc(p.Handler))
 		handler.ServeHTTP(rr, req)
@@ -160,16 +160,16 @@ func TestAvatar_Routes(t *testing.T) {
 		assert.NotNil(t, rr.Header()["Etag"])
 
 		bb := bytes.Buffer{}
-		sz, err := io.Copy(&bb, rr.Body)
-		assert.NoError(t, err)
+		sz, e := io.Copy(&bb, rr.Body)
+		assert.NoError(t, e)
 		assert.Equal(t, int64(21), sz)
 		assert.Equal(t, "some picture bin data", bb.String())
 	}
 
 	{
 		// status 304
-		req, err := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
-		require.NoError(t, err)
+		req, e := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
+		require.NoError(t, e)
 		id := p.Store.ID("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 		req.Header.Add("If-None-Match", p.Store.ID(id)) // hash of `some_random_name.image` since the file doesn't exist
 
@@ -180,7 +180,68 @@ func TestAvatar_Routes(t *testing.T) {
 		assert.Equal(t, http.StatusNotModified, rr.Code)
 		assert.Equal(t, []string{`"` + id + `"`}, rr.Header()["Etag"])
 	}
+}
 
+func TestAvatar_WithValidPictures(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/circles.png" {
+			http.ServeFile(w, r, "testdata/circles.png")
+			return
+		}
+		if r.URL.Path == "/circles.jpg" {
+			http.ServeFile(w, r, "testdata/circles.jpg")
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	p := Proxy{RoutePath: "/avatar", Store: NewLocalFS("/tmp/avatars.test"), L: logger.Std}
+	assert.NoError(t, os.MkdirAll("/tmp/avatars.test", 0o700))
+	defer os.RemoveAll("/tmp/avatars.test")
+	client := &http.Client{Timeout: time.Second}
+
+	testCases := []struct {
+		name        string
+		user        token.User
+		imageFile   string
+		contentType string
+	}{
+		{
+			name:        "PNG Image",
+			user:        token.User{ID: "user2", Name: "user2 name", Picture: ts.URL + "/circles.png"},
+			imageFile:   "testdata/circles.png",
+			contentType: "image/png",
+		},
+		{
+			name:        "JPG Image",
+			user:        token.User{ID: "user3", Name: "user3 name", Picture: ts.URL + "/circles.jpg"},
+			imageFile:   "testdata/circles.jpg",
+			contentType: "image/jpeg",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			imageURL, err := p.Put(tc.user, client)
+			assert.NoError(t, err)
+			t.Logf("%s URL: %s", tc.name, imageURL)
+
+			req, err := http.NewRequest("GET", imageURL, http.NoBody)
+			require.NoError(t, err)
+			rr := httptest.NewRecorder()
+			handler := http.Handler(http.HandlerFunc(p.Handler))
+			handler.ServeHTTP(rr, req)
+
+			assert.Equal(t, http.StatusOK, rr.Code)
+			assert.Equal(t, []string{tc.contentType}, rr.Header()["Content-Type"])
+
+			imageData, err := os.ReadFile(tc.imageFile)
+			require.NoError(t, err)
+			assert.Equal(t, imageData, rr.Body.Bytes())
+			assert.Equal(t, []string{fmt.Sprintf("%d", len(imageData))}, rr.Header()["Content-Length"])
+		})
+	}
 }
 
 func TestAvatar_resize(t *testing.T) {
