@@ -144,7 +144,7 @@ In addition to oauth2 providers `auth.Service` allows to use direct user-defined
 
 ```go
 	service.AddDirectProvider("local", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
-		ok, err := checkUserSomehow(user, password)
+		ok, err = checkUserSomehow(user, password)
 		return ok, err
 	}))
 ```
