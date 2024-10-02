@@ -266,6 +266,7 @@ func NewPatreon(p Params) Oauth2Handler {
 	})
 }
 
+// NewDiscord makes discord oauth2 provider
 func NewDiscord(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
 		name: "discord",
