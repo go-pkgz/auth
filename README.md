@@ -1,7 +1,7 @@
 # auth - authentication via oauth2, direct and email
 [![Build Status](https://github.com/go-pkgz/auth/workflows/build/badge.svg)](https://github.com/go-pkgz/auth/actions) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth?status.svg)](https://pkg.go.dev/github.com/go-pkgz/auth?tab=doc)
 
-This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net, Apple, Patreon and Telegram as well as custom auth providers and email verification.
+This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net, Apple, Patreon, Discord and Telegram as well as custom auth providers and email verification.
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
@@ -603,6 +603,13 @@ For more details refer to [Complete Guide of Battle.net OAuth API and Login Butt
 1.  Fill **"App Name"**, **"Description"**, **"App Category"** and **"Author"** for your site
 1.  Under **"Redirect URIs"** enter the correct url constructed as domain + `/auth/patreon/callback`. ie `https://example.mysite.com/auth/patreon/callback`
 1.  Take note of the **Client ID** and **Client Secret**
+
+#### Discord Auth Provider ####
+1.	Log into Discord Developer Portal https://discord.com/developers/applications
+2.  Click on **New Application** to create the application required for Oauth
+3.  After filling **"NAME"**, navigate to **"OAuth2"** option on the left sidebar
+4.  Under **"Redirects"** enter the correct url constructed as domain + `/auth/discord/callback`. ie `https://remark42.mysite.com/auth/discord/callback`
+5.  Take note of the **CLIENT ID** and **CLIENT SECRET**
 
 #### Twitter Auth Provider
 1.	Create a new twitter application https://developer.twitter.com/en/apps

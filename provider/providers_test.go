@@ -208,3 +208,16 @@ func TestProviders_NewPatreon(t *testing.T) {
 		user,
 	)
 }
+
+func TestProviders_NewDiscord(t *testing.T) {
+	r := NewDiscord(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+	assert.Equal(t, "discord", r.Name())
+
+	t.Run("With all data", func(t *testing.T) {
+		udata := UserData{"id": "248533295981532", "username": "test_user", "avatar": "374384984773", "email": "test@email.com"}
+		user := r.mapUser(udata, nil)
+		assert.Equal(t, token.User{Name: "test_user", ID: "discord_9b472605c1318483fb4b88f9acf22cdd4219f9a0", Email: "test@email.com",
+			Picture: "https://cdn.discordapp.com/avatars/248533295981532/374384984773.webp"}, user, "got %+v", user)
+	})
+
+}

@@ -66,6 +66,9 @@ func main() {
 				if strings.HasPrefix(claims.User.ID, "patreon_") { // allow all users with ms auth
 					return true
 				}
+				if strings.HasPrefix(claims.User.ID, "discord_") { // allow all users with ms auth
+					return true
+				}
 				if strings.HasPrefix(claims.User.Name, "dev_") { // non-guthub allow only dev_* names
 					return true
 				}
@@ -84,6 +87,7 @@ func main() {
 	service.AddProvider("twitter", os.Getenv("AEXMPL_TWITTER_APIKEY"), os.Getenv("AEXMPL_TWITTER_APISEC"))
 	service.AddProvider("microsoft", os.Getenv("AEXMPL_MS_APIKEY"), os.Getenv("AEXMPL_MS_APISEC"))
 	service.AddProvider("patreon", os.Getenv("AEXMPL_PATREON_CID"), os.Getenv("AEXMPL_PATREON_CSEC"))
+	service.AddProvider("discord", os.Getenv("AEXMPL_DISCORD_CID"), os.Getenv("AEXMPL_DISCORD_CSEC"))
 
 	// allow sign with apple id
 	appleCfg := provider.AppleConfig{
