@@ -276,15 +276,12 @@ func NewDiscord(p Params) Oauth2Handler {
 			TokenURL: "https://discord.com/api/oauth2/token",
 		},
 		infoURL: "https://discord.com/api/v10/users/@me",
-		scopes:  []string{"email", "identify"},
+		scopes:  []string{"identify"},
 		mapUser: func(data UserData, _ []byte) token.User {
 			userInfo := token.User{
 				ID:      "discord_" + token.HashID(sha1.New(), data.Value("id")),
 				Name:    data.Value("username"),
 				Picture: fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.webp", data.Value("id"), data.Value("avatar")),
-			}
-			if data.Value("email") != "" {
-				userInfo.Email = data.Value("email")
 			}
 
 			for k, v := range p.UserAttributes {

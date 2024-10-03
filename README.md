@@ -605,7 +605,7 @@ For more details refer to [Complete Guide of Battle.net OAuth API and Login Butt
 1.  Take note of the **Client ID** and **Client Secret**
 
 #### Discord Auth Provider ####
-1.	Log into Discord Developer Portal https://discord.com/developers/applications
+1.  Log into Discord Developer Portal https://discord.com/developers/applications
 2.  Click on **New Application** to create the application required for Oauth
 3.  After filling **"NAME"**, navigate to **"OAuth2"** option on the left sidebar
 4.  Under **"Redirects"** enter the correct url constructed as domain + `/auth/discord/callback`. ie `https://remark42.mysite.com/auth/discord/callback`
