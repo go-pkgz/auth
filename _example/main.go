@@ -63,10 +63,10 @@ func main() {
 				if strings.HasPrefix(claims.User.ID, "microsoft_") { // allow all users with ms auth
 					return true
 				}
-				if strings.HasPrefix(claims.User.ID, "patreon_") { // allow all users with ms auth
+				if strings.HasPrefix(claims.User.ID, "patreon_") { // allow all users with patreon auth
 					return true
 				}
-				if strings.HasPrefix(claims.User.ID, "discord_") { // allow all users with ms auth
+				if strings.HasPrefix(claims.User.ID, "discord_") { // allow all users with discord auth
 					return true
 				}
 				if strings.HasPrefix(claims.User.Name, "dev_") { // non-guthub allow only dev_* names
