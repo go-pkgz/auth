@@ -31,7 +31,9 @@ var (
 	testJwtNonAudSign = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X2F1ZF9vbmx5IiwiZXhwIjoyNzg5MTkxODIyLCJqdGkiOiJyYW5kb20gaWQiLCJpc3MiOiJyZW1hcms0MiIsIm5iZiI6MTUyNjg4NDIyMiwidXNlciI6eyJuYW1lIjoibmFtZTEiLCJpZCI6ImlkMSIsInBpY3R1cmUiOiJodHRwOi8vZXhhbXBsZS5jb20vcGljLnBuZyIsImlwIjoiMTI3LjAuMC4xIiwiZW1haWwiOiJtZUBleGFtcGxlLmNvbSIsImF0dHJzIjp7ImJvb2xhIjp0cnVlLCJzdHJhIjoic3RyYS12YWwifX0sImhhbmRzaGFrZSI6eyJzdGF0ZSI6IjEyMzQ1NiIsImZyb20iOiJmcm9tIiwiaWQiOiJteWlkLTEyMzQ1NiJ9fQ.kJc-U970h3j9riUhFLR9vN_YCUQwZ66tjk7zdC9OiUg"
 )
 
-var days31 = time.Hour * 24 * 31
+var (
+	days31 = time.Hour * 24 * 31
+)
 
 const (
 	jwtCustomCookieName  = "jc1"
@@ -54,17 +56,22 @@ func TestJWT_NewDefault(t *testing.T) {
 	assert.Equal(t, defaultJWTHeaderKey, j.JWTHeaderKey)
 	assert.Equal(t, defaultXSRFCookieName, j.XSRFCookieName)
 	assert.Equal(t, defaultXSRFHeaderKey, j.XSRFHeaderKey)
+	assert.Equal(t, defaultXSRFIgnoreMethods, j.XSRFIgnoreMethods)
 	assert.Equal(t, defaultIssuer, j.Issuer)
 }
 
 func TestJWT_NewNotDefault(t *testing.T) {
+	var xsrfCustomIgnoreMethods = []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace}
+
 	j := NewService(Opts{JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey, JWTCookieDomain: "blah.com",
 		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey, Issuer: "i1",
+		XSRFIgnoreMethods: xsrfCustomIgnoreMethods,
 	})
 	assert.Equal(t, jwtCustomCookieName, j.JWTCookieName)
 	assert.Equal(t, jwtCustomHeaderKey, j.JWTHeaderKey)
 	assert.Equal(t, xsrfCustomCookieName, j.XSRFCookieName)
 	assert.Equal(t, xsrfCustomHeaderKey, j.XSRFHeaderKey)
+	assert.Equal(t, xsrfCustomIgnoreMethods, j.XSRFIgnoreMethods)
 	assert.Equal(t, "i1", j.Issuer)
 	assert.Equal(t, "blah.com", j.JWTCookieDomain)
 }
