@@ -32,6 +32,8 @@ var testJwtNoUser = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjI3ODkxOTE4Mj
 
 var testJwtWithRole = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJwcm92aWRlcjFfaWQxIiwicGljdHVyZSI6Imh0dHA6Ly9leGFtcGxlLmNvbS9waWMucG5nIiwiaXAiOiIxMjcuMC4wLjEiLCJlbWFpbCI6Im1lQGV4YW1wbGUuY29tIiwiYXR0cnMiOnsiYm9vbGEiOnRydWUsInN0cmEiOiJzdHJhLXZhbCJ9LCJyb2xlIjoiZW1wbG95ZWUifX0.o95raB0aNl2TWUs43Tu6xyX5Y3Fa5wv6_6RFJuN-d6g"
 
+var testJwtValidWithAuthProvider = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJwcm92aWRlcjFfaWQxIiwicGljdHVyZSI6Imh0dHA6Ly9leGFtcGxlLmNvbS9waWMucG5nIiwiaXAiOiIxMjcuMC4wLjEiLCJlbWFpbCI6Im1lQGV4YW1wbGUuY29tIiwiYXR0cnMiOnsiYm9vbGEiOnRydWUsInN0cmEiOiJzdHJhLXZhbCJ9fSwiYXV0aF9wcm92aWRlciI6eyJuYW1lIjoicHJvdmlkZXIxIn19.iBKM9-lgejJNjcs-crj6gkEejnIJpavmaq8alenf0JA"
+
 func TestAuthJWTCookie(t *testing.T) {
 	a := makeTestAuth(t)
 
@@ -51,56 +53,51 @@ func TestAuthJWTCookie(t *testing.T) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
 
-	t.Run("valid token", func(t *testing.T) {
+	makeRequest := func(jwtCookie string, xsrfToken string) *http.Response {
 		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
 		require.Nil(t, err)
-		req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
-		req.Header.Add("X-XSRF-TOKEN", "random id")
+		req.AddCookie(&http.Cookie{
+			Name:     "JWT",
+			Value:    jwtCookie,
+			HttpOnly: true,
+			Path:     "/",
+			MaxAge:   expiration,
+			Secure:   false,
+		})
+		req.Header.Add("X-XSRF-TOKEN", xsrfToken)
 
 		resp, err := client.Do(req)
 		require.NoError(t, err)
+		return resp
+	}
+
+	t.Run("valid token", func(t *testing.T) {
+		resp := makeRequest(testJwtValid, "random id")
+		assert.Equal(t, 201, resp.StatusCode, "valid token user")
+	})
+
+	t.Run("valid token with auth_provider", func(t *testing.T) {
+		resp := makeRequest(testJwtValidWithAuthProvider, "random id")
 		assert.Equal(t, 201, resp.StatusCode, "valid token user")
 	})
 
 	t.Run("valid token, wrong provider", func(t *testing.T) {
-		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
-		require.Nil(t, err)
-		req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValidWrongProvider, HttpOnly: true, Path: "/",
-			MaxAge: expiration, Secure: false})
-		req.Header.Add("X-XSRF-TOKEN", "random id")
-
-		resp, err := client.Do(req)
-		require.NoError(t, err)
+		resp := makeRequest(testJwtValidWrongProvider, "random id")
 		assert.Equal(t, 401, resp.StatusCode, "user name1/provider3_id1 provider is not allowed")
 	})
 
 	t.Run("xsrf mismatch", func(t *testing.T) {
-		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
-		require.Nil(t, err)
-		req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
-		req.Header.Add("X-XSRF-TOKEN", "wrong id")
-		resp, err := client.Do(req)
-		require.NoError(t, err)
+		resp := makeRequest(testJwtValid, "wrong id")
 		assert.Equal(t, 401, resp.StatusCode, "xsrf mismatch")
 	})
 
 	t.Run("token expired and refreshed", func(t *testing.T) {
-		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
-		require.Nil(t, err)
-		req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
-		req.Header.Add("X-XSRF-TOKEN", "random id")
-		resp, err := client.Do(req)
-		require.NoError(t, err)
+		resp := makeRequest(testJwtExpired, "random id")
 		assert.Equal(t, 201, resp.StatusCode, "token expired and refreshed")
 	})
 
 	t.Run("no user info in the token", func(t *testing.T) {
-		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
-		require.Nil(t, err)
-		req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtNoUser, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
-		req.Header.Add("X-XSRF-TOKEN", "random id")
-		resp, err := client.Do(req)
-		require.NoError(t, err)
+		resp := makeRequest(testJwtNoUser, "random id")
 		assert.Equal(t, 401, resp.StatusCode, "no user info in the token")
 	})
 }

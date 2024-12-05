@@ -247,6 +247,34 @@ func TestIntegrationList(t *testing.T) {
 	assert.Equal(t, `["dev","github","custom123"]`+"\n", string(b))
 }
 
+func TestIntegrationInvalidProviderNames(t *testing.T) {
+	invalidNames := []string{
+		"provider/with/slashes",
+		"provider with spaces",
+		" providerWithSpacesAround\t",
+		"providerWithReserved-$-Char",
+		"providerWithReserved-&-Char",
+		"providerWithReserved-+-Char",
+		"providerWithReserved-,-Char",
+		"providerWithReserved-:-Char",
+		"providerWithReserved-;-Char",
+		"providerWithReserved-=-Char",
+		"providerWithReserved-?-Char",
+		"providerWithReserved-@-Char",
+		"providerWith%2F-EscapedSequence",
+		"",
+	}
+	svc, teardown := prepService(t, func(svc *Service) {
+		for _, name := range invalidNames {
+			svc.AddCustomProvider(name, Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
+		}
+	})
+	defer teardown()
+
+	require.Equal(t, 1, len(svc.Providers()))
+	require.Equal(t, "dev", svc.Providers()[0].Name())
+}
+
 func TestIntegrationUserInfo(t *testing.T) {
 	_, teardown := prepService(t)
 	defer teardown()
@@ -387,7 +415,7 @@ func TestDirectProvider(t *testing.T) {
 
 func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
 	_, teardown := prepService(t, func(svc *Service) {
-		svc.AddDirectProviderWithUserIDFunc("directCustom",
+		svc.AddDirectProviderWithUserIDFunc("direct_custom",
 			provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
 				return user == "dev_direct" && password == "password", nil
 			}),
@@ -402,12 +430,12 @@ func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	require.Nil(t, err)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:8089/auth/directCustom/login?user=dev_direct&passwd=bad")
+	resp, err := client.Get("http://127.0.0.1:8089/auth/direct_custom/login?user=dev_direct&passwd=bad")
 	require.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 403, resp.StatusCode)
 
-	resp, err = client.Get("http://127.0.0.1:8089/auth/directCustom/login?user=dev_direct&passwd=password")
+	resp, err = client.Get("http://127.0.0.1:8089/auth/direct_custom/login?user=dev_direct&passwd=password")
 	require.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
@@ -417,7 +445,7 @@ func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
-	assert.Contains(t, string(body), `"name":"dev_direct","id":"directCustom_5bf1fd927dfb8679496a2e6cf00cbe50c1c87145"`)
+	assert.Contains(t, string(body), `"name":"dev_direct","id":"direct_custom_5bf1fd927dfb8679496a2e6cf00cbe50c1c87145"`)
 
 	require.Equal(t, 2, len(resp.Cookies()))
 	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
