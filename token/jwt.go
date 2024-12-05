@@ -97,7 +97,7 @@ func NewService(opts Opts) *Service {
 	setDefault(&res.JWTCookieDomain, defaultJWTCookieDomain)
 
 	if opts.XSRFIgnoreMethods == nil {
-		opts.XSRFIgnoreMethods = defaultXSRFIgnoreMethods
+		res.XSRFIgnoreMethods = defaultXSRFIgnoreMethods
 	}
 
 	if opts.TokenDuration == 0 {
