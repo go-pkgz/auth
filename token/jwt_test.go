@@ -31,9 +31,7 @@ var (
 	testJwtNonAudSign = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X2F1ZF9vbmx5IiwiZXhwIjoyNzg5MTkxODIyLCJqdGkiOiJyYW5kb20gaWQiLCJpc3MiOiJyZW1hcms0MiIsIm5iZiI6MTUyNjg4NDIyMiwidXNlciI6eyJuYW1lIjoibmFtZTEiLCJpZCI6ImlkMSIsInBpY3R1cmUiOiJodHRwOi8vZXhhbXBsZS5jb20vcGljLnBuZyIsImlwIjoiMTI3LjAuMC4xIiwiZW1haWwiOiJtZUBleGFtcGxlLmNvbSIsImF0dHJzIjp7ImJvb2xhIjp0cnVlLCJzdHJhIjoic3RyYS12YWwifX0sImhhbmRzaGFrZSI6eyJzdGF0ZSI6IjEyMzQ1NiIsImZyb20iOiJmcm9tIiwiaWQiOiJteWlkLTEyMzQ1NiJ9fQ.kJc-U970h3j9riUhFLR9vN_YCUQwZ66tjk7zdC9OiUg"
 )
 
-var (
-	days31 = time.Hour * 24 * 31
-)
+var days31 = time.Hour * 24 * 31
 
 const (
 	jwtCustomCookieName  = "jc1"
@@ -94,6 +92,11 @@ func TestJWT_Token(t *testing.T) {
 	res, err := j.Token(claims)
 	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, res)
+
+	newClaims, _ := j.Parse(res)
+	assert.Equal(t, claims, newClaims)
+	fmt.Println(claims)
+	fmt.Println(newClaims)
 
 	j.SecretReader = nil
 	_, err = j.Token(claims)
