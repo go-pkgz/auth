@@ -18,12 +18,13 @@ import (
 // Authenticator is top level auth object providing middlewares
 type Authenticator struct {
 	logger.L
-	JWTService       TokenService
-	Providers        []provider.Service
-	Validator        token.Validator
-	AdminPasswd      string
-	BasicAuthChecker BasicAuthFunc
-	RefreshCache     RefreshCache
+	JWTService           TokenService
+	Providers            []provider.Service
+	Validator            token.Validator
+	AdminPasswd          string
+	BasicAuthChecker     BasicAuthFunc
+	RefreshCache         RefreshCache
+	AuthErrorHTTPHandler AuthErrorHTTPHandler
 }
 
 // RefreshCache defines interface storing and retrieving refreshed tokens
@@ -45,6 +46,28 @@ type TokenService interface {
 // The second return parameter `User` need for add user claims into context of request.
 type BasicAuthFunc func(user, passwd string) (ok bool, userInfo token.User, err error)
 
+// AuthErrorHTTPHandler defines interface for handling HTTP responses in case of authentication errors
+type AuthErrorHTTPHandler interface {
+	// Serves HTTP response in case of authentication error
+	// w - response writer
+	// r - original request
+	// authError - authentication error with technical details
+	// reason - reason text
+	// statusCode - HTTP status code
+	ServeAuthError(w http.ResponseWriter, r *http.Request, authError error, reason string, statusCode int)
+}
+
+// DefaultAuthErrorHTTPHandler is a default implementation, which writes text/plain responses using http.Error()
+type DefaultAuthErrorHTTPHandler struct {
+	logger.L
+}
+
+// ServeAuthError writes text/plain responses using http.Error()
+func (h DefaultAuthErrorHTTPHandler) ServeAuthError(w http.ResponseWriter, _ *http.Request, authError error, reason string, statusCode int) {
+	h.Logf("[DEBUG] auth failed, %v", authError)
+	http.Error(w, reason, statusCode)
+}
+
 // adminUser sets claims for an optional basic auth
 var adminUser = token.User{
 	ID:   "admin",
@@ -56,24 +79,29 @@ var adminUser = token.User{
 
 // Auth middleware adds auth from session and populates user info
 func (a *Authenticator) Auth(next http.Handler) http.Handler {
-	return a.auth(true)(next)
+	return a.auth(true, a.getAuthErrorHTTPHandler())(next)
+}
+
+// AuthWithErrorHTTPHandler middleware adds auth from session and populates user info.
+// errorHttpHandler parameter may be used to write custom HTTP responses in case of authentication error.
+func (a *Authenticator) AuthWithErrorHTTPHandler(next http.Handler, errorHTTPHandler AuthErrorHTTPHandler) http.Handler {
+	return a.auth(true, errorHTTPHandler)(next)
 }
 
 // Trace middleware doesn't require valid user but if user info presented populates info
 func (a *Authenticator) Trace(next http.Handler) http.Handler {
-	return a.auth(false)(next)
+	return a.auth(false, a.getAuthErrorHTTPHandler())(next)
 }
 
 // auth implements all logic for authentication (reqAuth=true) and tracing (reqAuth=false)
-func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
+func (a *Authenticator) auth(reqAuth bool, errorHTTPHandler AuthErrorHTTPHandler) func(http.Handler) http.Handler {
 
 	onError := func(h http.Handler, w http.ResponseWriter, r *http.Request, err error) {
 		if !reqAuth { // if no auth required allow to proceeded on error
 			h.ServeHTTP(w, r)
 			return
 		}
-		a.Logf("[DEBUG] auth failed, %v", err)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		errorHTTPHandler.ServeAuthError(w, r, err, "Unauthorized", http.StatusUnauthorized)
 	}
 
 	f := func(h http.Handler) http.Handler {
@@ -191,23 +219,34 @@ func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.
 	return c, nil
 }
 
-// AdminOnly middleware allows access for admins only
-// this handler internally wrapped with auth(true) to avoid situation if AdminOnly defined without prior Auth
+// AdminOnly middleware allows access for admins only.
+// This handler internally wrapped with auth(true) to avoid situation if AdminOnly defined without prior Auth
 func (a *Authenticator) AdminOnly(next http.Handler) http.Handler {
+	return a.adminOnly(next, a.getAuthErrorHTTPHandler())
+}
+
+// AdminOnlyWithErrorHTTPHandler middleware allows access for admins only.
+// This handler internally wrapped with auth(true) to avoid situation if AdminOnly defined without prior Auth.
+// errorHttpHandler parameter may be used to write custom HTTP responses in case of authentication error.
+func (a *Authenticator) AdminOnlyWithErrorHTTPHandler(next http.Handler, errorHTTPHandler AuthErrorHTTPHandler) http.Handler {
+	return a.adminOnly(next, errorHTTPHandler)
+}
+
+func (a *Authenticator) adminOnly(next http.Handler, errorHTTPHandler AuthErrorHTTPHandler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		user, err := token.GetUserInfo(r)
 		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			errorHTTPHandler.ServeAuthError(w, r, err, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		if !user.IsAdmin() {
-			http.Error(w, "Access denied", http.StatusForbidden)
+			errorHTTPHandler.ServeAuthError(w, r, fmt.Errorf("user %s/%s is not admin", user.Name, user.ID), "Access denied", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)
 	}
-	return a.auth(true)(http.HandlerFunc(fn)) // enforce auth
+	return a.auth(true, errorHTTPHandler)(http.HandlerFunc(fn)) // enforce auth
 }
 
 // basic auth for admin user
@@ -234,12 +273,23 @@ func (a *Authenticator) basicAdminUser(r *http.Request) bool {
 // RBAC middleware allows role based control for routes
 // this handler internally wrapped with auth(true) to avoid situation if RBAC defined without prior Auth
 func (a *Authenticator) RBAC(roles ...string) func(http.Handler) http.Handler {
+	return a.rbac(a.getAuthErrorHTTPHandler(), roles...)
+}
+
+// RBACwithErrorHTTPHandler middleware allows role based control for routes
+// this handler internally wrapped with auth(true) to avoid situation if RBAC defined without prior Auth
+// errorHttpHandler parameter may be used to write custom HTTP responses in case of authentication error.
+func (a *Authenticator) RBACwithErrorHTTPHandler(errorHTTPHandler AuthErrorHTTPHandler, roles ...string) func(http.Handler) http.Handler {
+	return a.rbac(errorHTTPHandler, roles...)
+}
+
+func (a *Authenticator) rbac(errorHTTPHandler AuthErrorHTTPHandler, roles ...string) func(http.Handler) http.Handler {
 
 	f := func(h http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
 			user, err := token.GetUserInfo(r)
 			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				errorHTTPHandler.ServeAuthError(w, r, err, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 
@@ -251,12 +301,26 @@ func (a *Authenticator) RBAC(roles ...string) func(http.Handler) http.Handler {
 				}
 			}
 			if !matched {
-				http.Error(w, "Access denied", http.StatusForbidden)
+				errorHTTPHandler.ServeAuthError(
+					w,
+					r,
+					fmt.Errorf("user %s/%s does not have any of required roles: %s", user.Name, user.ID, roles),
+					"Access denied",
+					http.StatusForbidden,
+				)
 				return
 			}
 			h.ServeHTTP(w, r)
 		}
-		return a.auth(true)(http.HandlerFunc(fn)) // enforce auth
+		return a.auth(true, errorHTTPHandler)(http.HandlerFunc(fn)) // enforce auth
 	}
 	return f
+}
+
+func (a *Authenticator) getAuthErrorHTTPHandler() AuthErrorHTTPHandler {
+	if a.AuthErrorHTTPHandler != nil {
+		return a.AuthErrorHTTPHandler
+	}
+
+	return DefaultAuthErrorHTTPHandler{L: a.L}
 }
