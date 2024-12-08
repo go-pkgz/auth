@@ -54,17 +54,22 @@ func TestJWT_NewDefault(t *testing.T) {
 	assert.Equal(t, defaultJWTHeaderKey, j.JWTHeaderKey)
 	assert.Equal(t, defaultXSRFCookieName, j.XSRFCookieName)
 	assert.Equal(t, defaultXSRFHeaderKey, j.XSRFHeaderKey)
+	assert.Equal(t, defaultXSRFIgnoreMethods, j.XSRFIgnoreMethods)
 	assert.Equal(t, defaultIssuer, j.Issuer)
 }
 
 func TestJWT_NewNotDefault(t *testing.T) {
+	var xsrfCustomIgnoreMethods = []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace}
+
 	j := NewService(Opts{JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey, JWTCookieDomain: "blah.com",
 		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey, Issuer: "i1",
+		XSRFIgnoreMethods: xsrfCustomIgnoreMethods,
 	})
 	assert.Equal(t, jwtCustomCookieName, j.JWTCookieName)
 	assert.Equal(t, jwtCustomHeaderKey, j.JWTHeaderKey)
 	assert.Equal(t, xsrfCustomCookieName, j.XSRFCookieName)
 	assert.Equal(t, xsrfCustomHeaderKey, j.XSRFHeaderKey)
+	assert.Equal(t, xsrfCustomIgnoreMethods, j.XSRFIgnoreMethods)
 	assert.Equal(t, "i1", j.Issuer)
 	assert.Equal(t, "blah.com", j.JWTCookieDomain)
 }
