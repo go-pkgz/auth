@@ -89,7 +89,6 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 
 func TestTelegramConfirmedRequest(t *testing.T) {
 	var servedToken string
-
 	// is set when token becomes used,
 	// no sync is required because only a single goroutine in TelegramHandler.Run() reads and writes it
 	var tokenAlreadyUsed bool

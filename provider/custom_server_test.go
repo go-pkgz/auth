@@ -80,7 +80,7 @@ func TestCustomProvider(t *testing.T) {
 				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 				return
 			}
-			assert.Equal(t, 2, len(resp.Cookies()))
+			require.Equal(t, 2, len(resp.Cookies()))
 			assert.Equal(t, "JWT", resp.Cookies()[0].Name)
 			assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
 			assert.Equal(t, 2678400, resp.Cookies()[0].MaxAge)

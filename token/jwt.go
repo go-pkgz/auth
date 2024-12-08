@@ -337,6 +337,7 @@ func (j *Service) Reset(w http.ResponseWriter) {
 
 // checkAuds verifies if claims.Audience in the list of allowed by audReader
 func (j *Service) checkAuds(claims *Claims, audReader Audience) error {
+	// marshal the audience.
 	if audReader == nil { // lack of any allowed means any
 		return nil
 	}
