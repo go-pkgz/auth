@@ -259,7 +259,7 @@ func TestAppleHandlerMakeRedirURL(t *testing.T) {
 	for i := range cases {
 		c := cases[i]
 		ah.URL = c.rootURL
-		assert.Equal(t, c.out, ah.makeRedirURL(c.route))
+		assert.Equal(t, c.out, makeRedirectURL(ah.URL, c.route))
 	}
 }
 
@@ -356,11 +356,13 @@ func TestAppleHandler_Exchange(t *testing.T) {
 	err = ah.exchange(context.Background(), "1122334455", "url/callback", &testAppleResponse)
 	assert.NoError(t, err)
 	assert.Equal(t, &appleVerificationResponse{
-		AccessToken:  "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3",
-		ExpiresIn:    3600,
-		TokenType:    "bearer",
-		RefreshToken: "IwOGYzYTlmM2YxOTQ5MGE3YmNmMDFkNTVk",
-		IDToken:      testResponseToken,
+		AccessTokenResponse: AccessTokenResponse{
+			AccessToken:  "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3",
+			ExpiresIn:    3600,
+			TokenType:    "bearer",
+			RefreshToken: "IwOGYzYTlmM2YxOTQ5MGE3YmNmMDFkNTVk",
+		},
+		IDToken: testResponseToken,
 	}, &testAppleResponse)
 
 	testAppleResponse = appleVerificationResponse{} // clear response for next checking
