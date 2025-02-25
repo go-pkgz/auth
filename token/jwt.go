@@ -21,10 +21,11 @@ type Service struct {
 // Claims stores user info for token and state & from from login
 type Claims struct {
 	jwt.StandardClaims
-	User        *User      `json:"user,omitempty"` // user info
-	SessionOnly bool       `json:"sess_only,omitempty"`
-	Handshake   *Handshake `json:"handshake,omitempty"` // used for oauth handshake
-	NoAva       bool       `json:"no-ava,omitempty"`    // disable avatar, always use identicon
+	User         *User         `json:"user,omitempty"` // user info
+	SessionOnly  bool          `json:"sess_only,omitempty"`
+	Handshake    *Handshake    `json:"handshake,omitempty"`     // used for oauth handshake
+	NoAva        bool          `json:"no-ava,omitempty"`        // disable avatar, always use identicon
+	AuthProvider *AuthProvider `json:"auth_provider,omitempty"` // auth provider info
 }
 
 // Handshake used for oauth handshake
@@ -32,6 +33,11 @@ type Handshake struct {
 	State string `json:"state,omitempty"`
 	From  string `json:"from,omitempty"`
 	ID    string `json:"id,omitempty"`
+}
+
+// AuthProvider stores attributes of provider which has created a JWT token
+type AuthProvider struct {
+	Name string `json:"name,omitempty"`
 }
 
 const (
