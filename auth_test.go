@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
+	"github.com/go-pkgz/auth/middleware"
 	"github.com/go-pkgz/auth/provider"
 	"github.com/go-pkgz/auth/token"
 )
@@ -245,6 +247,148 @@ func TestIntegrationList(t *testing.T) {
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, `["dev","github","custom123"]`+"\n", string(b))
+}
+
+type testAuthErrorHTTPHandler struct {
+	statusCode   int
+	contentType  string
+	responseBody string
+	wasCalled    bool
+}
+
+func (h *testAuthErrorHTTPHandler) ServeAuthError(
+	w http.ResponseWriter,
+	_ *http.Request,
+	authError error,
+	reason string,
+	statusCode int,
+) {
+	h.wasCalled = true
+	w.Header().Set("Content-Type", h.contentType)
+	w.WriteHeader(h.statusCode)
+	fmt.Fprint(w, h.responseBody)
+}
+
+func TestIntegrationAuthErrorHTTPHandler(t *testing.T) {
+	apiHandler := http.HandlerFunc(
+		func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("must not be called\n"))
+			t.Error("auth error must be raised before this HTTP handler is called")
+		},
+	)
+	defaultAuthErrorHTTPHandler := testAuthErrorHTTPHandler{
+		statusCode:   400,
+		contentType:  "application/json",
+		responseBody: `{"code": 400, "message": "from general error handler"}`,
+	}
+	type apiCall struct {
+		requestPath      string
+		expectedHandler  *testAuthErrorHTTPHandler
+		createMiddleware func(apiCall, middleware.Authenticator) http.Handler
+	}
+	apiCalls := []apiCall{
+		{
+			requestPath:     "/private1",
+			expectedHandler: &defaultAuthErrorHTTPHandler,
+			createMiddleware: func(ac apiCall, a middleware.Authenticator) http.Handler {
+				return a.Auth(apiHandler)
+			},
+		},
+		{
+			requestPath: "/private2",
+			expectedHandler: &testAuthErrorHTTPHandler{
+				statusCode:   402,
+				contentType:  "application/json",
+				responseBody: `{"code": 402, "message": "from private2 error handler"}`,
+			},
+			createMiddleware: func(ac apiCall, a middleware.Authenticator) http.Handler {
+				return a.AuthWithErrorHTTPHandler(apiHandler, ac.expectedHandler)
+			},
+		},
+		{
+			requestPath:     "/admin1",
+			expectedHandler: &defaultAuthErrorHTTPHandler,
+			createMiddleware: func(ac apiCall, a middleware.Authenticator) http.Handler {
+				return a.AdminOnly(apiHandler)
+			},
+		},
+		{
+			requestPath: "/admin2",
+			expectedHandler: &testAuthErrorHTTPHandler{
+				statusCode:   404,
+				contentType:  "application/json",
+				responseBody: `{"code": 404, "message": "from admin2 error handler"}`,
+			},
+			createMiddleware: func(ac apiCall, a middleware.Authenticator) http.Handler {
+				return a.AdminOnlyWithErrorHTTPHandler(apiHandler, ac.expectedHandler)
+			},
+		},
+		{
+			requestPath:     "/rbac1",
+			expectedHandler: &defaultAuthErrorHTTPHandler,
+			createMiddleware: func(ac apiCall, a middleware.Authenticator) http.Handler {
+				return a.RBAC("role1", "role2")(apiHandler)
+			},
+		},
+		{
+			requestPath: "/rbac2",
+			expectedHandler: &testAuthErrorHTTPHandler{
+				statusCode:   406,
+				contentType:  "text/html",
+				responseBody: `<html><body><h1>from RBAC2 error handler</h1></body></html>`,
+			},
+			createMiddleware: func(ac apiCall, a middleware.Authenticator) http.Handler {
+				return a.RBACwithErrorHTTPHandler(ac.expectedHandler, "role1", "role2")(apiHandler)
+			},
+		},
+	}
+
+	options := Opts{
+		SecretReader:         token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		Issuer:               "my-test-app",
+		URL:                  "http://127.0.0.1:8089",
+		AuthErrorHTTPHandler: &defaultAuthErrorHTTPHandler,
+	}
+
+	svc := NewService(options)
+	svc.AddDevProvider("localhost", 18084) // add dev provider on 18084
+
+	mux := http.NewServeMux()
+	m := svc.Middleware()
+
+	for _, ac := range apiCalls {
+		mux.Handle(ac.requestPath, ac.createMiddleware(ac, m))
+	}
+
+	l, listenErr := net.Listen("tcp", "127.0.0.1:8089")
+	require.Nil(t, listenErr)
+	ts := httptest.NewUnstartedServer(mux)
+	assert.NoError(t, ts.Listener.Close())
+	ts.Listener = l
+	ts.Start()
+	defer func() {
+		ts.Close()
+	}()
+
+	for _, ac := range apiCalls {
+		t.Run("auth error test for endpoint "+ac.requestPath, func(t *testing.T) {
+			th := ac.expectedHandler
+			th.wasCalled = false
+
+			resp, err := http.Get("http://127.0.0.1:8089" + ac.requestPath)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			require.True(t, th.wasCalled)
+
+			require.Equal(t, th.statusCode, resp.StatusCode)
+			require.Equal(t, th.contentType, resp.Header.Get("Content-Type"))
+
+			b, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, th.responseBody, string(b))
+		})
+	}
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
