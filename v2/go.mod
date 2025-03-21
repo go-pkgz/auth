@@ -9,7 +9,7 @@ require (
 	github.com/go-pkgz/repeater v1.2.0
 	github.com/go-pkgz/rest v1.20.2
 	github.com/golang-jwt/jwt v3.2.2+incompatible
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/rrivera/identicon v0.0.0-20240116195454-d5ba35832c0d
 	github.com/stretchr/testify v1.10.0
 	go.etcd.io/bbolt v1.3.10
