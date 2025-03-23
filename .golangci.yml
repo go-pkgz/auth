@@ -1,14 +1,7 @@
 linters-settings:
   govet:
-    check-shadowing: true
-  golint:
-    min-confidence: 0.6
-  gocyclo:
-    min-complexity: 15
-  maligned:
-    suggest-new: true
-  dupl:
-    threshold: 100
+    enable:
+      - shadow
   goconst:
     min-len: 2
     min-occurrences: 2
@@ -29,32 +22,27 @@ linters-settings:
 linters:
   disable-all: true
   enable:
-    - megacheck
-    - revive
-    - govet
-    - unconvert
-    - gas
-    - misspell
-    - unused
-    - typecheck
-    - ineffassign
-    - stylecheck
+    - copyloopvar
     - gochecknoinits
-    - exportloopref
-    - nakedret
+    - gosec
     - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
     - prealloc
+    - revive
+    - staticcheck
+    - stylecheck
+    - unconvert
+    - unused
 
   fast: false
 
 
-run:
-  #  modules-download-mode: vendor
-  skip-dirs:
-    - vendor
-  concurrency: 4
-
 issues:
+  exclude-dirs:
+    - vendor
   exclude-rules:
     - text: "should have a package comment, unless it's in another file for this package"
       linters:
