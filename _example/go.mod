@@ -5,20 +5,20 @@ go 1.21
 replace github.com/go-pkgz/auth => ../
 
 require (
-	github.com/go-chi/chi/v5 v5.2.0
+	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-oauth2/oauth2/v4 v4.5.2
-	github.com/go-pkgz/auth v1.24.2
-	github.com/go-pkgz/lgr v0.11.1
-	github.com/go-pkgz/rest v1.20.2
+	github.com/go-pkgz/auth v1.25.0
+	github.com/go-pkgz/lgr v0.12.0
+	github.com/go-pkgz/rest v1.20.3
 	github.com/golang-jwt/jwt v3.2.2+incompatible
-	golang.org/x/oauth2 v0.25.0
+	golang.org/x/oauth2 v0.26.0
 )
 
 require (
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	github.com/dghubble/oauth1 v0.7.3 // indirect
 	github.com/go-pkgz/repeater v1.2.0 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
+	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
