@@ -1,5 +1,5 @@
 # auth - authentication via oauth2, direct and email
-[![Build Status](https://github.com/go-pkgz/auth/workflows/build/badge.svg)](https://github.com/go-pkgz/auth/actions) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth?status.svg)](https://pkg.go.dev/github.com/go-pkgz/auth?tab=doc)
+[![Build Status](https://github.com/go-pkgz/auth/workflows/build/badge.svg)](https://github.com/go-pkgz/auth/actions) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth/v2?status.svg)](https://pkg.go.dev/github.com/go-pkgz/auth/v2?tab=doc)
 
 This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net, Apple, Patreon, Discord and Telegram as well as custom auth providers and email verification.
 
@@ -22,16 +22,55 @@ This library provides "social login" with Github, Google, Facebook, Microsoft, T
 - Wrappers to extract user info from the request
 - Role based access control
 
+## v1 vs v2 Differences
+
+The v2 version of this library is now the actively developed version, and we recommend using it for new projects. Key differences include:
+
+- JWT library updated to use `github.com/golang-jwt/jwt/v5` (from v3)
+- JWT token claims use modern structures from jwt/v5:
+    - `StandardClaims` replaced with `RegisteredClaims`
+    - `Claims.ExpiresAt` changed from `int64` to `*jwt.NumericDate`
+    - `Claims.NotBefore` changed from `int64` to `*jwt.NumericDate`
+    - `Claims.IssuedAt` changed from `int64` to `*jwt.NumericDate`
+    - `ID` field renamed from `Id`
+    - `Audience` changed from `string` to `[]string`
+- RefreshCache interface signatures updated to use strongly typed values:
+    - `Get(key string) (value token.Claims, ok bool)`
+    - `Set(key string, value token.Claims)`
+- Improved type safety for various interfaces and functions
+
+To migrate from v1 to v2:
+
+1. Update import paths to use `/v2` (e.g., `github.com/go-pkgz/auth/v2`)
+2. Update any custom code that accesses token fields to use the new structures
+3. If implementing RefreshCache interface, update method signatures
+
+<details>
+<summary>Complex Project Migration</summary>
+
+For a real-world example of migrating a complex project from v1 to v2, see [Remark42's migration PR](https://github.com/umputun/remark42/pull/1758). This migration included:
+
+- Updating all auth package imports to use `/v2`
+- Modifying token handling code to work with the new JWT v5 structures:
+  - Changing `StandardClaims` references to `RegisteredClaims`
+  - Updating code accessing token expiration times to use `*jwt.NumericDate`
+  - Converting string audience fields to use string arrays - it was a single string in the v3
+- Updating RefreshCache implementation to match the new interface
+- Adjusting tests to accommodate the new token structure
+- Fixing token claims validation and verification logic
+
+The PR demonstrates how to handle migration for a production application with extensive auth usage.
+</details>
+
 ## Install
 
-`go get -u github.com/go-pkgz/auth`
+`go get -u github.com/go-pkgz/auth/v2`
 
 ## Usage
 
 Example with chi router:
 
 ```go
-
 func main() {
 	// define options
 	options := auth.Opts{
