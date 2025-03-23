@@ -672,6 +672,6 @@ in XSRF vulnerabilities.
 
 ## Status
 
-The library extracted from [remark42](https://github.com/umputun/remark) project. The original code in production use on multiple sites and seems to work fine.
+The library was originally extracted from the [remark42](https://github.com/umputun/remark) project. The code is in production use on multiple sites and has proven to be stable and reliable.
 
-`go-pkgz/auth` library still in development and until version 1 released some breaking changes possible.
+Version 1.x is stable and in maintenance mode. Version 2.x is now the actively developed branch, and we recommend using it for all new projects.
