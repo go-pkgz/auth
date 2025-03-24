@@ -310,6 +310,9 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},
 		SessionOnly: false, // TODO review?
+		AuthProvider: &authtoken.AuthProvider{
+			Name: th.ProviderName,
+		},
 	}
 
 	if _, err := th.TokenService.Set(w, claims); err != nil {

@@ -61,6 +61,9 @@ func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},
+		AuthProvider: &token.AuthProvider{
+			Name: h.name,
+		},
 	}
 
 	if _, err = h.JwtService.Set(w, claims); err != nil {
@@ -146,6 +149,9 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 			Audience: oauthClaims.Audience,
 		},
 		SessionOnly: oauthClaims.SessionOnly,
+		AuthProvider: &token.AuthProvider{
+			Name: h.name,
+		},
 	}
 
 	if _, err = h.JwtService.Set(w, claims); err != nil {
