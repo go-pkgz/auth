@@ -285,23 +285,23 @@ func (s *Service) isValidProviderName(name string) bool {
 		return false
 	}
 
-	formatForbidden := func(name string) {
-		s.logger.Logf("[ERROR] provider has been ignored because its name contains forbidden characters: '%s'", name)
+	formatForbidden := func(name string) string {
+		return fmt.Sprintf("provider has been ignored because its name contains forbidden characters: '%s'", name)
 	}
 
 	path, err := url.PathUnescape(name)
 	if err != nil || path != name {
-		formatForbidden(name)
+		s.logger.Logf("[ERROR] %s", formatForbidden(name))
 		return false
 	}
 	if name != url.PathEscape(name) {
-		formatForbidden(name)
+		s.logger.Logf("[ERROR] %s", formatForbidden(name))
 		return false
 	}
 	// net/url package does not escape everything (https://github.com/golang/go/issues/5684)
 	// It is better to reject all reserved characters from https://datatracker.ietf.org/doc/html/rfc3986#section-2.2
 	if regexp.MustCompile(`[:/?#\[\]@!$&'\(\)*+,;=]`).MatchString(name) {
-		formatForbidden(name)
+		s.logger.Logf("[ERROR] %s", formatForbidden(name))
 		return false
 	}
 
