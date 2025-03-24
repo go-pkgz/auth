@@ -258,13 +258,27 @@ func TestJWT_SendJWTHeader(t *testing.T) {
 		SendJWTHeader: true,
 	})
 
-	rr := httptest.NewRecorder()
-	_, err := j.Set(rr, testClaims)
-	assert.NoError(t, err)
-	cookies := rr.Result().Cookies()
-	t.Log(cookies)
-	require.Equal(t, 0, len(cookies), "no cookies set")
-	assert.Equal(t, testJwtValid, rr.Result().Header.Get("X-JWT"))
+	t.Run("with handshake", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		_, err := j.Set(rr, testClaims)
+		assert.NoError(t, err)
+		cookies := rr.Result().Cookies()
+		t.Log(cookies)
+		require.Equal(t, 2, len(cookies), "cookies are set for handshake")
+		assert.Equal(t, testJwtValid, rr.Result().Header.Get("X-JWT"))
+	})
+
+	t.Run("without handshake", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		claimsNoHandshake := testClaims
+		claimsNoHandshake.Handshake = nil
+		_, err := j.Set(rr, claimsNoHandshake)
+		assert.NoError(t, err)
+		cookies := rr.Result().Cookies()
+		t.Log(cookies)
+		require.Equal(t, 2, len(cookies), "empty cookies set for non-handshake")
+		assert.Equal(t, testJwtValidNoHandshake, rr.Result().Header.Get("X-JWT"))
+	})
 }
 
 func TestJWT_SetProlonged(t *testing.T) {
