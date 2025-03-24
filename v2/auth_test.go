@@ -74,7 +74,7 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "cid", op.Cid)
 	assert.Equal(t, "csecret", op.Csecret)
 	assert.Equal(t, "go-pkgz/auth", op.Issuer)
-	assert.Equal(t, provider.UserAttributes{"attrName": "attrValue"}, op.Params.UserAttributes)
+	assert.Equal(t, provider.UserAttributes{"attrName": "attrValue"}, op.UserAttributes)
 
 	p, err = svc.Provider("github")
 	assert.NoError(t, err)

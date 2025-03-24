@@ -247,7 +247,7 @@ func (j *Service) validate(claims *Claims) error {
 func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 	nowUnix := time.Now().Unix()
 
-	if claims.ExpiresAt == nil || claims.ExpiresAt.Time.Unix() == 0 {
+	if claims.ExpiresAt == nil || claims.ExpiresAt.Unix() == 0 {
 		claims.ExpiresAt = jwt.NewNumericDate(time.Unix(nowUnix, 0).Add(j.TokenDuration))
 	}
 
