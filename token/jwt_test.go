@@ -542,8 +542,8 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	})
 
 	claims := testClaims
-	claims.StandardClaims.ExpiresAt = time.Date(2018, 5, 21, 1, 35, 22, 0, time.Local).Unix()
-	claims.StandardClaims.NotBefore = time.Date(2018, 5, 21, 1, 30, 22, 0, time.Local).Unix()
+	claims.ExpiresAt = time.Date(2018, 5, 21, 1, 35, 22, 0, time.Local).Unix()
+	claims.NotBefore = time.Date(2018, 5, 21, 1, 30, 22, 0, time.Local).Unix()
 	claims.SessionOnly = true
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
