@@ -247,16 +247,25 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 		return Claims{}, fmt.Errorf("failed to make token token: %w", err)
 	}
 
-	if j.SendJWTHeader {
-		w.Header().Set(j.JWTHeaderKey, tokenString)
-		return claims, nil
-	}
-
 	cookieExpiration := 0 // session cookie
 	if !claims.SessionOnly && claims.Handshake == nil {
 		cookieExpiration = int(j.CookieDuration.Seconds())
 	}
 
+	// For OAuth handshake, always set cookies regardless of SendJWTHeader flag
+	// This allows the OAuth flow to complete successfully
+	needsCookies := claims.Handshake != nil
+
+	// Set the JWT in the header if requested
+	if j.SendJWTHeader {
+		w.Header().Set(j.JWTHeaderKey, tokenString)
+		// Skip setting cookies unless this is part of OAuth handshake
+		if !needsCookies {
+			return claims, nil
+		}
+	}
+
+	// Set cookies (always for OAuth handshake, or when SendJWTHeader is false)
 	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: tokenString, HttpOnly: true, Path: "/", Domain: j.JWTCookieDomain,
 		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite}
 	http.SetCookie(w, &jwtCookie)
