@@ -49,17 +49,7 @@ const (
 
 // appleVerificationResponse is based on https://developer.apple.com/documentation/signinwithapplerestapi/tokenresponse
 type appleVerificationResponse struct {
-	// A token used to access allowed user data, but now not implemented public interface for it.
-	AccessToken string `json:"access_token"`
-
-	// Access token type, always equal the "bearer".
-	TokenType string `json:"token_type"`
-
-	// Access token expires time in seconds. Always equal 3600 seconds (1 hour)
-	ExpiresIn int `json:"expires_in"`
-
-	// The refresh token used to regenerate new access tokens.
-	RefreshToken string `json:"refresh_token"`
+	AccessTokenResponse
 
 	// Main JSON Web Token that contains the user’s identity information.
 	IDToken string `json:"id_token"`
@@ -326,7 +316,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var resp appleVerificationResponse
-	err = ah.exchange(context.Background(), code, ah.makeRedirURL(r.URL.Path), &resp)
+	err = ah.exchange(context.Background(), code, makeRedirectURL(ah.URL, r.URL.Path), &resp)
 	if err != nil {
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, err, "exchange failed")
 		return
@@ -531,16 +521,9 @@ func (ah *AppleHandler) prepareLoginURL(state, path string) (string, error) {
 	query.Set("response_mode", ah.conf.ResponseMode)
 	query.Set("client_id", ah.conf.ClientID)
 	query.Set("scope", scopesList)
-	query.Set("redirect_uri", ah.makeRedirURL(path))
+	query.Set("redirect_uri", makeRedirectURL(ah.URL, path))
 	authURL.RawQuery = query.Encode()
 
 	return authURL.String(), nil
 
-}
-
-func (ah AppleHandler) makeRedirURL(path string) string {
-	elems := strings.Split(path, "/")
-	newPath := strings.Join(elems[:len(elems)-1], "/")
-
-	return strings.TrimRight(ah.URL, "/") + strings.TrimSuffix(newPath, "/") + urlCallbackSuffix
 }
