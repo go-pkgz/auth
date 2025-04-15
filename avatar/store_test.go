@@ -70,7 +70,6 @@ func TestStore_NewStore(t *testing.T) {
 	}
 
 	for _, tt := range tbl {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			if strings.Contains(tt.uri, "mongodb://") && tt.err == nil {
 				if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
@@ -106,7 +105,6 @@ func TestStore_parseExtMongoURI(t *testing.T) {
 	}
 
 	for _, tt := range tbl {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			db, coll, u, err := parseExtMongoURI(tt.inp)
 			if tt.err != nil {

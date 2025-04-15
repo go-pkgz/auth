@@ -61,7 +61,6 @@ func TestDirect_LoginHandler(t *testing.T) {
 	}
 
 	for name, test := range testCases {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			d := DirectHandler{
 				ProviderName: "test",
@@ -187,7 +186,6 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 	}
 
 	for name, test := range testCases {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			d := DirectHandler{
 				ProviderName: "test",

@@ -32,7 +32,6 @@ func TestHandler(t *testing.T) {
 	handler := http.HandlerFunc(svc.Handler)
 
 	for n, tt := range tbl {
-		tt := tt
 		t.Run(fmt.Sprintf("check-%d", n), func(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req, err := http.NewRequest(tt.method, tt.url, http.NoBody)
