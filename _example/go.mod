@@ -1,6 +1,7 @@
 module github.com/go-pkgz/auth/_example
 
 go 1.21
+toolchain go1.24.1
 
 replace github.com/go-pkgz/auth/v2 => ../v2
 
@@ -38,7 +39,7 @@ require (
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.etcd.io/bbolt v1.3.10 // indirect
 	go.mongodb.org/mongo-driver v1.17.2 // indirect
-	golang.org/x/crypto v0.33.0 // indirect
+	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/image v0.23.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
