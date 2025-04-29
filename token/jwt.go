@@ -261,7 +261,7 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite}
 	http.SetCookie(w, &jwtCookie)
 
-	xsrfCookie := http.Cookie{Name: j.XSRFCookieName, Value: claims.Id, HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain,
+	xsrfCookie := http.Cookie{Name: j.XSRFCookieName, Value: claims.Id, HttpOnly: true, Path: "/", Domain: j.JWTCookieDomain,
 		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite}
 	http.SetCookie(w, &xsrfCookie)
 
@@ -330,11 +330,11 @@ func (j *Service) IsExpired(claims Claims) bool {
 
 // Reset token's cookies
 func (j *Service) Reset(w http.ResponseWriter) {
-	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: "", HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain,
+	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: "", HttpOnly: true, Path: "/", Domain: j.JWTCookieDomain,
 		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite}
 	http.SetCookie(w, &jwtCookie)
 
-	xsrfCookie := http.Cookie{Name: j.XSRFCookieName, Value: "", HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain,
+	xsrfCookie := http.Cookie{Name: j.XSRFCookieName, Value: "", HttpOnly: true, Path: "/", Domain: j.JWTCookieDomain,
 		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite}
 	http.SetCookie(w, &xsrfCookie)
 

@@ -586,7 +586,7 @@ func TestJWT_Reset(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	assert.Equal(t, "jc1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0", resp.Header.Get("Set-Cookie"))
+	assert.Equal(t, "jc1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; HttpOnly", resp.Header.Get("Set-Cookie"))
 	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
 }
 
