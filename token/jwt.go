@@ -247,8 +247,14 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 		return Claims{}, fmt.Errorf("failed to make token token: %w", err)
 	}
 
-	if j.SendJWTHeader {
+	// For OAuth handshake, always set cookies regardless of SendJWTHeader flag
+	// This allows the OAuth flow to complete successfully
+	needsCookies := claims.Handshake != nil
+
+	if j.SendJWTHeader && !needsCookies {
 		w.Header().Set(j.JWTHeaderKey, tokenString)
+		// reset cookies in case they were set by OAuth handshake
+		j.Reset(w)
 		return claims, nil
 	}
 
