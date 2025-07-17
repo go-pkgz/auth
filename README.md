@@ -125,10 +125,10 @@ Also, there is a special middleware `middleware.UpdateUser` for population and m
 
 Generally, adding support of `auth` includes a few relatively simple steps:
 
-1. Setup `auth.Opts` structure with all parameters. Each of them [documented](https://github.com/go-pkgz/auth/blob/master/auth.go#L29) and most of parameters are optional and have sane defaults.
-2. [Create](https://github.com/go-pkgz/auth/blob/master/auth.go#L56) the new `auth.Service` with provided options.
-3. [Add all](https://github.com/go-pkgz/auth/blob/master/auth.go#L149) desirable authentication providers.
-4. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/auth.go#L144) and [http handlers](https://github.com/go-pkgz/auth/blob/master/auth.go#L105) from `auth.Service`
+1. Setup `auth.Opts` structure with all parameters. Each of them [documented](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L40) and most of parameters are optional and have sane defaults.
+2. [Create](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L80) the new `auth.Service` with provided options.
+3. [Add all](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L312) desirable authentication providers.
+4. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L225) and [http handlers](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L153) from `auth.Service`
 5. Wire auth and avatar handlers into http router as sub–routes.
 
 ### API
