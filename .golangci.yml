@@ -1,60 +1,79 @@
-linters-settings:
-  govet:
-    enable:
-      - shadow
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-  misspell:
-    locale: US
-  lll:
-    line-length: 140
-  gocritic:
-    enabled-tags:
-      - performance
-      - style
-      - experimental
-    disabled-checks:
-      - wrapperFunc
-      - hugeParam
-      - rangeValCopy
-
+version: "2"
 linters:
   enable:
     - copyloopvar
     - gochecknoinits
     - gosec
-    - gosimple
-    - govet
-    - ineffassign
     - misspell
     - nakedret
     - prealloc
     - revive
     - staticcheck
-    - stylecheck
     - unconvert
-    - unused
-
+  settings:
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocritic:
+      disabled-checks:
+        - wrapperFunc
+        - hugeParam
+        - rangeValCopy
+      enabled-tags:
+        - performance
+        - style
+        - experimental
+    govet:
+      enable:
+        - shadow
+    lll:
+      line-length: 140
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - revive
+          - unparam
+          - unused
+        path: _test\.go$
+        text: unused-parameter
+      - linters:
+          - errcheck
+        path: _test\.go$
+      - path: (.+)\.go$
+        text: should have a package comment, unless it's in another file for this package
+      - path: (.+)\.go$
+        text: 'exitAfterDefer:'
+      - path: (.+)\.go$
+        text: 'whyNoLint: include an explanation for nolint directive'
+      - path: (.+)\.go$
+        text: go.mongodb.org/mongo-driver/bson/primitive.E
+      - path: (.+)\.go$
+        text: weak cryptographic primitive
+      - path: (.+)\.go$
+        text: at least one file in a package should have a package comment
+      - path: (.+)\.go$
+        text: should have a package comment
+      - path: (.+)\.go$
+        text: Deferring unsafe method "Close" on type "io.ReadCloser"
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude:
-    - "should have a package comment, unless it's in another file for this package"
-    - "exitAfterDefer:"
-    - "whyNoLint: include an explanation for nolint directive"
-    - "go.mongodb.org/mongo-driver/bson/primitive.E"
-    - "weak cryptographic primitive"
-    - "at least one file in a package should have a package comment"
-    - "should have a package comment"
-    - 'Deferring unsafe method "Close" on type "io.ReadCloser"'
-  exclude-rules:
-    - linters:
-        - unparam
-        - unused
-        - revive
-      path: _test\.go$
-      text: "unused-parameter"
-    - linters:
-        - errcheck
-      path: _test\.go$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
