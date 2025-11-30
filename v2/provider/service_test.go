@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-pkgz/auth/v2/avatar"
 	"github.com/go-pkgz/auth/v2/token"
 )
 
@@ -60,6 +61,12 @@ func TestRandToken(t *testing.T) {
 func TestSetAvatar(t *testing.T) {
 	client := &http.Client{Timeout: time.Second}
 	u, err := setAvatar(nil, token.User{Picture: "http://example.com/pic1.png"}, client)
+	assert.NoError(t, err, "nil ava allowed")
+	assert.Equal(t, token.User{Picture: "http://example.com/pic1.png"}, u)
+
+	var nilProxy *avatar.Proxy
+	var nilAva AvatarSaver = nilProxy
+	u, err = setAvatar(nilAva, token.User{Picture: "http://example.com/pic1.png"}, client)
 	assert.NoError(t, err, "nil ava allowed")
 	assert.Equal(t, token.User{Picture: "http://example.com/pic1.png"}, u)
 
