@@ -20,7 +20,7 @@ require (
 	github.com/go-pkgz/repeater v1.2.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/rrivera/identicon v0.0.0-20240116195454-d5ba35832c0d // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
