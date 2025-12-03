@@ -12,8 +12,6 @@ github.com/fatih/structs v1.1.0 h1:Q7juDM0QtcnhCpeyLGQKyg4TOIghuNXrkL32pHAUMxo=
 github.com/fatih/structs v1.1.0/go.mod h1:9NiDSp5zOcgEDl+j00MP/WkGVPOlPRLejGD8Ga6PJ7M=
 github.com/gavv/httpexpect v2.0.0+incompatible h1:1X9kcRshkSKEjNJJxX9Y9mQ5BRfbxU5kORdjhlA1yX8=
 github.com/gavv/httpexpect v2.0.0+incompatible/go.mod h1:x+9tiU1YnrOvnB725RkpoLv1M62hOWzwo5OXotisrKc=
-github.com/go-chi/chi/v5 v5.2.3 h1:WQIt9uxdsAbgIYgid+BpYc+liqQZGMHRaUwp0JUcvdE=
-github.com/go-chi/chi/v5 v5.2.3/go.mod h1:L2yAIGWB3H+phAw1NxKwWM+7eUH/lU8pOMm5hHcoops=
 github.com/go-oauth2/oauth2/v4 v4.5.4 h1:YjI0tmGW8oxVhn9QSBIxlr641QugWrJY5UWa6XmLcW0=
 github.com/go-oauth2/oauth2/v4 v4.5.4/go.mod h1:BXiOY+QZtZy2ewbsGk2B5P8TWmtz/Rf7ES5ZttQFxfQ=
 github.com/go-pkgz/lgr v0.12.1 h1:8GVfG2rSARq3Eaj5PP158rtBR2LHVGkwioIkQBGbvKg=
@@ -22,6 +20,8 @@ github.com/go-pkgz/repeater v1.2.0 h1:oJFvjyKdTDd5RCzpzxlzYIZFFj6Zfl17rE1aUfu6Uj
 github.com/go-pkgz/repeater v1.2.0/go.mod h1:vypP6xamA53MFmafnGUucqOmALKk36xgKu2hSG73LHM=
 github.com/go-pkgz/rest v1.20.4 h1:8ufcP1IqoDhCvIFdXPtvyX4HSS16SM6THBe2a6L0/kg=
 github.com/go-pkgz/rest v1.20.4/go.mod h1:2/LEZGndSxpVvExsMn48AjUgiTn6kILqjpoaRnl62JU=
+github.com/go-pkgz/routegroup v1.6.0 h1:44XHZgF6JIIldRlv+zjg6SygULASmjifnfIQjwCT0e4=
+github.com/go-pkgz/routegroup v1.6.0/go.mod h1:Pmu04fhgWhRtBMIJ8HXppnnzOPjnL/IEPBIdO2zmeqg=
 github.com/golang-jwt/jwt/v5 v5.3.0 h1:pv4AsKCKKZuqlgs5sUmn4x8UlGa0kEVt/puTpKx9vvo=
 github.com/golang-jwt/jwt/v5 v5.3.0/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/golang/snappy v1.0.0 h1:Oy607GVXHs7RtbggtPBnr2RmDArIsAefDwvrdWvRhGs=
