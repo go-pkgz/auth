@@ -68,7 +68,53 @@ The PR demonstrates how to handle migration for a production application with ex
 
 ## Usage
 
-Example with chi router:
+Example with [routegroup](https://github.com/go-pkgz/routegroup) (stdlib-based router):
+
+```go
+func main() {
+	// define options
+	options := auth.Opts{
+		SecretReader: token.SecretFunc(func(id string) (string, error) { // secret key for JWT
+			return "secret", nil
+		}),
+		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
+		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
+		Issuer:         "my-test-app",
+		URL:            "http://127.0.0.1:8080",
+		AvatarStore:    avatar.NewLocalFS("/tmp"),
+		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
+			// allow only dev_* names
+			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_")
+		}),
+	}
+
+	// create auth service with providers
+	service := auth.NewService(options)
+	service.AddProvider("github", "<Client ID>", "<Client Secret>")   // add github provider
+	service.AddProvider("facebook", "<Client ID>", "<Client Secret>") // add facebook provider
+
+	// retrieve auth middleware
+	m := service.Middleware()
+
+	// setup http server
+	router := routegroup.New(http.NewServeMux())
+	router.HandleFunc("GET /open", openRouteHandler) // open api
+	router.Group().Route(func(r *routegroup.Bundle) {
+		r.Use(m.Auth)
+		r.HandleFunc("GET /private", protectedRouteHandler) // protected api
+	})
+
+	// setup auth routes
+	authRoutes, avaRoutes := service.Handlers()
+	router.Handle("/auth/", http.StripPrefix("/auth", authRoutes))   // add auth handlers
+	router.Handle("/avatar/", http.StripPrefix("/avatar", avaRoutes)) // add avatar handler
+
+	log.Fatal(http.ListenAndServe(":8080", router))
+}
+```
+
+<details>
+<summary>Example with chi router</summary>
 
 ```go
 func main() {
@@ -109,6 +155,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
 ```
+</details>
 
 ## Middleware
 

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-oauth2/oauth2/v4/errors"
 	"github.com/go-oauth2/oauth2/v4/generates"
 	"github.com/go-oauth2/oauth2/v4/manage"
@@ -22,6 +21,7 @@ import (
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
+	"github.com/go-pkgz/routegroup"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
 
@@ -49,7 +49,7 @@ func main() {
 		AvatarStore:       avatar.NewLocalFS("/tmp/demo-auth-service"), // stores avatars locally
 		AvatarResizeLimit: 200,                                         // resizes avatars to 200x200
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims { // modify issued token
-			if claims.User != nil && claims.User.Name == "dev_admin" { // set attributes for dev_admin
+			if claims.User != nil && claims.User.Name == "dev_admin" {          // set attributes for dev_admin
 				claims.User.SetAdmin(true)
 				claims.User.SetStrAttr("custom-key", "some value")
 			}
@@ -185,18 +185,18 @@ func main() {
 	m := service.Middleware()
 
 	// setup http server
-	router := chi.NewRouter()
+	router := routegroup.New(http.NewServeMux())
 	// add some external middlewares from go-pkgz/rest
 	router.Use(rest.AppInfo("auth-example", "umputun", "1.0.0"), rest.Ping)
 	router.Use(logger.New(logger.Log(log.Default()), logger.WithBody, logger.Prefix("[INFO]")).Handler) // log all http requests
-	router.Get("/open", openRouteHandler)                                                               // open page
-	router.Group(func(r chi.Router) {
+	router.HandleFunc("GET /open", openRouteHandler)                                                    // open page
+	router.Group().Route(func(r *routegroup.Bundle) {
 		r.Use(m.Auth)
 		r.Use(m.UpdateUser(middleware.UserUpdFunc(func(user token.User) token.User {
 			user.SetStrAttr("some_attribute", "attribute value")
 			return user
 		})))
-		r.Get("/private_data", protectedDataHandler) // protected api
+		r.HandleFunc("GET /private_data", protectedDataHandler) // protected api
 	})
 
 	// static files under ~/web
@@ -206,8 +206,8 @@ func main() {
 
 	// setup auth routes
 	authRoutes, avaRoutes := service.Handlers()
-	router.Mount("/auth", authRoutes)  // add auth handlers
-	router.Mount("/avatar", avaRoutes) // add avatar handler
+	router.Handle("/auth/", http.StripPrefix("/auth", authRoutes))    // add auth handlers
+	router.Handle("/avatar/", http.StripPrefix("/avatar", avaRoutes)) // add avatar handler
 
 	httpServer := &http.Server{
 		Addr:              ":8080",
@@ -240,9 +240,8 @@ func anonymousAuthProvider() provider.CredCheckerFunc {
 	}
 }
 
-// FileServer conveniently sets up a http.FileServer handler to serve static files from a http.FileSystem.
-// Borrowed from https://github.com/go-chi/chi/blob/master/_examples/fileserver/main.go
-func fileServer(r chi.Router, path string, root http.FileSystem) {
+// fileServer conveniently sets up a http.FileServer handler to serve static files from a http.FileSystem.
+func fileServer(r *routegroup.Bundle, path string, root http.FileSystem) {
 	if strings.ContainsAny(path, "{}*") {
 		panic("FileServer does not permit URL parameters.")
 	}
@@ -251,14 +250,11 @@ func fileServer(r chi.Router, path string, root http.FileSystem) {
 	fs := http.StripPrefix(path, http.FileServer(root))
 
 	if path != "/" && path[len(path)-1] != '/' {
-		r.Get(path, http.RedirectHandler(path+"/", http.StatusMovedPermanently).ServeHTTP)
+		r.Handle("GET "+path, http.RedirectHandler(path+"/", http.StatusMovedPermanently))
 		path += "/"
 	}
-	path += "*"
 
-	r.Get(path, func(w http.ResponseWriter, r *http.Request) {
-		fs.ServeHTTP(w, r)
-	})
+	r.Handle("GET "+path+"{file...}", fs)
 }
 
 // GET /open returns a page available without authorization
