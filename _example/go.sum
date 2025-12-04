@@ -16,8 +16,8 @@ github.com/go-oauth2/oauth2/v4 v4.5.4 h1:YjI0tmGW8oxVhn9QSBIxlr641QugWrJY5UWa6Xm
 github.com/go-oauth2/oauth2/v4 v4.5.4/go.mod h1:BXiOY+QZtZy2ewbsGk2B5P8TWmtz/Rf7ES5ZttQFxfQ=
 github.com/go-pkgz/lgr v0.12.1 h1:8GVfG2rSARq3Eaj5PP158rtBR2LHVGkwioIkQBGbvKg=
 github.com/go-pkgz/lgr v0.12.1/go.mod h1:A4AxjOthFVFK6jRnVYMeusno5SeDAxcLVHd0kI/lN/Y=
-github.com/go-pkgz/repeater v1.2.0 h1:oJFvjyKdTDd5RCzpzxlzYIZFFj6Zfl17rE1aUfu6UjQ=
-github.com/go-pkgz/repeater v1.2.0/go.mod h1:vypP6xamA53MFmafnGUucqOmALKk36xgKu2hSG73LHM=
+github.com/go-pkgz/repeater/v2 v2.0.1 h1:um4pnVvWa5vNUv5f0SaiowvSHIy33sSFSc/W6rx0Eks=
+github.com/go-pkgz/repeater/v2 v2.0.1/go.mod h1:RgX5vUbLKq7PV82QUDP5pFbQS1os4Z+U9XzKymK23A8=
 github.com/go-pkgz/rest v1.20.4 h1:8ufcP1IqoDhCvIFdXPtvyX4HSS16SM6THBe2a6L0/kg=
 github.com/go-pkgz/rest v1.20.4/go.mod h1:2/LEZGndSxpVvExsMn48AjUgiTn6kILqjpoaRnl62JU=
 github.com/go-pkgz/routegroup v1.6.0 h1:44XHZgF6JIIldRlv+zjg6SygULASmjifnfIQjwCT0e4=

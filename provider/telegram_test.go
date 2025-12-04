@@ -309,11 +309,16 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 	assert.Equal(t, "my_auth_bot", resp.Bot)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go tg.Run(ctx)
+	runDone := make(chan struct{})
+	go func() {
+		_ = tg.Run(ctx)
+		close(runDone)
+	}()
 	assert.Eventually(t, func() bool {
 		return tg.ProcessUpdate(ctx, "").Error() == "Run goroutine should not be used with ProcessUpdate"
 	}, time.Millisecond*100, time.Millisecond*10, "ProcessUpdate should not work same time as Run")
+	cancel()
+	<-runDone
 }
 
 func TestTelegram_TokenVerification(t *testing.T) {
