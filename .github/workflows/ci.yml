@@ -7,10 +7,12 @@ on:
     paths-ignore:
       - ".github/workflows/ci-v2.yml"
       - "v2/**"
+      - "_example/**"
   pull_request:
     paths-ignore:
       - ".github/workflows/ci-v2.yml"
       - "v2/**"
+      - "_example/**"
 
 jobs:
   build:
@@ -35,13 +37,6 @@ jobs:
         uses: wbari/start-mongoDB@v0.2
         with:
           mongoDBVersion: "6.0"
-
-      - name: build the example
-        working-directory: _example
-        run: |
-          go build -race
-        env:
-          TZ: "America/Chicago"
 
       - name: build and test
         run: |
