@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-pkgz/repeater"
+	"github.com/go-pkgz/repeater/v2"
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
 
@@ -450,7 +450,7 @@ func (tg *tgAPI) BotInfo(ctx context.Context) (*botInfo, error) {
 }
 
 func (tg *tgAPI) request(ctx context.Context, method string, data interface{}) error {
-	return repeater.NewDefault(3, time.Millisecond*50).Do(ctx, func() error {
+	return repeater.NewFixed(3, time.Millisecond*50).Do(ctx, func() error {
 		url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tg.token, method)
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)

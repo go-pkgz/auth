@@ -6,7 +6,7 @@ require (
 	github.com/dghubble/oauth1 v0.7.3
 	github.com/go-oauth2/oauth2/v4 v4.5.2
 	github.com/go-pkgz/email v0.6.0
-	github.com/go-pkgz/repeater v1.2.0
+	github.com/go-pkgz/repeater/v2 v2.0.1
 	github.com/go-pkgz/rest v1.20.4
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/rrivera/identicon v0.0.0-20240116195454-d5ba35832c0d
