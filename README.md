@@ -1,7 +1,7 @@
 # auth - authentication via oauth2, direct and email
 [![Build Status](https://github.com/go-pkgz/auth/workflows/build/badge.svg)](https://github.com/go-pkgz/auth/actions) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth/v2?status.svg)](https://pkg.go.dev/github.com/go-pkgz/auth/v2?tab=doc)
 
-This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net, Apple, Patreon, Discord and Telegram as well as custom auth providers and email verification.
+This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net, Apple, Patreon, Discord, Telegram and Twitch as well as custom auth providers and email verification.
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
@@ -702,6 +702,12 @@ For more details refer to [Complete Guide of Battle.net OAuth API and Login Butt
 1.	Fill **App name**  and **Description** and **URL** of your site
 1.	In the field **Callback URLs** enter the correct url of your callback handler e.g. https://example.mysite.com/{route}/twitter/callback
 1.	Under **Key and tokens** take note of the **Consumer API Key** and **Consumer API Secret key**. Those will be used as `cid` and `csecret`
+
+#### Twitch Auth Provider ####
+1. Create a new Twitch application https://dev.twitch.tv/console/apps/create
+2. Fill **"Name"**, **"OAuth Redirect URL"** and choose category
+3. Take note of the **Client ID** and **Client Secret**
+4. Detailed instructions, step by step https://dev.twitch.tv/docs/authentication/register-app/
 
 ## XSRF Protections
 By default, the XSRF protections will apply to all requests which reach the `middlewares.Auth`,
