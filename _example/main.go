@@ -49,7 +49,7 @@ func main() {
 		AvatarStore:       avatar.NewLocalFS("/tmp/demo-auth-service"), // stores avatars locally
 		AvatarResizeLimit: 200,                                         // resizes avatars to 200x200
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims { // modify issued token
-			if claims.User != nil && claims.User.Name == "dev_admin" {          // set attributes for dev_admin
+			if claims.User != nil && claims.User.Name == "dev_admin" { // set attributes for dev_admin
 				claims.User.SetAdmin(true)
 				claims.User.SetStrAttr("custom-key", "some value")
 			}
@@ -144,7 +144,7 @@ func main() {
 		devAuthServer.Run(context.Background())
 	}()
 
-	// Example: start custom oauth2 server, add to handlers
+	// example: start custom oauth2 server, add to handlers
 	srv := initGoauth2Srv()
 	sopts := provider.CustomServerOpt{
 		URL:           "http://127.0.0.1:9096",
@@ -154,11 +154,11 @@ func main() {
 	// create custom provider and prepare params for handler
 	prov := provider.NewCustomServer(srv, sopts)
 
-	// Start server
+	// start server
 	go prov.Run(context.Background())
 	service.AddCustomProvider("custom123", auth.Client{Cid: "cid", Csecret: "csecret"}, prov.HandlerOpt)
 
-	// Example: add different oauth2 provider
+	// example: add different oauth2 provider
 	c := auth.Client{
 		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
 		Csecret: os.Getenv("AEXMPL_BITBUCKET_CSEC"),
