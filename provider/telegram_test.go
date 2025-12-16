@@ -50,7 +50,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
-	// Get token
+	// get token
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -68,7 +68,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	assert.Equal(t, "my_auth_bot", resp.Bot)
 	token := resp.Token
 
-	// Make sure we get error without first confirming auth request
+	// make sure we get error without first confirming auth request
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -78,7 +78,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 
 	time.Sleep(tgAuthRequestLifetime)
 
-	// Confirm auth request expired
+	// confirm auth request expired
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -146,7 +146,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
-	// Get token
+	// get token
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -166,7 +166,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	servedToken = resp.Token
 	wgToken.Done()
 
-	// Check the token confirmation
+	// check the token confirmation
 	assert.Eventually(t, func() bool {
 		r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
 		w = httptest.NewRecorder()
@@ -186,7 +186,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.Contains(t, info.ID, "telegram_")
 	assert.Equal(t, "http://example.com/ava12345.png", info.Picture)
 
-	// Test request has been invalidated
+	// test request has been invalidated
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -206,7 +206,7 @@ func TestTelegramLogout(t *testing.T) {
 	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
-	// Same TestVerifyHandler_Logout
+	// same TestVerifyHandler_Logout
 	handler := http.HandlerFunc(tg.LogoutHandler)
 	rr := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/logout", http.NoBody)
@@ -292,7 +292,7 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 	assert.EqualError(t, tg.ProcessUpdate(context.Background(), ""), "failed to decode provided telegram update: unexpected end of JSON input")
 	assert.Len(t, tg.requests.data, 1, "expired token should be cleaned up despite the error")
 
-	// Verify that get token will return bot name
+	// verify that get token will return bot name
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)

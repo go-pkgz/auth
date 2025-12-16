@@ -231,7 +231,7 @@ func (j *Service) validate(claims *Claims) error {
 		return nil
 	}
 
-	// Ignore "ErrTokenExpired" if it is the only error.
+	// ignore "ErrTokenExpired" if it is the only error.
 	if errors.Is(err, jwt.ErrTokenExpired) {
 		if uw, ok := err.(interface{ Unwrap() []error }); ok && len(uw.Unwrap()) == 1 {
 			return nil

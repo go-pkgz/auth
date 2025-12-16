@@ -252,16 +252,16 @@ func TestAvatar_resize(t *testing.T) {
 	}
 
 	p := Proxy{L: logger.Std}
-	// Reader is nil.
+	// reader is nil.
 	resizedR := p.resize(nil, 100)
 	assert.Nil(t, resizedR)
 
-	// Negative limit error.
+	// negative limit error.
 	resizedR = p.resize(strings.NewReader("some picture bin data"), -1)
 	require.NotNil(t, resizedR)
 	checkC(t, resizedR, []byte("some picture bin data"))
 
-	// Decode error.
+	// decode error.
 	resizedR = p.resize(strings.NewReader("invalid image content"), 100)
 	assert.NotNil(t, resizedR)
 	checkC(t, resizedR, []byte("invalid image content"))
@@ -278,12 +278,12 @@ func TestAvatar_resize(t *testing.T) {
 		img, err := os.ReadFile(c.file)
 		require.Nil(t, err, "can't open test file %s", c.file)
 
-		// No need for resize, avatar dimensions are smaller than resize limit.
+		// no need for resize, avatar dimensions are smaller than resize limit.
 		resizedR = p.resize(bytes.NewReader(img), 800)
 		assert.NotNil(t, resizedR, "file %s", c.file)
 		checkC(t, resizedR, img)
 
-		// Resizing to half of width. Check resizedR avatar format PNG.
+		// resizing to half of width. Check resizedR avatar format PNG.
 		resizedR = p.resize(bytes.NewReader(img), 400)
 		assert.NotNil(t, resizedR, "file %s", c.file)
 

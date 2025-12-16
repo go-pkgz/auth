@@ -51,7 +51,7 @@ func TestCustomProvider(t *testing.T) {
 		L:             logger.Std,
 		WithLoginPage: true,
 		LoginPageHandler: func(w http.ResponseWriter, r *http.Request) {
-			// // Simulate POST from login page
+			// // simulate POST from login page
 			u, err := url.Parse("http://127.0.0.1:9096/authorize?" + r.URL.RawQuery)
 			if err != nil {
 				assert.Fail(t, "failed to parse url")
