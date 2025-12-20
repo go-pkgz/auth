@@ -4,11 +4,11 @@ go 1.24.0
 
 require (
 	github.com/dghubble/oauth1 v0.7.3
-	github.com/go-oauth2/oauth2/v4 v4.5.2
+	github.com/go-oauth2/oauth2/v4 v4.3.0
 	github.com/go-pkgz/email v0.6.0
 	github.com/go-pkgz/repeater/v2 v2.0.1
 	github.com/go-pkgz/rest v1.20.4
-	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt v3.1.0+incompatible
 	github.com/rrivera/identicon v0.0.0-20240116195454-d5ba35832c0d
 	github.com/stretchr/testify v1.11.1
 	go.etcd.io/bbolt v1.4.3
@@ -20,6 +20,7 @@ require (
 require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
