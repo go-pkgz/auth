@@ -263,7 +263,11 @@ func TestJWT_SendJWTHeader(t *testing.T) {
 	assert.NoError(t, err)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
-	require.Equal(t, 0, len(cookies), "no cookies set")
+	// cookies are set alongside header to support OAuth redirect flows
+	require.Equal(t, 2, len(cookies), "cookies set alongside header")
+	assert.Equal(t, "JWT", cookies[0].Name)
+	assert.Equal(t, testJwtValid, cookies[0].Value)
+	assert.Equal(t, "XSRF-TOKEN", cookies[1].Name)
 	assert.Equal(t, testJwtValid, rr.Result().Header.Get("X-JWT"))
 }
 
