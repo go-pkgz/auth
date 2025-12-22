@@ -268,6 +268,7 @@ func TestJWT_SendJWTHeader(t *testing.T) {
 	assert.Equal(t, "JWT", cookies[0].Name)
 	assert.Equal(t, testJwtValid, cookies[0].Value)
 	assert.Equal(t, "XSRF-TOKEN", cookies[1].Name)
+	assert.Equal(t, "random id", cookies[1].Value)
 	assert.Equal(t, testJwtValid, rr.Result().Header.Get("X-JWT"))
 }
 
