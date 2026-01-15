@@ -69,10 +69,10 @@ func main() {
 				if strings.HasPrefix(claims.User.ID, "discord_") { // allow all users with discord auth
 					return true
 				}
-				if strings.HasPrefix(claims.User.Name, "dev_") { // non-guthub allow only dev_* names
+				if strings.HasPrefix(claims.User.Name, "dev_") { // allow all users with dev auth
 					return true
 				}
-				return strings.HasPrefix(claims.User.Name, "custom123_")
+				return strings.HasPrefix(claims.User.Name, "custom123_") // allow all users with custom123 auth
 			}
 			return false
 		}),
