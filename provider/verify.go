@@ -3,14 +3,14 @@ package provider
 import (
 	"bytes"
 	"crypto/sha1"
+	"fmt"
+	"html/template"
 	"net/http"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
-	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -75,13 +75,13 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if e.TokenService.IsExpired(confClaims) {
-		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, errors.New("expired"), "failed to verify confirmation token")
+		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, fmt.Errorf("expired"), "failed to verify confirmation token")
 		return
 	}
 
 	elems := strings.Split(confClaims.Handshake.ID, "::")
 	if len(elems) != 2 {
-		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, errors.New(confClaims.Handshake.ID), "invalid handshake token")
+		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("%s", confClaims.Handshake.ID), "invalid handshake token")
 		return
 	}
 	user, address := elems[0], elems[1]
@@ -117,6 +117,9 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			Audience: confClaims.Audience,
 		},
 		SessionOnly: sessOnly,
+		AuthProvider: &token.AuthProvider{
+			Name: e.ProviderName,
+		},
 	}
 
 	if _, err = e.TokenService.Set(w, claims); err != nil {
@@ -132,11 +135,14 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET /login?site=site&user=name&address=someone@example.com
 func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) {
-	user, address := r.URL.Query().Get("user"), r.URL.Query().Get("address")
+
+	user, address, site := r.URL.Query().Get("user"), r.URL.Query().Get("address"), r.URL.Query().Get("site")
+
 	if user == "" || address == "" {
-		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, errors.New("wrong request"), "can't get user and address")
+		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("wrong request"), "can't get user and address")
 		return
 	}
+
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: "",
@@ -144,10 +150,13 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
 		StandardClaims: jwt.StandardClaims{
-			Audience:  r.URL.Query().Get("site"),
+			Audience:  site,
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 			Issuer:    e.Issuer,
+		},
+		AuthProvider: &token.AuthProvider{
+			Name: e.ProviderName,
 		},
 	}
 
@@ -173,10 +182,10 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		Token   string
 		Site    string
 	}{
-		User:    user,
-		Address: address,
+		User:    trim(user),
+		Address: trim(address),
 		Token:   tkn,
-		Site:    r.URL.Query().Get("site"),
+		Site:    site,
 	}
 	buf := bytes.Buffer{}
 	if err = emailTmpl.Execute(&buf, tmplData); err != nil {
@@ -193,10 +202,10 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 }
 
 // AuthHandler doesn't do anything for direct login as it has no callbacks
-func (e VerifyHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {}
+func (e VerifyHandler) AuthHandler(http.ResponseWriter, *http.Request) {}
 
 // LogoutHandler - GET /logout
-func (e VerifyHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (e VerifyHandler) LogoutHandler(w http.ResponseWriter, _ *http.Request) {
 	e.TokenService.Reset(w)
 }
 
@@ -205,3 +214,12 @@ Confirmation for {{.User}} {{.Address}}, site {{.Site}}
 
 Token: {{.Token}}
 `
+
+func trim(inp string) string {
+	res := strings.ReplaceAll(inp, "\n", "")
+	res = strings.TrimSpace(res)
+	if len(res) > 128 {
+		return res[:128]
+	}
+	return res
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -53,14 +52,16 @@ func TestProvider(t *testing.T) {
 	_, err := svc.Provider("some provider")
 	assert.EqualError(t, err, "provider some provider not found")
 
-	svc.AddProvider("dev", "cid", "csecret")
+	svc.AddProviderWithUserAttributes("dev", "cid", "csecret", provider.UserAttributes{"attrName": "attrValue"})
 	svc.AddProvider("github", "cid", "csecret")
 	svc.AddProvider("google", "cid", "csecret")
 	svc.AddProvider("facebook", "cid", "csecret")
 	svc.AddProvider("yandex", "cid", "csecret")
 	svc.AddProvider("microsoft", "cid", "csecret")
+	svc.AddProvider("twitter", "cid", "csecret")
 	svc.AddProvider("battlenet", "cid", "csecret")
 	svc.AddProvider("patreon", "cid", "csecret")
+	svc.AddProvider("discord", "cid", "csecret")
 	svc.AddProvider("bad", "cid", "csecret")
 
 	c := customHandler{}
@@ -73,6 +74,7 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "cid", op.Cid)
 	assert.Equal(t, "csecret", op.Csecret)
 	assert.Equal(t, "go-pkgz/auth", op.Issuer)
+	assert.Equal(t, provider.UserAttributes{"attrName": "attrValue"}, op.UserAttributes)
 
 	p, err = svc.Provider("github")
 	assert.NoError(t, err)
@@ -80,7 +82,7 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "github", op.Name())
 
 	pp := svc.Providers()
-	assert.Equal(t, 9, len(pp))
+	assert.Equal(t, 11, len(pp))
 
 	ch, err := svc.Provider("telegramBotMySiteCom")
 	assert.NoError(t, err)
@@ -105,7 +107,7 @@ Ivx5tHkv
 -----END PRIVATE KEY-----`
 	testPrivKeyFileName := "privKeyTest.tmp"
 
-	dir, err := ioutil.TempDir(os.TempDir(), testPrivKeyFileName)
+	dir, err := os.MkdirTemp(os.TempDir(), testPrivKeyFileName)
 	assert.NoError(t, err)
 	assert.NotNil(t, dir)
 	if err != nil {
@@ -157,7 +159,7 @@ func TestIntegrationProtected(t *testing.T) {
 	assert.Equal(t, 401, resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "Unauthorized\n", string(body))
 
 	// check non-admin, permanent
@@ -166,7 +168,7 @@ func TestIntegrationProtected(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	defer resp.Body.Close()
 	body, err = io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 	require.Equal(t, 2, len(resp.Cookies()))
@@ -228,7 +230,11 @@ func TestIntegrationAvatar(t *testing.T) {
 }
 
 func TestIntegrationList(t *testing.T) {
-	_, teardown := prepService(t)
+	_, teardown := prepService(t, func(svc *Service) {
+		svc.AddProvider("github", "cid", "csec")
+		// add go-oauth2/oauth2 provider
+		svc.AddCustomProvider("custom123", Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
+	})
 	defer teardown()
 
 	resp, err := http.Get("http://127.0.0.1:8089/auth/list")
@@ -238,7 +244,35 @@ func TestIntegrationList(t *testing.T) {
 
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, `["dev","github","custom123","direct","direct_custom","email"]`+"\n", string(b))
+	assert.Equal(t, `["dev","github","custom123"]`+"\n", string(b))
+}
+
+func TestIntegrationInvalidProviderNames(t *testing.T) {
+	invalidNames := []string{
+		"provider/with/slashes",
+		"provider with spaces",
+		" providerWithSpacesAround\t",
+		"providerWithReserved-$-Char",
+		"providerWithReserved-&-Char",
+		"providerWithReserved-+-Char",
+		"providerWithReserved-,-Char",
+		"providerWithReserved-:-Char",
+		"providerWithReserved-;-Char",
+		"providerWithReserved-=-Char",
+		"providerWithReserved-?-Char",
+		"providerWithReserved-@-Char",
+		"providerWith%2F-EscapedSequence",
+		"",
+	}
+	svc, teardown := prepService(t, func(svc *Service) {
+		for _, name := range invalidNames {
+			svc.AddCustomProvider(name, Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
+		}
+	})
+	defer teardown()
+
+	require.Equal(t, 1, len(svc.Providers()))
+	require.Equal(t, "dev", svc.Providers()[0].Name())
 }
 
 func TestIntegrationUserInfo(t *testing.T) {
@@ -293,6 +327,7 @@ func TestLogout(t *testing.T) {
 	resp, err = client.Get("http://127.0.0.1:8089/auth/logout")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 	defer resp.Body.Close()
 
 	resp, err = client.Get("http://127.0.0.1:8089/private")
@@ -337,7 +372,11 @@ func TestBadRequests(t *testing.T) {
 }
 
 func TestDirectProvider(t *testing.T) {
-	_, teardown := prepService(t)
+	_, teardown := prepService(t, func(svc *Service) {
+		svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
+			return user == "dev_direct" && password == "password", nil
+		}))
+	})
 	defer teardown()
 
 	// login
@@ -355,7 +394,7 @@ func TestDirectProvider(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -375,7 +414,16 @@ func TestDirectProvider(t *testing.T) {
 }
 
 func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
-	_, teardown := prepService(t)
+	_, teardown := prepService(t, func(svc *Service) {
+		svc.AddDirectProviderWithUserIDFunc("direct_custom",
+			provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
+				return user == "dev_direct" && password == "password", nil
+			}),
+			func(user string, r *http.Request) string {
+				return "blah"
+			},
+		)
+	})
 	defer teardown()
 
 	// login
@@ -393,7 +441,7 @@ func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -413,7 +461,9 @@ func TestDirectProvider_WithCustomUserIDFunc(t *testing.T) {
 }
 
 func TestVerifProvider(t *testing.T) {
-	_, teardown := prepService(t)
+	_, teardown := prepService(t, func(svc *Service) {
+		svc.AddVerifProvider("email", "{{.Token}}", &sender)
+	})
 	defer teardown()
 
 	// login
@@ -489,7 +539,16 @@ func TestStatus(t *testing.T) {
 
 }
 
-func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unparam
+func TestDevAuthServerWithoutDevProvider(t *testing.T) {
+	svc := NewService(Opts{})
+	assert.NotNil(t, svc)
+
+	_, err := svc.DevAuth()
+	require.NotNil(t, err)
+	assert.EqualError(t, err, "dev provider not registered: provider dev not found")
+}
+
+func prepService(t *testing.T, providerConfigFunctions ...func(svc *Service)) (svc *Service, teardown func()) { //nolint unparam
 
 	options := Opts{
 		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
@@ -510,28 +569,12 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 	}
 
 	svc = NewService(options)
-	svc.AddDevProvider(18084)                // add dev provider on 18084
-	svc.AddProvider("github", "cid", "csec") // add github provider
 
-	// add go-oauth2/oauth2 provider
-	svc.AddCustomProvider("custom123", Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
+	svc.AddDevProvider("localhost", 18084) // add dev provider on 18084
 
-	// add direct provider
-	svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
-		return user == "dev_direct" && password == "password", nil
-	}))
-
-	// add direct provider with custom user id func
-	svc.AddDirectProviderWithUserIDFunc("direct_custom",
-		provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
-			return user == "dev_direct" && password == "password", nil
-		}),
-		func(user string, r *http.Request) string {
-			return "blah"
-		},
-	)
-
-	svc.AddVerifProvider("email", "{{.Token}}", &sender)
+	for _, f := range providerConfigFunctions {
+		f(svc)
+	}
 
 	// run dev/test oauth2 server on :18084
 	devAuth, err := svc.DevAuth()
@@ -547,7 +590,7 @@ func prepService(t *testing.T) (svc *Service, teardown func()) { //nolint unpara
 		_, _ = w.Write([]byte("open route, no token needed\n"))
 	}))
 	mux.Handle("/private", m.Auth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { // token required
-		_, _ = w.Write([]byte("open route, no token needed\n"))
+		_, _ = w.Write([]byte("protected route, authenticated with token\n"))
 	})))
 
 	// setup auth routes
@@ -592,6 +635,6 @@ type customHandler struct{}
 func (c customHandler) Name() string {
 	return "telegramBotMySiteCom"
 }
-func (c customHandler) LoginHandler(w http.ResponseWriter, r *http.Request)  {}
-func (c customHandler) AuthHandler(w http.ResponseWriter, r *http.Request)   {}
-func (c customHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {}
+func (c customHandler) LoginHandler(http.ResponseWriter, *http.Request)  {}
+func (c customHandler) AuthHandler(http.ResponseWriter, *http.Request)   {}
+func (c customHandler) LogoutHandler(http.ResponseWriter, *http.Request) {}

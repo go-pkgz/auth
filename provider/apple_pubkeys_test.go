@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -90,7 +89,7 @@ func TestParseAppleJWK(t *testing.T) {
 					  "n": "invalid-value",
 					  "e": "invalid-value"
 					}]}`))
-	assert.Error(t, err, errors.New("failed to decode Apple public key modulus (n)"))
+	assert.Error(t, err, fmt.Errorf("failed to decode Apple public key modulus (n)"))
 
 	testKeySet, err = parseAppleJWK([]byte(`{"keys":[{
 					  "kty": "RSA",
@@ -101,7 +100,7 @@ func TestParseAppleJWK(t *testing.T) {
 					  "e": "invalid-value"
 					}]}`))
 
-	assert.Error(t, err, errors.New("failed to decode Apple public key modulus (e)"))
+	assert.Error(t, err, fmt.Errorf("failed to decode Apple public key modulus (e)"))
 	testKeySet, err = parseAppleJWK([]byte(`{invalid-json}`))
 	assert.Error(t, err)
 }
@@ -122,7 +121,7 @@ func TestAppleKeySet_Get(t *testing.T) {
 	require.Nil(t, err)
 
 	apk, err := testKeySet.get("86D88Kf")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, apk.ID, "86D88Kf")
 
 	_, err = testKeySet.get("not-found-kid")
@@ -165,8 +164,8 @@ func TestAppleKeySet_KeyFunc(t *testing.T) {
 	assert.Error(t, err, "get JWT kid header not found")
 }
 
+//nolint:gosec //this is a test, we don't care about ReadHeaderTimeout
 func prepareAppleKeysTestServer(t *testing.T, authPort int) func() {
-	//nolint dupl
 	ts := &http.Server{
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

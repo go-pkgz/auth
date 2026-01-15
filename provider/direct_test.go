@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -61,7 +61,6 @@ func TestDirect_LoginHandler(t *testing.T) {
 	}
 
 	for name, test := range testCases {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			d := DirectHandler{
 				ProviderName: "test",
@@ -147,7 +146,7 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 				require.NoError(t, err)
 				return req
 			},
-			credChecker: &mockCredsChecker{err: errors.New("some err"), ok: false},
+			credChecker: &mockCredsChecker{err: fmt.Errorf("some err"), ok: false},
 			wantCode:    http.StatusInternalServerError,
 			wantBody:    `{"error":"failed to check user credentials"}`,
 		},
@@ -187,7 +186,6 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 	}
 
 	for name, test := range testCases {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			d := DirectHandler{
 				ProviderName: "test",
@@ -274,4 +272,4 @@ type mockCredsChecker struct {
 	err error
 }
 
-func (m *mockCredsChecker) Check(user, password string) (ok bool, err error) { return m.ok, m.err }
+func (m *mockCredsChecker) Check(string, string) (ok bool, err error) { return m.ok, m.err }

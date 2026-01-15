@@ -43,12 +43,15 @@ func TestCustomProvider(t *testing.T) {
 		L:       logger.Std,
 	}
 
+	var loginUsername string
+	var capturedUser token.User
+
 	sopts := CustomServerOpt{
 		URL:           "http://127.0.0.1:9096",
 		L:             logger.Std,
 		WithLoginPage: true,
 		LoginPageHandler: func(w http.ResponseWriter, r *http.Request) {
-			// // Simulate POST from login page
+			// // simulate POST from login page
 			u, err := url.Parse("http://127.0.0.1:9096/authorize?" + r.URL.RawQuery)
 			if err != nil {
 				assert.Fail(t, "failed to parse url")
@@ -61,7 +64,7 @@ func TestCustomProvider(t *testing.T) {
 			jar.SetCookies(u, r.Cookies())
 
 			form := url.Values{}
-			form.Add("username", "admin")
+			form.Add("username", loginUsername)
 			form.Add("password", "pwd1234")
 
 			req, err := http.NewRequest("POST", "", strings.NewReader(form.Encode()))
@@ -77,7 +80,7 @@ func TestCustomProvider(t *testing.T) {
 				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 				return
 			}
-			assert.Equal(t, 2, len(resp.Cookies()))
+			require.Equal(t, 2, len(resp.Cookies()))
 			assert.Equal(t, "JWT", resp.Cookies()[0].Name)
 			assert.NotEqual(t, "", resp.Cookies()[0].Value, "token set")
 			assert.Equal(t, 2678400, resp.Cookies()[0].MaxAge)
@@ -85,11 +88,9 @@ func TestCustomProvider(t *testing.T) {
 			assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
 			claims, err := params.JwtService.Parse(resp.Cookies()[0].Value)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
-			assert.Equal(t, token.User{Name: "admin", ID: "admin",
-				Picture: "http://127.0.0.1:9096/avatar?user=admin", IP: ""}, *claims.User)
-
+			capturedUser = *claims.User
 		},
 	}
 
@@ -100,7 +101,7 @@ func TestCustomProvider(t *testing.T) {
 
 	router := http.NewServeMux()
 	router.Handle("/auth/customprov/", http.HandlerFunc(s.Handler))
-	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router}
+	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router} //nolint:gosec
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -120,22 +121,37 @@ func TestCustomProvider(t *testing.T) {
 	client := &http.Client{Jar: jar, Timeout: time.Second * 10}
 
 	// check non-admin, permanent
+	loginUsername = "admin"
 	resp, err := client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
+	assert.Equal(t, token.User{Name: "admin", ID: "admin",
+		Picture: "http://127.0.0.1:9096/avatar?user=admin", IP: ""}, capturedUser)
 
 	// check avatar
 	resp, err = client.Get("http://127.0.0.1:9096/avatar?user=dev_user")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 960, len(body))
 	t.Logf("headers: %+v", resp.Header)
+
+	// check malicious user ID
+	loginUsername = "attack"
+	resp, err = client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	t.Logf("resp %s", string(body))
+	t.Logf("headers: %+v", resp.Header)
+	// user ID in picture URL is encoded
+	assert.Equal(t, "http://127.0.0.1:9096/avatar?user=none%26attack%3Dvalue%22%3E%3Cscript%3Enasty+stuff%3C%2Fscript%3E", capturedUser.Picture)
 
 	// check default login page
 	prov.LoginPageHandler = nil
@@ -196,10 +212,13 @@ func initGoauth2Srv(t *testing.T) *goauth2.Server {
 		if r.ParseForm() != nil {
 			return "", fmt.Errorf("no username and password in request")
 		}
-		if r.Form.Get("username") != "admin" || r.Form.Get("password") != "pwd1234" {
-			return "", fmt.Errorf("wrong creds")
+		if r.Form.Get("username") == "admin" && r.Form.Get("password") == "pwd1234" {
+			return "admin", nil
 		}
-		return "admin", nil
+		if r.Form.Get("username") == "attack" && r.Form.Get("password") == "pwd1234" {
+			return "none&attack=value\"><script>nasty stuff</script>", nil
+		}
+		return "", fmt.Errorf("wrong creds")
 	})
 
 	srv.SetInternalErrorHandler(func(err error) (re *errors.Response) {

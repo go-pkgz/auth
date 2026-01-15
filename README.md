@@ -1,7 +1,7 @@
 # auth - authentication via oauth2, direct and email
-[![Build Status](https://github.com/go-pkgz/auth/workflows/build/badge.svg)](https://github.com/go-pkgz/auth/actions) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth?status.svg)](https://pkg.go.dev/github.com/go-pkgz/auth?tab=doc)
+[![Build Status](https://github.com/go-pkgz/auth/workflows/build/badge.svg)](https://github.com/go-pkgz/auth/actions) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/auth/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/auth?branch=master) [![godoc](https://godoc.org/github.com/go-pkgz/auth/v2?status.svg)](https://pkg.go.dev/github.com/go-pkgz/auth/v2?tab=doc)
 
-This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net, Apple, Patreon and Telegram as well as custom auth providers and email verification.
+This library provides "social login" with Github, Google, Facebook, Microsoft, Twitter, Yandex, Battle.net, Apple, Patreon, Discord and Telegram as well as custom auth providers and email verification.
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
@@ -22,16 +22,101 @@ This library provides "social login" with Github, Google, Facebook, Microsoft, T
 - Wrappers to extract user info from the request
 - Role based access control
 
+## v1 vs v2 Differences
+
+The v2 version of this library is now the actively developed version, and we recommend using it for new projects. Key differences include:
+
+- JWT library updated to use `github.com/golang-jwt/jwt/v5` (from v3)
+- JWT token claims use modern structures from jwt/v5:
+    - `StandardClaims` replaced with `RegisteredClaims`
+    - `Claims.ExpiresAt` changed from `int64` to `*jwt.NumericDate`
+    - `Claims.NotBefore` changed from `int64` to `*jwt.NumericDate`
+    - `Claims.IssuedAt` changed from `int64` to `*jwt.NumericDate`
+    - `ID` field renamed from `Id`
+    - `Audience` changed from `string` to `[]string`
+- RefreshCache interface signatures updated to use strongly typed values:
+    - `Get(key string) (value token.Claims, ok bool)`
+    - `Set(key string, value token.Claims)`
+- Improved type safety for various interfaces and functions
+
+To migrate from v1 to v2:
+
+1. Update import paths to use `/v2` (e.g., `github.com/go-pkgz/auth/v2`)
+2. Update any custom code that accesses token fields to use the new structures
+3. If implementing RefreshCache interface, update method signatures
+
+<details>
+<summary>Complex Project Migration</summary>
+
+For a real-world example of migrating a complex project from v1 to v2, see [Remark42's migration PR](https://github.com/umputun/remark42/pull/1758). This migration included:
+
+- Updating all auth package imports to use `/v2`
+- Modifying token handling code to work with the new JWT v5 structures:
+  - Changing `StandardClaims` references to `RegisteredClaims`
+  - Updating code accessing token expiration times to use `*jwt.NumericDate`
+  - Converting string audience fields to use string arrays - it was a single string in the v3
+- Updating RefreshCache implementation to match the new interface
+- Adjusting tests to accommodate the new token structure
+- Fixing token claims validation and verification logic
+
+The PR demonstrates how to handle migration for a production application with extensive auth usage.
+</details>
+
 ## Install
 
-`go get -u github.com/go-pkgz/auth`
+`go get -u github.com/go-pkgz/auth/v2`
 
 ## Usage
 
-Example with chi router:
+Example with [routegroup](https://github.com/go-pkgz/routegroup) (stdlib-based router):
 
 ```go
+func main() {
+	// define options
+	options := auth.Opts{
+		SecretReader: token.SecretFunc(func(id string) (string, error) { // secret key for JWT
+			return "secret", nil
+		}),
+		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
+		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
+		Issuer:         "my-test-app",
+		URL:            "http://127.0.0.1:8080",
+		AvatarStore:    avatar.NewLocalFS("/tmp"),
+		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
+			// allow only dev_* names
+			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_")
+		}),
+	}
 
+	// create auth service with providers
+	service := auth.NewService(options)
+	service.AddProvider("github", "<Client ID>", "<Client Secret>")   // add github provider
+	service.AddProvider("facebook", "<Client ID>", "<Client Secret>") // add facebook provider
+
+	// retrieve auth middleware
+	m := service.Middleware()
+
+	// setup http server
+	router := routegroup.New(http.NewServeMux())
+	router.HandleFunc("GET /open", openRouteHandler) // open api
+	router.Group().Route(func(r *routegroup.Bundle) {
+		r.Use(m.Auth)
+		r.HandleFunc("GET /private", protectedRouteHandler) // protected api
+	})
+
+	// setup auth routes
+	authRoutes, avaRoutes := service.Handlers()
+	router.Handle("/auth/", http.StripPrefix("/auth", authRoutes))   // add auth handlers
+	router.Handle("/avatar/", http.StripPrefix("/avatar", avaRoutes)) // add avatar handler
+
+	log.Fatal(http.ListenAndServe(":8080", router))
+}
+```
+
+<details>
+<summary>Example with chi router</summary>
+
+```go
 func main() {
 	// define options
 	options := auth.Opts{
@@ -70,6 +155,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
 ```
+</details>
 
 ## Middleware
 
@@ -86,10 +172,10 @@ Also, there is a special middleware `middleware.UpdateUser` for population and m
 
 Generally, adding support of `auth` includes a few relatively simple steps:
 
-1. Setup `auth.Opts` structure with all parameters. Each of them [documented](https://github.com/go-pkgz/auth/blob/master/auth.go#L29) and most of parameters are optional and have sane defaults.
-2. [Create](https://github.com/go-pkgz/auth/blob/master/auth.go#L56) the new `auth.Service` with provided options.
-3. [Add all](https://github.com/go-pkgz/auth/blob/master/auth.go#L149) desirable authentication providers.
-4. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/auth.go#L144) and [http handlers](https://github.com/go-pkgz/auth/blob/master/auth.go#L105) from `auth.Service`
+1. Setup `auth.Opts` structure with all parameters. Each of them [documented](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L40) and most of parameters are optional and have sane defaults.
+2. [Create](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L80) the new `auth.Service` with provided options.
+3. [Add all](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L312) desirable authentication providers.
+4. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L225) and [http handlers](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L153) from `auth.Service`
 5. Wire auth and avatar handlers into http router as sub–routes.
 
 ### API
@@ -144,7 +230,7 @@ In addition to oauth2 providers `auth.Service` allows to use direct user-defined
 
 ```go
 	service.AddDirectProvider("local", provider.CredCheckerFunc(func(user, password string) (ok bool, err error) {
-		ok, err := checkUserSomehow(user, password)
+		ok, err = checkUserSomehow(user, password)
 		return ok, err
 	}))
 ```
@@ -153,10 +239,6 @@ Such provider acts like any other, i.e. will be registered as `/auth/local/login
 
 The API for this provider supports both GET and POST requests:
 
-* GET request with user credentials provided as query params:
-  ```
-  GET /auth/<name>/login?user=<user>&passwd=<password>&aud=<site_id>&session=[1|0]
-  ```
 * POST request could be encoded as application/x-www-form-urlencoded or application/json:
   ```
   POST /auth/<name>/login?session=[1|0]
@@ -171,6 +253,10 @@ The API for this provider supports both GET and POST requests:
     "passwd": "xyz",
     "aud": "bar",
   }
+  ```
+* GET request with user credentials provided as query params, but be aware that [the https query string is not secure](https://stackoverflow.com/a/323286/633961):
+  ```
+  GET /auth/<name>/login?user=<user>&passwd=<password>&aud=<site_id>&session=[1|0]
   ```
 
 _note: password parameter doesn't have to be naked/real password and can be any kind of password hash prepared by caller._
@@ -205,10 +291,31 @@ used as `Sender`.
 
 The API for this provider:
 
- - `GET /auth/<name>/login?user=<user>&address=<adsress>&aud=<site_id>&from=<url>` - send confirmation request to user
+ - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user
  - `GET /auth/<name>/login?token=<conf.token>&sess=[1|0]` - authorize with confirmation token
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
+
+### Email
+
+For email notify provider, please use `github.com/go-pkgz/auth/provider/sender` package:
+```go
+	sndr := sender.NewEmailClient(sender.EmailParams{
+		Host:               "email.hostname",
+		Port:               567,
+		SMTPUserName:       "username",
+		SMTPPassword:       "pass",
+		StartTLS:           true,
+		InsecureSkipVerify: false,
+		From:               "notify@email.hostname",
+		Subject:            "subject",
+		ContentType:        "text/html",
+		Charset:            "UTF-8",
+	}, log.Default())
+	authenticator.AddVerifProvider("email", "template goes here", sndr)
+```
+
+See [that documentation](https://github.com/go-pkgz/email#options) for full options list.
 
 ### Telegram
 
@@ -337,7 +444,7 @@ There are several ways to adjust functionality of the library:
 1. `SecretReader` - interface with a single method `Get(aud string) string` to return the secret used for JWT signing and verification
 1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status, roles and so on.
 1. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on **each request** wrapped with `Auth` middleware. This will be the place for special logic to reject some tokens or users.
-1. `UserUpdater` - interface with `Update(claims token.User) token.User` method.  This method will be called on **each request** wrapped with `UpdateUser` middleware. This will be the place for special logic modify User Info in request context. [Example of usage.]((https://github.com/go-pkgz/auth/blob/master/_example/main.go#L148))
+1. `UserUpdater` - interface with `Update(claims token.User) token.User` method.  This method will be called on **each request** wrapped with `UpdateUser` middleware. This will be the place for special logic modify User Info in request context. [Example of usage.](https://github.com/go-pkgz/auth/blob/19c1b6d26608494955a4480f8f6165af85b1deab/_example/main.go#L189)
 
 All of the interfaces above have corresponding Func adapters - `SecretFunc`, `ClaimsUpdFunc`, `ValidatorFunc` and `UserUpdFunc`.
 
@@ -444,15 +551,27 @@ Authentication handled by external providers. You should setup oauth2 for all (o
 2.  Choose the new project from the top right project dropdown (only if another project is selected)
 3.  In the project Dashboard center pane, choose **"API Manager"**
 4.  In the left Nav pane, choose **"Credentials"**
-5.  In the center pane, choose **"OAuth consent screen"** tab. Fill in **"Product name shown to users"** and hit save.
-6.  In the center pane, choose **"Credentials"** tab.
-    * Open the **"New credentials"** drop down
-    * Choose **"OAuth client ID"**
-    * Choose **"Web application"**
-    * Application name is freeform, choose something appropriate
-    * Authorized origins is your domain ex: `https://example.mysite.com`
-    * Authorized redirect URIs is the location of oauth2/callback constructed as domain + `/auth/google/callback`, ex: `https://example.mysite.com/auth/google/callback`
-    * Choose **"Create"**
+5. In the center pane, choose the **"OAuth consent screen"** tab.
+  * Select "**External**" and click "Create"
+  * Fill in **"App name"** and select **User support email**
+  * Upload a logo, if you want to
+  * In the **App Domain** section:
+    * **Application home page** - your site URL, e.g., `https://mysite.com`
+    * **Application privacy policy link** - `/web/privacy.html` of your Remark42 installation, e.g. `https://remark42.mysite.com/web/privacy.html` (please check that it works)
+    * **Terms of service** - leave empty
+  * **Authorized domains** - your site domain, e.g., `mysite.com`
+  * **Developer contact information** - add your email, and then click **Save and continue**
+  * On the **Scopes** tab, just click **Save and continue**
+  * On the **Test users**, add your email, then click **Save and continue**
+  * Before going to the next step, set the app to "Production" and send it to verification
+6. In the center pane, choose the **"Credentials"** tab
+   * Open the **"Create credentials"** drop-down
+   * Choose **"OAuth client ID"**
+   * Choose **"Web application"**
+   * Application **Name** is freeform; choose something appropriate, like "Comments on mysite.com"
+   * **Authorized JavaScript Origins** should be your domain, e.g., `https://remark42.mysite.com`
+   * **Authorized redirect URIs** is the location of OAuth2/callback constructed as domain + `/auth/google/callback`, e.g., `https://remark42.mysite.com/auth/google/callback`
+   * Click **"Create"**
 7.  Take note of the **Client ID** and **Client Secret**
 
 _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://github.com/bitly/oauth2_proxy)_
@@ -499,16 +618,16 @@ Follow to next steps for configuring on the Apple side:
 
 After completing the previous steps, you can proceed with configuring the Apple auth provider. Here are the parameters for AppleConfig:
 
-- _ClientID_ (**required**) - Service ID identifier which is used for Sign with Apple
+- _ClientID_ (**required**) - Service ID (or App ID) which is used for Sign with Apple
 - _TeamID_ (**required**) - Identifier a developer account (use as prefix for all App ID)
 - _KeyID_ (**required**) - Identifier a generated key for Sign with Apple
-
+- _ResponseMode_  - Response Mode, please see [documentation](https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168) for reference, default is `form_post`
 
 ```go
     // apple config parameters
 	appleCfg := provider.AppleConfig{
 		TeamID:   os.Getenv("AEXMPL_APPLE_TID"), // developer account identifier
-		ClientID: os.Getenv("AEXMPL_APPLE_CID"), // service identifier
+		ClientID: os.Getenv("AEXMPL_APPLE_CID"), // Service ID (or App ID)
 		KeyID:    os.Getenv("AEXMPL_APPLE_KEYID"), // private key identifier
 	}
 ```
@@ -571,13 +690,35 @@ For more details refer to [Complete Guide of Battle.net OAuth API and Login Butt
 1.  Under **"Redirect URIs"** enter the correct url constructed as domain + `/auth/patreon/callback`. ie `https://example.mysite.com/auth/patreon/callback`
 1.  Take note of the **Client ID** and **Client Secret**
 
+#### Discord Auth Provider ####
+1.  Log into Discord Developer Portal https://discord.com/developers/applications
+2.  Click on **New Application** to create the application required for Oauth
+3.  After filling **"NAME"**, navigate to **"OAuth2"** option on the left sidebar
+4.  Under **"Redirects"** enter the correct url constructed as domain + `/auth/discord/callback`. ie `https://remark42.mysite.com/auth/discord/callback`
+5.  Take note of the **CLIENT ID** and **CLIENT SECRET**
+
 #### Twitter Auth Provider
 1.	Create a new twitter application https://developer.twitter.com/en/apps
 1.	Fill **App name**  and **Description** and **URL** of your site
 1.	In the field **Callback URLs** enter the correct url of your callback handler e.g. https://example.mysite.com/{route}/twitter/callback
 1.	Under **Key and tokens** take note of the **Consumer API Key** and **Consumer API Secret key**. Those will be used as `cid` and `csecret`
+
+## XSRF Protections
+By default, the XSRF protections will apply to all requests which reach the `middlewares.Auth`,
+`middlewares.Admin` or `middlewares.RBAC` middlewares. This will require setting a request header 
+with a key of `<XSRFHeaderKey>` containing the value of the cookie named `<XSRFCookieName>`.
+
+To disable all XSRF protections, set `DisableXSRF` to `true`. This should probably only be used 
+during testing or debugging.
+
+When setting a custom request header is not possible, such as when building a web application which
+is not a Single-Page-Application and HTML link tags are used to navigate pages, specific HTTP methods
+may be excluded using the `XSRFIgnoreMethods` option. For example, to disable GET requests, set this
+option to `XSRFIgnoreMethods: []string{"GET"}`. Adding methods other than GET to this list may result
+in XSRF vulnerabilities.
+
 ## Status
 
-The library extracted from [remark42](https://github.com/umputun/remark) project. The original code in production use on multiple sites and seems to work fine.
+The library was originally extracted from the [remark42](https://github.com/umputun/remark) project. The code is in production use on multiple sites and has proven to be stable and reliable.
 
-`go-pkgz/auth` library still in development and until version 1 released some breaking changes possible.
+Version 1.x is stable and in maintenance mode. Version 2.x is now the actively developed branch, and we recommend using it for all new projects.

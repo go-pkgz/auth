@@ -1,10 +1,10 @@
 package provider
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +16,7 @@ import (
 	"github.com/go-pkgz/auth/token"
 )
 
-//nolint
+// nolint
 var (
 	testConfirmedToken      = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn19.D8AvAunK7Tj-P6P56VyaoZ-hyA6U8duZ9HV8-ACEya8`
 	testConfirmedBadIDToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJibGFoQHVzZXIuY29tIn19.hB91-kyY9-Q2Ln6IJGR9StQi-QQiXYu8SV31YhOoTbc`
@@ -55,6 +55,45 @@ func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 	t.Logf("%s %+v", tknStr, tkn)
 	assert.Equal(t, "test123::blah@user.com", tkn.Handshake.ID)
 	assert.Equal(t, "remark42", tkn.Audience)
+	assert.True(t, tkn.ExpiresAt > tkn.NotBefore)
+
+	assert.Equal(t, "test", e.Name())
+}
+
+func TestVerifyHandler_LoginSendConfirmEscapesBadInput(t *testing.T) {
+
+	emailer := mockSender{}
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:   "iss-test",
+		L:        logger.Std,
+		Sender:   SenderFunc(emailer.Send),
+		Template: "{{.User}} {{.Address}} {{.Site}} token:{{.Token}}",
+	}
+
+	handler := http.HandlerFunc(e.LoginHandler)
+	rr := httptest.NewRecorder()
+	badData := "<html><script>nasty stuff</script>&lt;escaped&gt;</html>"
+	req, err := http.NewRequest("GET", "/login?address=blah@user.com&user="+url.QueryEscape(badData)+"&site="+url.QueryEscape(badData), http.NoBody)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, 200, rr.Code)
+	assert.Equal(t, "blah@user.com", emailer.to)
+	expectedEscaped := "&lt;html&gt;&lt;script&gt;nasty stuff&lt;/script&gt;&amp;lt;escaped&amp;gt;&lt;/html&gt;"
+	assert.Contains(t, emailer.text, expectedEscaped+" blah@user.com "+expectedEscaped+" token:")
+
+	tknStr := strings.Split(emailer.text, " token:")[1]
+	tkn, err := e.TokenService.Parse(tknStr)
+	assert.NoError(t, err)
+	t.Logf("%s %+v", tknStr, tkn)
+	// not escaped in these fields as they are not rendered as HTML
+	assert.Equal(t, badData+"::blah@user.com", tkn.Handshake.ID)
+	assert.Equal(t, badData, tkn.Audience)
 	assert.True(t, tkn.ExpiresAt > tkn.NotBefore)
 
 	assert.Equal(t, "test", e.Name())
@@ -112,7 +151,7 @@ func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 	require.NoError(t, err)
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, 200, rr.Code)
-	assert.Equal(t, `{"name":"grava","id":"test_47dbf92d92954b1297cae73a864c159b4d847b9f","picture":"https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851.jpg"}`+"\n", rr.Body.String())
+	assert.Equal(t, `{"name":"grava","id":"test_47dbf92d92954b1297cae73a864c159b4d847b9f","picture":"https://www.gravatar.com/avatar/c82739de14cf64affaf30856ca95b851"}`+"\n", rr.Body.String())
 }
 
 func TestVerifyHandler_LoginAcceptConfirmWithGrAvatarDisabled(t *testing.T) {
@@ -159,7 +198,7 @@ func TestVerifyHandler_LoginHandlerFailed(t *testing.T) {
 	assert.Equal(t, 400, rr.Code)
 	assert.Equal(t, `{"error":"can't get user and address"}`+"\n", rr.Body.String())
 
-	d.Sender = &mockSender{err: errors.New("some err")}
+	d.Sender = &mockSender{err: fmt.Errorf("some err")}
 	handler = d.LoginHandler
 	rr = httptest.NewRecorder()
 	req, err = http.NewRequest("GET", "/login?user=myuser&address=pppp&aud=xyz123", http.NoBody)
@@ -212,7 +251,7 @@ func TestVerifyHandler_LoginHandlerAvatarFailed(t *testing.T) {
 		}),
 		Issuer:      "iss-test",
 		L:           logger.Std,
-		AvatarSaver: mockAvatarSaverVerif{err: errors.New("avatar save error")},
+		AvatarSaver: mockAvatarSaverVerif{err: fmt.Errorf("avatar save error")},
 	}
 
 	handler := http.HandlerFunc(d.LoginHandler)
@@ -285,6 +324,6 @@ type mockAvatarSaverVerif struct {
 	url string
 }
 
-func (a mockAvatarSaverVerif) Put(u token.User, client *http.Client) (avatarURL string, err error) {
+func (a mockAvatarSaverVerif) Put(token.User, *http.Client) (avatarURL string, err error) {
 	return a.url, a.err
 }

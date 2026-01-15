@@ -4,11 +4,12 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-pkgz/rest"
-	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -47,14 +48,15 @@ type Opts struct {
 	DisableIAT  bool // disable IssuedAt claim
 
 	// optional (custom) names for cookies and headers
-	JWTCookieName   string        // default "JWT"
-	JWTCookieDomain string        // default empty
-	JWTHeaderKey    string        // default "X-JWT"
-	XSRFCookieName  string        // default "XSRF-TOKEN"
-	XSRFHeaderKey   string        // default "X-XSRF-TOKEN"
-	JWTQuery        string        // default "token"
-	SendJWTHeader   bool          // if enabled send JWT as a header instead of cookie
-	SameSiteCookie  http.SameSite // limit cross-origin requests with SameSite cookie attribute
+	JWTCookieName     string        // default "JWT"
+	JWTCookieDomain   string        // default empty
+	JWTHeaderKey      string        // default "X-JWT"
+	XSRFCookieName    string        // default "XSRF-TOKEN"
+	XSRFHeaderKey     string        // default "X-XSRF-TOKEN"
+	XSRFIgnoreMethods []string      // disable XSRF protection for the specified request methods (ex. []string{"GET", "POST")}, default empty
+	JWTQuery          string        // default "token"
+	SendJWTHeader     bool          // if enabled send JWT as a header instead of cookie
+	SameSiteCookie    http.SameSite // limit cross-origin requests with SameSite cookie attribute
 
 	Issuer string // optional value for iss claim, usually the application name, default "go-pkgz/auth"
 
@@ -99,29 +101,30 @@ func NewService(opts Opts) (res *Service) {
 	}
 
 	jwtService := token.NewService(token.Opts{
-		SecretReader:    opts.SecretReader,
-		ClaimsUpd:       opts.ClaimsUpd,
-		SecureCookies:   opts.SecureCookies,
-		TokenDuration:   opts.TokenDuration,
-		CookieDuration:  opts.CookieDuration,
-		DisableXSRF:     opts.DisableXSRF,
-		DisableIAT:      opts.DisableIAT,
-		JWTCookieName:   opts.JWTCookieName,
-		JWTCookieDomain: opts.JWTCookieDomain,
-		JWTHeaderKey:    opts.JWTHeaderKey,
-		XSRFCookieName:  opts.XSRFCookieName,
-		XSRFHeaderKey:   opts.XSRFHeaderKey,
-		SendJWTHeader:   opts.SendJWTHeader,
-		JWTQuery:        opts.JWTQuery,
-		Issuer:          res.issuer,
-		AudienceReader:  opts.AudienceReader,
-		AudSecrets:      opts.AudSecrets,
-		SameSite:        opts.SameSiteCookie,
+		SecretReader:      opts.SecretReader,
+		ClaimsUpd:         opts.ClaimsUpd,
+		SecureCookies:     opts.SecureCookies,
+		TokenDuration:     opts.TokenDuration,
+		CookieDuration:    opts.CookieDuration,
+		DisableXSRF:       opts.DisableXSRF,
+		DisableIAT:        opts.DisableIAT,
+		JWTCookieName:     opts.JWTCookieName,
+		JWTCookieDomain:   opts.JWTCookieDomain,
+		JWTHeaderKey:      opts.JWTHeaderKey,
+		XSRFCookieName:    opts.XSRFCookieName,
+		XSRFHeaderKey:     opts.XSRFHeaderKey,
+		XSRFIgnoreMethods: opts.XSRFIgnoreMethods,
+		SendJWTHeader:     opts.SendJWTHeader,
+		JWTQuery:          opts.JWTQuery,
+		Issuer:            res.issuer,
+		AudienceReader:    opts.AudienceReader,
+		AudSecrets:        opts.AudSecrets,
+		SameSite:          opts.SameSiteCookie,
 	})
 
 	if opts.SecretReader == nil {
 		jwtService.SecretReader = token.SecretFunc(func(string) (string, error) {
-			return "", errors.New("secrets reader not available")
+			return "", fmt.Errorf("secrets reader not available")
 		})
 		res.logger.Logf("[WARN] no secret reader defined")
 	}
@@ -169,8 +172,7 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 		// allow logout without specifying provider
 		if elems[len(elems)-1] == "logout" {
 			if len(s.providers) == 0 {
-				w.WriteHeader(http.StatusBadRequest)
-				rest.RenderJSON(w, rest.JSON{"error": "providers not defined"})
+				_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "providers not defined"})
 				return
 			}
 			s.providers[0].Handler(w, r)
@@ -181,8 +183,11 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 		if elems[len(elems)-1] == "user" {
 			claims, _, err := s.jwtService.Get(r)
 			if err != nil || claims.User == nil {
-				w.WriteHeader(http.StatusUnauthorized)
-				rest.RenderJSON(w, rest.JSON{"error": err.Error()})
+				msg := "user is nil"
+				if err != nil {
+					msg = err.Error()
+				}
+				_ = rest.EncodeJSON(w, http.StatusUnauthorized, rest.JSON{"error": msg})
 				return
 			}
 			rest.RenderJSON(w, claims.User)
@@ -204,8 +209,7 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 		provName := elems[len(elems)-2]
 		p, err := s.Provider(provName)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": fmt.Sprintf("provider %s not supported", provName)})
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": fmt.Sprintf("provider %s not supported", provName)})
 			return
 		}
 		p.Handler(w, r)
@@ -219,47 +223,105 @@ func (s *Service) Middleware() middleware.Authenticator {
 	return s.authMiddleware
 }
 
-// AddProvider adds provider for given name
-func (s *Service) AddProvider(name, cid, csecret string) {
-
+// AddProviderWithUserAttributes adds provider with user attributes mapping
+func (s *Service) AddProviderWithUserAttributes(name, cid, csecret string, userAttributes provider.UserAttributes) {
 	p := provider.Params{
-		URL:         s.opts.URL,
-		JwtService:  s.jwtService,
-		Issuer:      s.issuer,
-		AvatarSaver: s.avatarProxy,
-		Cid:         cid,
-		Csecret:     csecret,
-		L:           s.logger,
+		URL:            s.opts.URL,
+		JwtService:     s.jwtService,
+		Issuer:         s.issuer,
+		AvatarSaver:    s.avatarProxy,
+		Cid:            cid,
+		Csecret:        csecret,
+		L:              s.logger,
+		UserAttributes: userAttributes,
 	}
+	s.addProviderByName(name, p)
+}
 
+func (s *Service) addProviderByName(name string, p provider.Params) {
+	var prov provider.Provider
 	switch strings.ToLower(name) {
 	case "github":
-		s.providers = append(s.providers, provider.NewService(provider.NewGithub(p)))
+		prov = provider.NewGithub(p)
 	case "google":
-		s.providers = append(s.providers, provider.NewService(provider.NewGoogle(p)))
+		prov = provider.NewGoogle(p)
 	case "facebook":
-		s.providers = append(s.providers, provider.NewService(provider.NewFacebook(p)))
+		prov = provider.NewFacebook(p)
 	case "yandex":
-		s.providers = append(s.providers, provider.NewService(provider.NewYandex(p)))
+		prov = provider.NewYandex(p)
 	case "battlenet":
-		s.providers = append(s.providers, provider.NewService(provider.NewBattlenet(p)))
+		prov = provider.NewBattlenet(p)
 	case "microsoft":
-		s.providers = append(s.providers, provider.NewService(provider.NewMicrosoft(p)))
+		prov = provider.NewMicrosoft(p)
 	case "twitter":
-		s.providers = append(s.providers, provider.NewService(provider.NewTwitter(p)))
+		prov = provider.NewTwitter(p)
 	case "patreon":
-		s.providers = append(s.providers, provider.NewService(provider.NewPatreon(p)))
+		prov = provider.NewPatreon(p)
+	case "discord":
+		prov = provider.NewDiscord(p)
 	case "dev":
-		s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
+		prov = provider.NewDev(p)
 	default:
 		return
 	}
 
+	s.addProvider(prov)
+}
+
+func (s *Service) addProvider(prov provider.Provider) {
+	if !s.isValidProviderName(prov.Name()) {
+		return
+	}
+	s.providers = append(s.providers, provider.NewService(prov))
 	s.authMiddleware.Providers = s.providers
 }
 
-// AddDevProvider with a custom port
-func (s *Service) AddDevProvider(port int) {
+func (s *Service) isValidProviderName(name string) bool {
+	if strings.TrimSpace(name) == "" {
+		s.logger.Logf("[ERROR] provider has been ignored because its name is empty")
+		return false
+	}
+
+	formatForbidden := func(name string) string {
+		return fmt.Sprintf("provider has been ignored because its name contains forbidden characters: '%s'", name)
+	}
+
+	path, err := url.PathUnescape(name)
+	if err != nil || path != name {
+		s.logger.Logf("[ERROR] %s", formatForbidden(name))
+		return false
+	}
+	if name != url.PathEscape(name) {
+		s.logger.Logf("[ERROR] %s", formatForbidden(name))
+		return false
+	}
+	// net/url package does not escape everything (https://github.com/golang/go/issues/5684)
+	// It is better to reject all reserved characters from https://datatracker.ietf.org/doc/html/rfc3986#section-2.2
+	if regexp.MustCompile(`[:/?#\[\]@!$&'\(\)*+,;=]`).MatchString(name) {
+		s.logger.Logf("[ERROR] %s", formatForbidden(name))
+		return false
+	}
+
+	return true
+}
+
+// AddProvider adds provider for given name
+func (s *Service) AddProvider(name, cid, csecret string) {
+	p := provider.Params{
+		URL:            s.opts.URL,
+		JwtService:     s.jwtService,
+		Issuer:         s.issuer,
+		AvatarSaver:    s.avatarProxy,
+		Cid:            cid,
+		Csecret:        csecret,
+		L:              s.logger,
+		UserAttributes: map[string]string{},
+	}
+	s.addProviderByName(name, p)
+}
+
+// AddDevProvider with a custom host and port
+func (s *Service) AddDevProvider(host string, port int) {
 	p := provider.Params{
 		URL:         s.opts.URL,
 		JwtService:  s.jwtService,
@@ -267,8 +329,9 @@ func (s *Service) AddDevProvider(port int) {
 		AvatarSaver: s.avatarProxy,
 		L:           s.logger,
 		Port:        port,
+		Host:        host,
 	}
-	s.providers = append(s.providers, provider.NewService(provider.NewDev(p)))
+	s.addProvider(provider.NewDev(p))
 }
 
 // AddAppleProvider allow SignIn with Apple ID
@@ -281,13 +344,13 @@ func (s *Service) AddAppleProvider(appleConfig provider.AppleConfig, privKeyLoad
 		L:           s.logger,
 	}
 
-	// Error checking at create need for catch one when apple private key init
+	// error checking at create need for catch one when apple private key init
 	appleProvider, err := provider.NewApple(p, appleConfig, privKeyLoader)
 	if err != nil {
-		return errors.Wrap(err, "an AppleProvider creating failed")
+		return fmt.Errorf("an AppleProvider creating failed: %w", err)
 	}
 
-	s.providers = append(s.providers, provider.NewService(appleProvider))
+	s.addProvider(appleProvider)
 	return nil
 }
 
@@ -302,9 +365,7 @@ func (s *Service) AddCustomProvider(name string, client Client, copts provider.C
 		Csecret:     client.Csecret,
 		L:           s.logger,
 	}
-
-	s.providers = append(s.providers, provider.NewService(provider.NewCustom(name, p, copts)))
-	s.authMiddleware.Providers = s.providers
+	s.addProvider(provider.NewCustom(name, p, copts))
 }
 
 // AddDirectProvider adds provider with direct check against data store
@@ -318,8 +379,7 @@ func (s *Service) AddDirectProvider(name string, credChecker provider.CredChecke
 		CredChecker:  credChecker,
 		AvatarSaver:  s.avatarProxy,
 	}
-	s.providers = append(s.providers, provider.NewService(dh))
-	s.authMiddleware.Providers = s.providers
+	s.addProvider(dh)
 }
 
 // AddDirectProviderWithUserIDFunc adds provider with direct check against data store and sets custom UserIDFunc allows
@@ -335,8 +395,7 @@ func (s *Service) AddDirectProviderWithUserIDFunc(name string, credChecker provi
 		AvatarSaver:  s.avatarProxy,
 		UserIDFunc:   ufn,
 	}
-	s.providers = append(s.providers, provider.NewService(dh))
-	s.authMiddleware.Providers = s.providers
+	s.addProvider(dh)
 }
 
 // AddVerifProvider adds provider user's verification sent by sender
@@ -351,21 +410,19 @@ func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender)
 		Template:     msgTmpl,
 		UseGravatar:  s.useGravatar,
 	}
-	s.providers = append(s.providers, provider.NewService(dh))
-	s.authMiddleware.Providers = s.providers
+	s.addProvider(dh)
 }
 
 // AddCustomHandler adds user-defined self-implemented handler of auth provider
-func (s *Service) AddCustomHandler(handler provider.Provider) {
-	s.providers = append(s.providers, provider.NewService(handler))
-	s.authMiddleware.Providers = s.providers
+func (s *Service) AddCustomHandler(p provider.Provider) {
+	s.addProvider(p)
 }
 
 // DevAuth makes dev oauth2 server, for testing and development only!
 func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
 	p, err := s.Provider("dev") // peak dev provider
 	if err != nil {
-		return nil, errors.Wrap(err, "dev provider not registered")
+		return nil, fmt.Errorf("dev provider not registered: %w", err)
 	}
 	// make and start dev auth server
 	return &provider.DevAuthServer{Provider: p.Provider.(provider.Oauth2Handler), L: s.logger}, nil
@@ -378,7 +435,7 @@ func (s *Service) Provider(name string) (provider.Service, error) {
 			return p, nil
 		}
 	}
-	return provider.Service{}, errors.Errorf("provider %s not found", name)
+	return provider.Service{}, fmt.Errorf("provider %s not found", name)
 }
 
 // Providers gets all registered providers

@@ -6,10 +6,9 @@ package middleware
 
 import (
 	"crypto/subtle"
+	"fmt"
 	"net/http"
 	"strings"
-
-	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/provider"
@@ -92,11 +91,11 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 				if user, passwd, isBasicAuth := r.BasicAuth(); isBasicAuth {
 					ok, userInfo, err := a.BasicAuthChecker(user, passwd)
 					if err != nil {
-						onError(h, w, r, errors.Wrap(err, "basic auth check failed"))
+						onError(h, w, r, fmt.Errorf("basic auth check failed: %w", err))
 						return
 					}
 					if !ok {
-						onError(h, w, r, errors.Wrap(err, "credentials are wrong for basic auth"))
+						onError(h, w, r, fmt.Errorf("credentials are wrong for basic auth: %w", err))
 						return
 					}
 					r = token.SetUserInfo(r, userInfo) // pass user claims into context of incoming request
@@ -107,24 +106,31 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 			claims, tkn, err := a.JWTService.Get(r)
 			if err != nil {
-				onError(h, w, r, errors.Wrap(err, "can't get token"))
+				onError(h, w, r, fmt.Errorf("can't get token: %w", err))
 				return
 			}
 
-			if claims.Handshake != nil { // handshake in token indicate special use cases, not for login
-				onError(h, w, r, errors.New("invalid kind of token"))
+			if claims.Handshake != nil { // handshake in token indicates special use cases, not for login
+				onError(h, w, r, fmt.Errorf("invalid kind of token"))
 				return
 			}
 
 			if claims.User == nil {
-				onError(h, w, r, errors.New("no user info presented in the claim"))
+				onError(h, w, r, fmt.Errorf("no user info presented in the claim"))
 				return
 			}
 
 			if claims.User != nil { // if uinfo in token populate it to context
 				// validator passed by client and performs check on token or/and claims
 				if a.Validator != nil && !a.Validator.Validate(tkn, claims) {
-					onError(h, w, r, errors.Errorf("user %s/%s blocked", claims.User.Name, claims.User.ID))
+					onError(h, w, r, fmt.Errorf("user %s/%s blocked", claims.User.Name, claims.User.ID))
+					a.JWTService.Reset(w)
+					return
+				}
+
+				// check if user provider is allowed
+				if !a.isProviderAllowed(&claims) {
+					onError(h, w, r, fmt.Errorf("user %s/%s provider is not allowed", claims.User.Name, claims.User.ID))
 					a.JWTService.Reset(w)
 					return
 				}
@@ -132,7 +138,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 				if a.JWTService.IsExpired(claims) {
 					if claims, err = a.refreshExpiredToken(w, claims, tkn); err != nil {
 						a.JWTService.Reset(w)
-						onError(h, w, r, errors.Wrap(err, "can't refresh token"))
+						onError(h, w, r, fmt.Errorf("can't refresh token: %w", err))
 						return
 					}
 				}
@@ -147,6 +153,30 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 	return f
 }
 
+// isProviderAllowed checks if user provider is allowed.
+// If provider name is explicitly set in the token claims, then that provider is checked.
+//
+// If user id looks like "provider_1234567890",
+// then there is an attempt to extract provider name from that user ID.
+// Note that such read can fail if user id has multiple "_" separator symbols.
+//
+// This check is needed to reject users from providers what are used to be allowed but not anymore.
+// Such users made token before the provider was disabled and should not be allowed to login anymore.
+func (a *Authenticator) isProviderAllowed(claims *token.Claims) bool {
+	// TODO: remove this read when old tokens expire and all new tokens have a provider name in them
+	userIDProvider := strings.Split(claims.User.ID, "_")[0]
+	for _, p := range a.Providers {
+		name := p.Name()
+		if claims.AuthProvider != nil && claims.AuthProvider.Name == name {
+			return true
+		}
+		if name == userIDProvider {
+			return true
+		}
+	}
+	return false
+}
+
 // refreshExpiredToken makes a new token with passed claims
 func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.Claims, tkn string) (token.Claims, error) {
 
@@ -159,7 +189,7 @@ func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.
 	}
 
 	claims.ExpiresAt = 0                  // this will cause now+duration for refreshed token
-	c, err := a.JWTService.Set(w, claims) // Set changes token
+	c, err := a.JWTService.Set(w, claims) // set changes token
 	if err != nil {
 		return token.Claims{}, err
 	}

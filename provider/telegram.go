@@ -1,6 +1,6 @@
 package provider
 
-//go:generate moq -out telegram_moq_test.go . TelegramAPI
+//go:generate moq --out telegram_moq_test.go . TelegramAPI
 
 import (
 	"context"
@@ -15,10 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-pkgz/repeater"
+	"github.com/go-pkgz/repeater/v2"
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
-	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/logger"
 	authtoken "github.com/go-pkgz/auth/token"
@@ -64,11 +63,11 @@ var expiredCleanupInterval = time.Minute * 5 // interval to check and clean up e
 // Run starts processing login requests sent in Telegram
 // Blocks caller
 func (th *TelegramHandler) Run(ctx context.Context) error {
-	// Initialization
+	// initialization
 	atomic.AddInt32(&th.run, 1)
 	info, err := th.Telegram.BotInfo(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to fetch bot info")
+		return fmt.Errorf("failed to fetch bot info: %w", err)
 	}
 	th.username = info.Username
 
@@ -125,7 +124,7 @@ type telegramUpdate struct {
 // so that caller could get updates and send it not only there but to multiple sources
 func (th *TelegramHandler) ProcessUpdate(ctx context.Context, textUpdate string) error {
 	if atomic.LoadInt32(&th.run) != 0 {
-		return errors.New("Run goroutine should not be used with ProcessUpdate")
+		return fmt.Errorf("Run goroutine should not be used with ProcessUpdate")
 	}
 	defer func() {
 		// as Run goroutine is not running, clean up old requests on each update
@@ -147,7 +146,7 @@ func (th *TelegramHandler) ProcessUpdate(ctx context.Context, textUpdate string)
 	th.requests.Unlock()
 	var updates telegramUpdate
 	if err := json.Unmarshal([]byte(textUpdate), &updates); err != nil {
-		return errors.Wrap(err, "failed to decode provided telegram update")
+		return fmt.Errorf("failed to decode provided telegram update: %w", err)
 	}
 	th.processUpdates(ctx, &updates)
 	return nil
@@ -169,7 +168,7 @@ func (th *TelegramHandler) processUpdates(ctx context.Context, updates *telegram
 
 		th.requests.RLock()
 		authRequest, ok := th.requests.data[token]
-		if !ok { // No such token
+		if !ok { // no such token
 			th.requests.RUnlock()
 			err := th.Telegram.Send(ctx, update.Message.Chat.ID, th.ErrorMsg)
 			if err != nil {
@@ -210,7 +209,7 @@ func (th *TelegramHandler) addToken(token string, expires time.Time) error {
 	th.requests.Lock()
 	if th.requests.data == nil {
 		th.requests.Unlock()
-		return errors.New("run goroutine is not running")
+		return fmt.Errorf("run goroutine is not running")
 	}
 	th.requests.data[token] = tgAuthRequest{
 		expires: expires,
@@ -226,18 +225,18 @@ func (th *TelegramHandler) checkToken(token string) (*authtoken.User, error) {
 	th.requests.RUnlock()
 
 	if !ok {
-		return nil, errors.New("request is not found")
+		return nil, fmt.Errorf("request is not found")
 	}
 
 	if time.Now().After(authRequest.expires) {
 		th.requests.Lock()
 		delete(th.requests.data, token)
 		th.requests.Unlock()
-		return nil, errors.New("request expired")
+		return nil, fmt.Errorf("request expired")
 	}
 
 	if !authRequest.confirmed {
-		return nil, errors.New("request is not verified yet")
+		return nil, fmt.Errorf("request is not verified yet")
 	}
 
 	return authRequest.user, nil
@@ -257,7 +256,7 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 	queryToken := r.URL.Query().Get("token")
 	if queryToken == "" {
 		// GET /login (No token supplied)
-		// Generate and send token
+		// generate and send token
 		token, err := randToken()
 		if err != nil {
 			rest.SendErrorJSON(w, r, th.L, http.StatusInternalServerError, err, "failed to generate code")
@@ -310,7 +309,10 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},
-		SessionOnly: false, // TODO
+		SessionOnly: false, // TODO review?
+		AuthProvider: &authtoken.AuthProvider{
+			Name: th.ProviderName,
+		},
 	}
 
 	if _, err := th.TokenService.Set(w, claims); err != nil {
@@ -320,7 +322,7 @@ func (th *TelegramHandler) LoginHandler(w http.ResponseWriter, r *http.Request) 
 
 	rest.RenderJSON(w, claims.User)
 
-	// Delete request
+	// delete request
 	th.requests.Lock()
 	defer th.requests.Unlock()
 	delete(th.requests.data, queryToken)
@@ -340,8 +342,8 @@ type tgAPI struct {
 	token  string
 	client *http.Client
 
-	// Identifier of the first update to be requested.
-	// Should be equal to LastSeenUpdateID + 1
+	// identifier of the first update to be requested.
+	// should be equal to LastSeenUpdateID + 1
 	// See https://core.telegram.org/bots/api#getupdates
 	updateOffset int
 }
@@ -365,7 +367,7 @@ func (tg *tgAPI) GetUpdates(ctx context.Context) (*telegramUpdate, error) {
 
 	err := tg.request(ctx, url, &result)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to fetch updates")
+		return nil, fmt.Errorf("failed to fetch updates: %w", err)
 	}
 
 	for _, u := range result.Result {
@@ -385,7 +387,7 @@ func (tg *tgAPI) Send(ctx context.Context, id int, msg string) error {
 
 // Avatar returns URL to user avatar
 func (tg *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
-	// Get profile pictures
+	// get profile pictures
 	url := fmt.Sprintf(`getUserProfilePhotos?user_id=%d`, id)
 
 	var profilePhotos = struct {
@@ -400,12 +402,12 @@ func (tg *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 		return "", err
 	}
 
-	// User does not have profile picture set or it is hidden in privacy settings
+	// user does not have profile picture set or it is hidden in privacy settings
 	if len(profilePhotos.Result.Photos) == 0 || len(profilePhotos.Result.Photos[0]) == 0 {
 		return "", nil
 	}
 
-	// Get max possible picture size
+	// get max possible picture size
 	last := len(profilePhotos.Result.Photos[0]) - 1
 	fileID := profilePhotos.Result.Photos[0][last].ID
 	url = fmt.Sprintf(`getFile?file_id=%s`, fileID)
@@ -441,33 +443,33 @@ func (tg *tgAPI) BotInfo(ctx context.Context) (*botInfo, error) {
 		return nil, err
 	}
 	if resp.Result == nil {
-		return nil, errors.New("received empty result")
+		return nil, fmt.Errorf("received empty result")
 	}
 
 	return resp.Result, nil
 }
 
 func (tg *tgAPI) request(ctx context.Context, method string, data interface{}) error {
-	return repeater.NewDefault(3, time.Millisecond*50).Do(ctx, func() error {
+	return repeater.NewFixed(3, time.Millisecond*50).Do(ctx, func() error {
 		url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tg.token, method)
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 		if err != nil {
-			return errors.Wrap(err, "failed to create request")
+			return fmt.Errorf("failed to create request: %w", err)
 		}
 
 		resp, err := tg.client.Do(req)
 		if err != nil {
-			return errors.Wrap(err, "failed to send request")
+			return fmt.Errorf("failed to send request: %w", err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint gosec // we don't care about response body
 
 		if resp.StatusCode != http.StatusOK {
 			return tg.parseError(resp.Body, resp.StatusCode)
 		}
 
 		if err = json.NewDecoder(resp.Body).Decode(data); err != nil {
-			return errors.Wrap(err, "failed to decode json response")
+			return fmt.Errorf("failed to decode json response: %w", err)
 		}
 
 		return nil
@@ -479,7 +481,7 @@ func (tg *tgAPI) parseError(r io.Reader, statusCode int) error {
 		Description string `json:"description"`
 	}{}
 	if err := json.NewDecoder(r).Decode(&tgErr); err != nil {
-		return errors.Errorf("unexpected telegram API status code %d", statusCode)
+		return fmt.Errorf("unexpected telegram API status code %d", statusCode)
 	}
-	return errors.Errorf("unexpected telegram API status code %d, error: %q", statusCode, tgErr.Description)
+	return fmt.Errorf("unexpected telegram API status code %d, error: %q", statusCode, tgErr.Description)
 }

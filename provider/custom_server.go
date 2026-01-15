@@ -2,17 +2,17 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"html/template"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	goauth2 "github.com/go-oauth2/oauth2/v4/server"
-	"github.com/microcosm-cc/bluemonday"
 	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth/avatar"
@@ -22,10 +22,11 @@ import (
 
 // CustomHandlerOpt are options to initialize a handler for oauth2 server
 type CustomHandlerOpt struct {
-	Endpoint  oauth2.Endpoint
-	InfoURL   string
-	MapUserFn func(UserData, []byte) token.User
-	Scopes    []string
+	Endpoint          oauth2.Endpoint
+	InfoURL           string
+	MapUserFn         func(UserData, []byte) token.User
+	BearerTokenHookFn BearerTokenHook
+	Scopes            []string
 }
 
 // CustomServerOpt are options to initialize a custom go-oauth2/oauth2 server
@@ -88,7 +89,8 @@ func (c *CustomServer) Run(ctx context.Context) {
 	}
 
 	c.httpServer = &http.Server{
-		Addr: fmt.Sprintf(":%s", port),
+		Addr:              fmt.Sprintf(":%s", port),
+		ReadHeaderTimeout: 5 * time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.HasSuffix(r.URL.Path, "/authorize"):
@@ -134,7 +136,7 @@ func (c *CustomServer) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			formData := struct{ Query string }{Query: r.URL.RawQuery}
+			formData := struct{ Query template.URL }{Query: template.URL(r.URL.RawQuery)} //nolint:gosec // query is safe
 
 			if err := userLoginTmpl.Execute(w, formData); err != nil {
 				c.Logf("[WARN] can't write, %s", err)
@@ -158,16 +160,19 @@ func (c *CustomServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := ti.GetUserID()
 
-	p := bluemonday.UGCPolicy()
-	ava := p.Sanitize(fmt.Sprintf(c.URL+"/avatar?user=%s", userID))
-	res := fmt.Sprintf(`{
-					"id": "%s",
-					"name":"%s",
-					"picture":"%s"
-					}`, userID, userID, ava)
+	user := token.User{
+		ID:      userID,
+		Name:    userID,
+		Picture: fmt.Sprintf(c.URL+"/avatar?user=%s", url.QueryEscape(userID)),
+	}
+	res, err := json.Marshal(user)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if _, err := w.Write([]byte(res)); err != nil {
+	if _, err := w.Write(res); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -204,11 +209,12 @@ func (c *CustomServer) Shutdown() {
 // NewCustom creates a handler for go-oauth2/oauth2 server
 func NewCustom(name string, p Params, copts CustomHandlerOpt) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
-		name:     name,
-		endpoint: copts.Endpoint,
-		scopes:   copts.Scopes,
-		infoURL:  copts.InfoURL,
-		mapUser:  copts.MapUserFn,
+		name:            name,
+		endpoint:        copts.Endpoint,
+		scopes:          copts.Scopes,
+		infoURL:         copts.InfoURL,
+		mapUser:         copts.MapUserFn,
+		bearerTokenHook: copts.BearerTokenHookFn,
 	})
 }
 

@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -33,7 +33,6 @@ func TestHandler(t *testing.T) {
 	handler := http.HandlerFunc(svc.Handler)
 
 	for n, tt := range tbl {
-		tt := tt
 		t.Run(fmt.Sprintf("check-%d", n), func(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req, err := http.NewRequest(tt.method, tt.url, http.NoBody)
@@ -65,6 +64,12 @@ func TestSetAvatar(t *testing.T) {
 	assert.NoError(t, err, "nil ava allowed")
 	assert.Equal(t, token.User{Picture: "http://example.com/pic1.png"}, u)
 
+	var nilProxy *avatar.Proxy
+	var nilAva AvatarSaver = nilProxy
+	u, err = setAvatar(nilAva, token.User{Picture: "http://example.com/pic1.png"}, client)
+	assert.NoError(t, err, "nil ava allowed")
+	assert.Equal(t, token.User{Picture: "http://example.com/pic1.png"}, u)
+
 	u, err = setAvatar(mockAva{true, "http://example.com/pic1px.png"}, token.User{Picture: "http://example.com/pic1.png"}, client)
 	assert.NoError(t, err)
 	assert.Equal(t, token.User{Picture: "http://example.com/pic1px.png"}, u)
@@ -78,9 +83,9 @@ type mockAva struct {
 	res string
 }
 
-func (m mockAva) Put(u token.User, client *http.Client) (avatarURL string, err error) {
+func (m mockAva) Put(token.User, *http.Client) (avatarURL string, err error) {
 	if !m.ok {
-		return "", errors.New("some error")
+		return "", fmt.Errorf("some error")
 	}
 	return m.res, nil
 }
@@ -88,12 +93,12 @@ func (m mockAva) Put(u token.User, client *http.Client) (avatarURL string, err e
 type mockHandler struct{}
 
 func (n *mockHandler) Name() string { return "mock-handler" }
-func (n *mockHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (n *mockHandler) LoginHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("login"))
 }
-func (n *mockHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
+func (n *mockHandler) AuthHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("callback"))
 }
-func (n *mockHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (n *mockHandler) LogoutHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("logout"))
 }

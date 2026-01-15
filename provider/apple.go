@@ -25,7 +25,6 @@ import (
 
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
-	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
@@ -50,30 +49,31 @@ const (
 
 // appleVerificationResponse is based on https://developer.apple.com/documentation/signinwithapplerestapi/tokenresponse
 type appleVerificationResponse struct {
-	// A token used to access allowed user data, but now not implemented public interface for it.
+	// a token used to access allowed user data, but now not implemented public interface for it.
 	AccessToken string `json:"access_token"`
 
-	// Access token type, always equal the "bearer".
+	// access token type, always equal the "bearer".
 	TokenType string `json:"token_type"`
 
-	// Access token expires time in seconds. Always equal 3600 seconds (1 hour)
+	// access token expires time in seconds. Always equal 3600 seconds (1 hour)
 	ExpiresIn int `json:"expires_in"`
 
-	// The refresh token used to regenerate new access tokens.
+	// the refresh token used to regenerate new access tokens.
 	RefreshToken string `json:"refresh_token"`
 
-	// Main JSON Web Token that contains the user’s identity information.
+	// main JSON Web Token that contains the user’s identity information.
 	IDToken string `json:"id_token"`
 
-	// Used to capture any error returned in response. Always check error for empty
+	// used to capture any error returned in response. Always check error for empty
 	Error string `json:"error"`
 }
 
 // AppleConfig is the main oauth2 required parameters for "Sign in with Apple"
 type AppleConfig struct {
-	ClientID string // the identifier Services ID for your app created in Apple developer account.
-	TeamID   string // developer Team ID (10 characters), required for create JWT. It available, after signed in at developer account, by link: https://developer.apple.com/account/#/membership
-	KeyID    string // private key ID  assigned to private key obtain in Apple developer account
+	ClientID     string // the identifier Services ID for your app created in Apple developer account.
+	TeamID       string // developer Team ID (10 characters), required for create JWT. It available, after signed in at developer account, by link: https://developer.apple.com/account/#/membership
+	KeyID        string // private key ID  assigned to private key obtain in Apple developer account
+	ResponseMode string // changes method of receiving data in callback. Default value "form_post" (https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168)
 
 	scopes       []string         // for this package allow only username scope and UID in token claims. Apple service API provide only "email" and "name" scope values (https://developer.apple.com/documentation/sign_in_with_apple/clientconfigi/3230955-scope)
 	privateKey   interface{}      // private key from Apple obtained in developer account (the keys section). Required for create the Client Secret (https://developer.apple.com/documentation/sign_in_with_apple/generate_and_validate_tokens#3262048)
@@ -119,7 +119,7 @@ func LoadApplePrivateKeyFromFile(path string) LoadFromFileFunc {
 // LoadPrivateKey implement pre-defined (built-in) PrivateKeyLoaderInterface interface method for load private key from local file
 func (lf LoadFromFileFunc) LoadPrivateKey() ([]byte, error) {
 	if lf.Path == "" {
-		return nil, errors.New("empty private key path not allowed")
+		return nil, fmt.Errorf("empty private key path not allowed")
 	}
 
 	keyFile, err := os.Open(lf.Path)
@@ -157,16 +157,22 @@ func NewApple(p Params, appleCfg AppleConfig, privateKeyLoader PrivateKeyLoaderI
 		return nil, fmt.Errorf("required params missed: %s", strings.Join(emptyParams, ", "))
 	}
 
+	responseMode := "form_post"
+	if appleCfg.ResponseMode != "" {
+		responseMode = appleCfg.ResponseMode
+	}
+
 	ah := AppleHandler{
 		Params: p,
 		name:   "apple", // static name for an Apple provider
 
 		conf: AppleConfig{
-			ClientID: appleCfg.ClientID,
-			TeamID:   appleCfg.TeamID,
-			KeyID:    appleCfg.KeyID,
-			scopes:   []string{"name"},
-			jwkURL:   appleKeysURL,
+			ClientID:     appleCfg.ClientID,
+			TeamID:       appleCfg.TeamID,
+			KeyID:        appleCfg.KeyID,
+			scopes:       []string{"name"},
+			jwkURL:       appleKeysURL,
+			ResponseMode: responseMode,
 		},
 
 		endpoint: oauth2.Endpoint{
@@ -184,7 +190,7 @@ func NewApple(p Params, appleCfg AppleConfig, privateKeyLoader PrivateKeyLoaderI
 	}
 
 	if privateKeyLoader == nil {
-		return nil, errors.New("private key loader undefined")
+		return nil, fmt.Errorf("private key loader undefined")
 	}
 
 	ah.PrivateKeyLoader = privateKeyLoader
@@ -198,18 +204,22 @@ func (ah *AppleHandler) initPrivateKey() error {
 
 	sKey, err := ah.PrivateKeyLoader.LoadPrivateKey()
 	if err != nil {
-		return errors.Wrap(err, "problem with private key loading")
+		return fmt.Errorf("problem with private key loading: %w", err)
 	}
 
 	block, _ := pem.Decode(sKey)
 	if block == nil {
-		return errors.New("empty block after decoding")
+		return fmt.Errorf("empty block after decoding")
 	}
 	ah.conf.privateKey, err = x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return err
 	}
-	ah.conf.publicKey = ah.conf.privateKey.(*ecdsa.PrivateKey).Public()
+	publicKey, ok := ah.conf.privateKey.(*ecdsa.PrivateKey)
+	if !ok {
+		return fmt.Errorf("provided private key is not ECDSA")
+	}
+	ah.conf.publicKey = publicKey.Public()
 	ah.conf.clientSecret, err = ah.createClientSecret()
 	if err != nil {
 		return err
@@ -220,7 +230,7 @@ func (ah *AppleHandler) initPrivateKey() error {
 // tokenKeyFunc use for verify JWT sign, it receives the parsed token and should return the key for validating.
 func (ah *AppleHandler) tokenKeyFunc(jwtToken *jwt.Token) (interface{}, error) {
 	if jwtToken == nil {
-		return nil, errors.New("failed to call token keyFunc, because token is nil")
+		return nil, fmt.Errorf("failed to call token keyFunc, because token is nil")
 	}
 	return ah.conf.publicKey, nil // extract public key from private key
 }
@@ -256,6 +266,9 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			Audience:  r.URL.Query().Get("site"),
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
+		},
+		AuthProvider: &token.AuthProvider{
+			Name: ah.name,
 		},
 	}
 
@@ -327,7 +340,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	// trying to fetch Apple public key (JWK) for verify token signature, it need for verify IDToken received from Apple
 	keySet, err := fetchAppleJWK(r.Context(), ah.conf.jwkURL)
 	if err != nil {
-		ah.L.Logf("[ERROR] failed to fetch JWK from Apple key service: " + err.Error())
+		ah.Logf("[ERROR] failed to fetch JWK from Apple key service: " + err.Error())
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("failed to fetch JWK from Apple key service: %s", resp.Error))
 		return
 	}
@@ -336,7 +349,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	tokenClaims := jwt.MapClaims{}
 	_, err = jwt.ParseWithClaims(resp.IDToken, tokenClaims, keySet.keyFunc)
 	if err != nil {
-		ah.L.Logf("[ERROR] failed to get claims: " + err.Error())
+		ah.Logf("[ERROR] failed to get claims: " + err.Error())
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("failed to token validation, key is invalid: %s", resp.Error))
 		return
 	}
@@ -366,6 +379,9 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 			Audience: oauthClaims.Audience,
 		},
 		SessionOnly: false,
+		AuthProvider: &token.AuthProvider{
+			Name: ah.name,
+		},
 	}
 
 	if _, err = ah.JwtService.Set(w, claims); err != nil {
@@ -401,7 +417,7 @@ func (ah *AppleHandler) exchange(ctx context.Context, code, redirectURI string, 
 	if tkn, err := jwt.Parse(ah.conf.clientSecret, ah.tokenKeyFunc); err != nil || tkn == nil {
 		ah.conf.clientSecret, err = ah.createClientSecret()
 		if err != nil {
-			return errors.Wrap(err, "client secret create failed")
+			return fmt.Errorf("client secret create failed: %w", err)
 		}
 	}
 
@@ -427,20 +443,20 @@ func (ah *AppleHandler) exchange(ctx context.Context, code, redirectURI string, 
 		return err
 	}
 
-	// Trying to decode (unmarshal json) data of response
+	// trying to decode (unmarshal json) data of response
 	err = json.NewDecoder(res.Body).Decode(result)
 	if err != nil {
-		return errors.Wrap(err, "unmarshalling data from apple service response failed")
+		return fmt.Errorf("unmarshalling data from apple service response failed: %w", err)
 	}
 
 	defer func() {
 		if err = res.Body.Close(); err != nil {
-			ah.L.Logf("[ERROR] close request body failed when get access token: %v", err)
+			ah.Logf("[ERROR] close request body failed when get access token: %v", err)
 		}
 	}()
 
-	// If above operation done successfully checking a response code and error descriptions, if one exist.
-	// Apple service will response either 200 (OK) or 400 (any error).
+	// if above operation done successfully checking a response code and error descriptions, if one exist.
+	// apple service will response either 200 (OK) or 400 (any error).
 	if res.StatusCode != http.StatusOK || result.Error != "" {
 		return fmt.Errorf("apple token service error: %s", result.Error)
 	}
@@ -453,9 +469,9 @@ func (ah *AppleHandler) exchange(ctx context.Context, code, redirectURI string, 
 func (ah *AppleHandler) createClientSecret() (string, error) {
 
 	if ah.conf.privateKey == nil {
-		return "", errors.New("private key can't be empty")
+		return "", fmt.Errorf("private key can't be empty")
 	}
-	// Create a claims
+	// create a claims
 	now := time.Now()
 	exp := now.Add(time.Minute * 30).Unix() // default value
 
@@ -486,9 +502,9 @@ func (ah *AppleHandler) parseUserData(user *token.User, jUser string) {
 
 	var userData UserData
 
-	// Catch error for log only. No need break flow if user name doesn't exist
+	// catch error for log only. No need break flow if user name doesn't exist
 	if err := json.Unmarshal([]byte(jUser), &userData); err != nil {
-		ah.L.Logf("[DEBUG] failed to parse user data %s: %v", user, err)
+		ah.Logf("[DEBUG] failed to parse user data %s: %v", user, err)
 		user.Name = "noname_" + user.ID[6:12] // paste noname if user name failed to parse
 		return
 	}
@@ -500,6 +516,10 @@ func (ah *AppleHandler) prepareLoginURL(state, path string) (string, error) {
 
 	scopesList := strings.Join(ah.conf.scopes, " ")
 
+	if scopesList != "" && ah.conf.ResponseMode != "form_post" {
+		return "", fmt.Errorf("response_mode must be form_post if scope is not empty")
+	}
+
 	authURL, err := url.Parse(ah.endpoint.AuthURL)
 	if err != nil {
 		return "", err
@@ -508,7 +528,7 @@ func (ah *AppleHandler) prepareLoginURL(state, path string) (string, error) {
 	query := authURL.Query()
 	query.Set("state", state)
 	query.Set("response_type", "code")
-	query.Set("response_mode", "form_post")
+	query.Set("response_mode", ah.conf.ResponseMode)
 	query.Set("client_id", ah.conf.ClientID)
 	query.Set("scope", scopesList)
 	query.Set("redirect_uri", ah.makeRedirURL(path))

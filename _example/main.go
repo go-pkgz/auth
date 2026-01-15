@@ -1,3 +1,4 @@
+// Package main starts the example server
 package main
 
 import (
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-oauth2/oauth2/v4/errors"
 	"github.com/go-oauth2/oauth2/v4/generates"
 	"github.com/go-oauth2/oauth2/v4/manage"
@@ -21,14 +21,15 @@ import (
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
-	"github.com/golang-jwt/jwt"
+	"github.com/go-pkgz/routegroup"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
 
-	"github.com/go-pkgz/auth"
-	"github.com/go-pkgz/auth/avatar"
-	"github.com/go-pkgz/auth/middleware"
-	"github.com/go-pkgz/auth/provider"
-	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/auth/v2"
+	"github.com/go-pkgz/auth/v2/avatar"
+	"github.com/go-pkgz/auth/v2/middleware"
+	"github.com/go-pkgz/auth/v2/provider"
+	"github.com/go-pkgz/auth/v2/token"
 )
 
 func main() {
@@ -65,6 +66,9 @@ func main() {
 				if strings.HasPrefix(claims.User.ID, "patreon_") { // allow all users with patreon auth
 					return true
 				}
+				if strings.HasPrefix(claims.User.ID, "discord_") { // allow all users with discord auth
+					return true
+				}
 				if strings.HasPrefix(claims.User.Name, "dev_") { // allow all users with dev auth
 					return true
 				}
@@ -83,12 +87,14 @@ func main() {
 	service.AddProvider("twitter", os.Getenv("AEXMPL_TWITTER_APIKEY"), os.Getenv("AEXMPL_TWITTER_APISEC"))
 	service.AddProvider("microsoft", os.Getenv("AEXMPL_MS_APIKEY"), os.Getenv("AEXMPL_MS_APISEC"))
 	service.AddProvider("patreon", os.Getenv("AEXMPL_PATREON_CID"), os.Getenv("AEXMPL_PATREON_CSEC"))
+	service.AddProvider("discord", os.Getenv("AEXMPL_DISCORD_CID"), os.Getenv("AEXMPL_DISCORD_CSEC"))
 
 	// allow sign with apple id
 	appleCfg := provider.AppleConfig{
-		ClientID: os.Getenv("AEXMPL_APPLE_CID"),
-		TeamID:   os.Getenv("AEXMPL_APPLE_TID"),
-		KeyID:    os.Getenv("AEXMPL_APPLE_KEYID"), // private key identifier
+		ClientID:     os.Getenv("AEXMPL_APPLE_CID"),
+		TeamID:       os.Getenv("AEXMPL_APPLE_TID"),
+		KeyID:        os.Getenv("AEXMPL_APPLE_KEYID"), // private key identifier
+		ResponseMode: "query",                         // see https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168
 	}
 
 	if err := service.AddAppleProvider(appleCfg, provider.LoadApplePrivateKeyFromFile(os.Getenv("AEXMPL_APPLE_PRIVKEY_PATH"))); err != nil {
@@ -106,13 +112,13 @@ func main() {
 		}),
 	)
 
-	if token := os.Getenv("TELEGRAM_TOKEN"); token != "" {
+	if tkn := os.Getenv("TELEGRAM_TOKEN"); tkn != "" {
 		// add telegram provider
 		telegram := provider.TelegramHandler{
 			ProviderName: "telegram",
 			ErrorMsg:     "❌ Invalid auth request. Please try clicking link again.",
 			SuccessMsg:   "✅ You have successfully authenticated!",
-			Telegram:     provider.NewTelegramAPI(token, http.DefaultClient),
+			Telegram:     provider.NewTelegramAPI(tkn, http.DefaultClient),
 
 			L:            log.Default(),
 			TokenService: service.TokenService(),
@@ -138,7 +144,7 @@ func main() {
 		devAuthServer.Run(context.Background())
 	}()
 
-	// Example: start custom oauth2 server, add to handlers
+	// example: start custom oauth2 server, add to handlers
 	srv := initGoauth2Srv()
 	sopts := provider.CustomServerOpt{
 		URL:           "http://127.0.0.1:9096",
@@ -148,11 +154,11 @@ func main() {
 	// create custom provider and prepare params for handler
 	prov := provider.NewCustomServer(srv, sopts)
 
-	// Start server
+	// start server
 	go prov.Run(context.Background())
 	service.AddCustomProvider("custom123", auth.Client{Cid: "cid", Csecret: "csecret"}, prov.HandlerOpt)
 
-	// Example: add different oauth2 provider
+	// example: add different oauth2 provider
 	c := auth.Client{
 		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
 		Csecret: os.Getenv("AEXMPL_BITBUCKET_CSEC"),
@@ -179,18 +185,18 @@ func main() {
 	m := service.Middleware()
 
 	// setup http server
-	router := chi.NewRouter()
+	router := routegroup.New(http.NewServeMux())
 	// add some external middlewares from go-pkgz/rest
 	router.Use(rest.AppInfo("auth-example", "umputun", "1.0.0"), rest.Ping)
 	router.Use(logger.New(logger.Log(log.Default()), logger.WithBody, logger.Prefix("[INFO]")).Handler) // log all http requests
-	router.Get("/open", openRouteHandler)                                                               // open page
-	router.Group(func(r chi.Router) {
+	router.HandleFunc("GET /open", openRouteHandler)                                                    // open page
+	router.Group().Route(func(r *routegroup.Bundle) {
 		r.Use(m.Auth)
 		r.Use(m.UpdateUser(middleware.UserUpdFunc(func(user token.User) token.User {
 			user.SetStrAttr("some_attribute", "attribute value")
 			return user
 		})))
-		r.Get("/private_data", protectedDataHandler) // protected api
+		r.HandleFunc("GET /private_data", protectedDataHandler) // protected api
 	})
 
 	// static files under ~/web
@@ -200,10 +206,16 @@ func main() {
 
 	// setup auth routes
 	authRoutes, avaRoutes := service.Handlers()
-	router.Mount("/auth", authRoutes)  // add auth handlers
-	router.Mount("/avatar", avaRoutes) // add avatar handler
+	router.Handle("/auth/", http.StripPrefix("/auth", authRoutes))    // add auth handlers
+	router.Handle("/avatar/", http.StripPrefix("/avatar", avaRoutes)) // add avatar handler
 
-	if err := http.ListenAndServe(":8080", router); err != nil {
+	httpServer := &http.Server{
+		Addr:              ":8080",
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler:           router,
+	}
+
+	if err := httpServer.ListenAndServe(); err != nil {
 		log.Printf("[PANIC] failed to start http server, %v", err)
 	}
 }
@@ -228,9 +240,8 @@ func anonymousAuthProvider() provider.CredCheckerFunc {
 	}
 }
 
-// FileServer conveniently sets up a http.FileServer handler to serve static files from a http.FileSystem.
-// Borrowed from https://github.com/go-chi/chi/blob/master/_examples/fileserver/main.go
-func fileServer(r chi.Router, path string, root http.FileSystem) {
+// fileServer conveniently sets up a http.FileServer handler to serve static files from a http.FileSystem.
+func fileServer(r *routegroup.Bundle, path string, root http.FileSystem) {
 	if strings.ContainsAny(path, "{}*") {
 		panic("FileServer does not permit URL parameters.")
 	}
@@ -239,14 +250,11 @@ func fileServer(r chi.Router, path string, root http.FileSystem) {
 	fs := http.StripPrefix(path, http.FileServer(root))
 
 	if path != "/" && path[len(path)-1] != '/' {
-		r.Get(path, http.RedirectHandler(path+"/", http.StatusMovedPermanently).ServeHTTP)
+		r.Handle("GET "+path, http.RedirectHandler(path+"/", http.StatusMovedPermanently))
 		path += "/"
 	}
-	path += "*"
 
-	r.Get(path, func(w http.ResponseWriter, r *http.Request) {
-		fs.ServeHTTP(w, r)
-	})
+	r.Handle("GET "+path+"{file...}", fs)
 }
 
 // GET /open returns a page available without authorization
@@ -303,7 +311,7 @@ func initGoauth2Srv() *goauth2.Server {
 
 	srv := goauth2.NewServer(goauth2.NewConfig(), manager)
 
-	srv.SetUserAuthorizationHandler(func(w http.ResponseWriter, r *http.Request) (string, error) {
+	srv.SetUserAuthorizationHandler(func(_ http.ResponseWriter, r *http.Request) (string, error) {
 		if r.Form.Get("username") != "admin" || r.Form.Get("password") != "admin" {
 			return "", fmt.Errorf("wrong creds. Use: admin admin")
 		}

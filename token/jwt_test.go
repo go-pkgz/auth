@@ -1,6 +1,7 @@
 package token
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,10 +9,12 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// To generate a token, enter one of the tokens here into https://jwt.io, change the secret to one you're using in your test
+// ("secret" in most cases here, "xyz 12345" in makeTestAuth), and alter the fields you want to be changed.
 
 var (
 	testJwtValid            = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJoYW5kc2hha2UiOnsic3RhdGUiOiIxMjM0NTYiLCJmcm9tIjoiZnJvbSIsImlkIjoibXlpZC0xMjM0NTYifX0._2X1cAEoxjLA7XuN8xW8V9r7rYfP_m9lSRz_9_UFzac"
@@ -21,7 +24,7 @@ var (
 		"ImlzcyI6InJlbWFyazQyIiwibmJmIjoxNTI2ODg0MjIyLCJ1c2VyIjp7Im5hbWUiOiJuYW1lMSIsImlkIjoiaWQxIiwicGljdHVyZSI6IiI" +
 		"sImFkbWluIjpmYWxzZX0sInN0YXRlIjoiMTIzNDU2IiwiZnJvbSI6ImZyb20ifQ.4_dCrY9ihyfZIedz-kZwBTxmxU1a52V7IqeJrOqTzE4"
 	testJwtBadSign    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE1MjY4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJoYW5kc2hha2UiOnsic3RhdGUiOiIxMjM0NTYiLCJmcm9tIjoiZnJvbSIsImlkIjoibXlpZC0xMjM0NTYifX0.PRuys_Ez2QWhAMp3on4Xpdc5rebKcL7-HGncvYsdYns"
-	testJwtNbf        = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjE2OTk4ODQyMjIsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJoYW5kc2hha2UiOnsic3RhdGUiOiIxMjM0NTYiLCJmcm9tIjoiZnJvbSIsImlkIjoibXlpZC0xMjM0NTYifX0.gJu5OWWlSgRnpa1S9iLr-PIB7a4VIr-CFY_2FcDJh7k"
+	testJwtNbf        = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyIsImV4cCI6Mjc4OTE5MTgyMiwianRpIjoicmFuZG9tIGlkIiwiaXNzIjoicmVtYXJrNDIiLCJuYmYiOjk5OTk4ODQyMjUsInVzZXIiOnsibmFtZSI6Im5hbWUxIiwiaWQiOiJpZDEiLCJwaWN0dXJlIjoiaHR0cDovL2V4YW1wbGUuY29tL3BpYy5wbmciLCJpcCI6IjEyNy4wLjAuMSIsImVtYWlsIjoibWVAZXhhbXBsZS5jb20iLCJhdHRycyI6eyJib29sYSI6dHJ1ZSwic3RyYSI6InN0cmEtdmFsIn19LCJoYW5kc2hha2UiOnsic3RhdGUiOiIxMjM0NTYiLCJmcm9tIjoiZnJvbSIsImlkIjoibXlpZC0xMjM0NTYifX0.T-rdC9_-6iuh7iKTW3wN8rFezDPJhz5y2bYnXVjw3nk"
 	testJwtNoneAlg    = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpc3MiOiJodHRwczovL2p3dC1pZHAuZXhhbXBsZS5jb20iLCJzdWIiOiJtYWlsdG86bWlrZUBleGFtcGxlLmNvbSIsIm5iZiI6MTU0Njc0MzcxMSwiZXhwIjoxNTQ2NzQ3MzExLCJpYXQiOjE1NDY3NDM3MTEsImp0aSI6ImlkMTIzNDU2IiwidHlwIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS9yZWdpc3RlciJ9."
 	testJwtNoAud      = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjI3ODkxOTE4MjIsImp0aSI6InJhbmRvbSBpZCIsImlzcyI6InJlbWFyazQyIiwibmJmIjoxNTI2ODg0MjIyLCJ1c2VyIjp7Im5hbWUiOiJuYW1lMSIsImlkIjoiaWQxIiwicGljdHVyZSI6Imh0dHA6Ly9leGFtcGxlLmNvbS9waWMucG5nIiwiaXAiOiIxMjcuMC4wLjEiLCJlbWFpbCI6Im1lQGV4YW1wbGUuY29tIiwiYXR0cnMiOnsiYm9vbGEiOnRydWUsInN0cmEiOiJzdHJhLXZhbCJ9fSwiaGFuZHNoYWtlIjp7InN0YXRlIjoiMTIzNDU2IiwiZnJvbSI6ImZyb20iLCJpZCI6Im15aWQtMTIzNDU2In19.pzRsCcZjH7MItUvnBmyGv74Qg3qx8vCGmsZP6lF_Z9A"
 	testJwtValidAud   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X2F1ZF9vbmx5IiwiZXhwIjoyNzg5MTkxODIyLCJqdGkiOiJyYW5kb20gaWQiLCJpc3MiOiJyZW1hcms0MiIsIm5iZiI6MTUyNjg4NDIyMiwidXNlciI6eyJuYW1lIjoibmFtZTEiLCJpZCI6ImlkMSIsInBpY3R1cmUiOiJodHRwOi8vZXhhbXBsZS5jb20vcGljLnBuZyIsImlwIjoiMTI3LjAuMC4xIiwiZW1haWwiOiJtZUBleGFtcGxlLmNvbSIsImF0dHJzIjp7ImJvb2xhIjp0cnVlLCJzdHJhIjoic3RyYS12YWwifX0sImhhbmRzaGFrZSI6eyJzdGF0ZSI6IjEyMzQ1NiIsImZyb20iOiJmcm9tIiwiaWQiOiJteWlkLTEyMzQ1NiJ9fQ.Ll3uS2jvj_yYZms43_w6zJOdkDR305M4AiFVLXnSd7Y"
@@ -51,17 +54,22 @@ func TestJWT_NewDefault(t *testing.T) {
 	assert.Equal(t, defaultJWTHeaderKey, j.JWTHeaderKey)
 	assert.Equal(t, defaultXSRFCookieName, j.XSRFCookieName)
 	assert.Equal(t, defaultXSRFHeaderKey, j.XSRFHeaderKey)
+	assert.Equal(t, defaultXSRFIgnoreMethods, j.XSRFIgnoreMethods)
 	assert.Equal(t, defaultIssuer, j.Issuer)
 }
 
 func TestJWT_NewNotDefault(t *testing.T) {
+	var xsrfCustomIgnoreMethods = []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace}
+
 	j := NewService(Opts{JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey, JWTCookieDomain: "blah.com",
 		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey, Issuer: "i1",
+		XSRFIgnoreMethods: xsrfCustomIgnoreMethods,
 	})
 	assert.Equal(t, jwtCustomCookieName, j.JWTCookieName)
 	assert.Equal(t, jwtCustomHeaderKey, j.JWTHeaderKey)
 	assert.Equal(t, xsrfCustomCookieName, j.XSRFCookieName)
 	assert.Equal(t, xsrfCustomHeaderKey, j.XSRFHeaderKey)
+	assert.Equal(t, xsrfCustomIgnoreMethods, j.XSRFIgnoreMethods)
 	assert.Equal(t, "i1", j.Issuer)
 	assert.Equal(t, "blah.com", j.JWTCookieDomain)
 }
@@ -82,14 +90,19 @@ func TestJWT_Token(t *testing.T) {
 
 	claims := testClaims
 	res, err := j.Token(claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, res)
+
+	newClaims, _ := j.Parse(res)
+	assert.Equal(t, claims, newClaims)
+	fmt.Println(claims)
+	fmt.Println(newClaims)
 
 	j.SecretReader = nil
 	_, err = j.Token(claims)
 	assert.EqualError(t, err, "secret reader not defined")
 
-	j.SecretReader = SecretFunc(func(string) (string, error) { return "", errors.New("err blah") })
+	j.SecretReader = SecretFunc(func(string) (string, error) { return "", fmt.Errorf("err blah") })
 	_, err = j.Token(claims)
 	assert.EqualError(t, err, "can't get secret: err blah")
 
@@ -120,7 +133,7 @@ func TestJWT_Parse(t *testing.T) {
 	assert.EqualError(t, err, "token is not valid yet")
 
 	_, err = j.Parse("bad")
-	assert.NotNil(t, err, "bad token")
+	assert.Error(t, err, "bad token")
 
 	_, err = j.Parse(testJwtBadSign)
 	assert.EqualError(t, err, "can't parse token: signature is invalid")
@@ -132,10 +145,10 @@ func TestJWT_Parse(t *testing.T) {
 		SecretReader: SecretFunc(func(string) (string, error) { return "bad 12345", nil }),
 	})
 	_, err = j.Parse(testJwtValid)
-	assert.NotNil(t, err, "bad token", "valid token parsed with wrong secret")
+	assert.Error(t, err, "bad token", "valid token parsed with wrong secret")
 
 	j = NewService(Opts{
-		SecretReader: SecretFunc(func(string) (string, error) { return "", errors.New("err blah") }),
+		SecretReader: SecretFunc(func(string) (string, error) { return "", fmt.Errorf("err blah") }),
 	})
 	_, err = j.Parse(testJwtValid)
 	assert.EqualError(t, err, "can't get secret: err blah")
@@ -160,7 +173,7 @@ func TestJWT_Set(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	c, err := j.Set(rr, claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, claims, c)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
@@ -174,7 +187,7 @@ func TestJWT_Set(t *testing.T) {
 	claims.SessionOnly = true
 	rr = httptest.NewRecorder()
 	_, err = j.Set(rr, claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	cookies = rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 2, len(cookies))
@@ -188,7 +201,7 @@ func TestJWT_Set(t *testing.T) {
 	j.DisableIAT = false
 	rr = httptest.NewRecorder()
 	_, err = j.Set(rr, claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	cookies = rr.Result().Cookies()
 	t.Log(cookies)
 	require.Equal(t, 2, len(cookies))
@@ -215,7 +228,7 @@ func TestJWT_SetWithDomain(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	c, err := j.Set(rr, claims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, claims, c)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
@@ -247,10 +260,15 @@ func TestJWT_SendJWTHeader(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	_, err := j.Set(rr, testClaims)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	cookies := rr.Result().Cookies()
 	t.Log(cookies)
-	require.Equal(t, 0, len(cookies), "no cookies set")
+	// cookies are set alongside header to support OAuth redirect flows
+	require.Equal(t, 2, len(cookies), "cookies set alongside header")
+	assert.Equal(t, "JWT", cookies[0].Name)
+	assert.Equal(t, testJwtValid, cookies[0].Value)
+	assert.Equal(t, "XSRF-TOKEN", cookies[1].Name)
+	assert.Equal(t, "random id", cookies[1].Value)
 	assert.Equal(t, testJwtValid, rr.Result().Header.Get("X-JWT"))
 }
 
@@ -325,7 +343,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(jwtCustomHeaderKey, testJwtValid)
 	claims, token, err := j.Get(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, token)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
@@ -336,7 +354,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	req = httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(jwtCustomHeaderKey, testJwtExpired)
 	_, _, err = j.Get(req)
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	req = httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(jwtCustomHeaderKey, "bad bad token")
@@ -357,7 +375,7 @@ func TestJWT_GetFromQuery(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/blah?token="+testJwtValid, nil)
 	claims, token, err := j.Get(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, testJwtValid, token)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
@@ -367,7 +385,7 @@ func TestJWT_GetFromQuery(t *testing.T) {
 
 	req = httptest.NewRequest("GET", "/blah?token="+testJwtExpired, nil)
 	_, _, err = j.Get(req)
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	req = httptest.NewRequest("GET", "/blah?token=blah", nil)
 	_, _, err = j.Get(req)
@@ -414,7 +432,7 @@ func TestJWT_SetAndGetWithCookies(t *testing.T) {
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id")
 	r, _, err := j.Get(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
 		Email: "me@example.com", Audience: "test_sys",
 		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, r.User)
@@ -468,6 +486,53 @@ func TestJWT_SetAndGetWithXsrfMismatch(t *testing.T) {
 	assert.Equal(t, claims, c)
 }
 
+func TestJWT_GetWithXsrfMismatchOnIgnoredMethod(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31,
+		JWTCookieName: jwtCustomCookieName, JWTHeaderKey: jwtCustomHeaderKey,
+		XSRFCookieName: xsrfCustomCookieName, XSRFHeaderKey: xsrfCustomHeaderKey,
+		ClaimsUpd: ClaimsUpdFunc(func(claims Claims) Claims {
+			claims.User.SetStrAttr("stra", "stra-val")
+			claims.User.SetBoolAttr("boola", true)
+			return claims
+		}),
+		Issuer:     "remark42",
+		DisableIAT: true,
+	})
+
+	claims := testClaims
+	claims.SessionOnly = true
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/valid" {
+			_, e := j.Set(w, claims)
+			require.NoError(t, e)
+			w.WriteHeader(200)
+		}
+	}))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/valid")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	j.XSRFIgnoreMethods = []string{"GET"}
+	req := httptest.NewRequest("GET", "/valid", nil)
+	req.AddCookie(resp.Cookies()[0])
+	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
+	_, _, err = j.Get(req)
+	require.NoError(t, err, "xsrf mismatch, but ignored")
+
+	j.DisableXSRF = true
+	j.XSRFIgnoreMethods = []string{}
+	req = httptest.NewRequest("GET", "/valid", nil)
+	req.AddCookie(resp.Cookies()[0])
+	req.Header.Add(xsrfCustomHeaderKey, "random id wrong")
+	c, _, err := j.Get(req)
+	require.NoError(t, err, "xsrf mismatch, but ignored")
+	claims.User.Audience = c.Audience // set aud to user because we don't do the normal Get call
+	assert.Equal(t, claims, c)
+}
+
 func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31,
@@ -482,8 +547,8 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	})
 
 	claims := testClaims
-	claims.StandardClaims.ExpiresAt = time.Date(2018, 5, 21, 1, 35, 22, 0, time.Local).Unix()
-	claims.StandardClaims.NotBefore = time.Date(2018, 5, 21, 1, 30, 22, 0, time.Local).Unix()
+	claims.ExpiresAt = time.Date(2018, 5, 21, 1, 35, 22, 0, time.Local).Unix()
+	claims.NotBefore = time.Date(2018, 5, 21, 1, 30, 22, 0, time.Local).Unix()
 	claims.SessionOnly = true
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -503,7 +568,7 @@ func TestJWT_SetAndGetWithCookiesExpired(t *testing.T) {
 	req.AddCookie(resp.Cookies()[0])
 	req.Header.Add(xsrfCustomHeaderKey, "random id")
 	r, _, err := j.Get(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.True(t, j.IsExpired(r))
 }
 
@@ -569,7 +634,7 @@ func TestAudience(t *testing.T) {
 	assert.EqualError(t, err, `aud "au1" not allowed`)
 
 	err = j.checkAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy", "au1"}, nil }))
-	assert.Nil(t, err, `au1 allowed`)
+	assert.NoError(t, err, `au1 allowed`)
 }
 
 func TestAudReader(t *testing.T) {

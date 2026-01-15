@@ -23,9 +23,21 @@ var testJwtValid = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0X3N5cyI
 
 var days31 = time.Hour * 24 * 31
 
+type rememberLastBearerTokenHook struct {
+	LastProviderName string       `json:"lastProviderName"`
+	LastUser         token.User   `json:"lastUser"`
+	LastToken        oauth2.Token `json:"lastToken"`
+}
+
+func (h *rememberLastBearerTokenHook) hook(s string, user token.User, o oauth2.Token) {
+	h.LastProviderName = s
+	h.LastUser = user
+	h.LastToken = o
+}
+
 func TestOauth2Login(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982)
+	teardown := prepOauth2Test(t, 8981, 8982, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -37,7 +49,7 @@ func TestOauth2Login(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -50,7 +62,7 @@ func TestOauth2Login(t *testing.T) {
 
 	u := token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser1", Picture: "http://example.com/custom.png", IP: ""}, u)
 
 	tk := resp.Cookies()[0].Value
@@ -65,20 +77,49 @@ func TestOauth2Login(t *testing.T) {
 
 	// check admin user
 	resp, err = client.Get("http://localhost:8981/login?site=remark")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	u = token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://example.com/ava12345.png",
 		Attributes: map[string]interface{}{"admin": true}}, u)
 }
 
+func TestOauth2LoginBearerTokenHook(t *testing.T) {
+
+	btHook := rememberLastBearerTokenHook{}
+	teardown := prepOauth2Test(t, 8981, 8982, btHook.hook)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.Nil(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	// check non-admin, permanent
+	resp, err := client.Get("http://localhost:8981/login?site=remark")
+	require.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	assert.Equal(t, "mock", btHook.LastProviderName)
+	assert.Equal(t, "mock_myuser1", btHook.LastUser.ID)
+	assert.Equal(t, "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3", btHook.LastToken.AccessToken)
+
+	// check admin user
+	resp, err = client.Get("http://localhost:8981/login?site=remark")
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	assert.Equal(t, "mock", btHook.LastProviderName)
+	assert.Equal(t, "mock_myuser2", btHook.LastUser.ID)
+	assert.Equal(t, "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3", btHook.LastToken.AccessToken)
+}
+
 func TestOauth2LoginSessionOnly(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982)
+	teardown := prepOauth2Test(t, 8981, 8982, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -112,7 +153,7 @@ func TestOauth2LoginSessionOnly(t *testing.T) {
 
 func TestOauth2LoginNoAva(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8981, 8982)
+	teardown := prepOauth2Test(t, 8981, 8982, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -147,7 +188,7 @@ func TestOauth2LoginNoAva(t *testing.T) {
 
 func TestOauth2Logout(t *testing.T) {
 
-	teardown := prepOauth2Test(t, 8691, 8692)
+	teardown := prepOauth2Test(t, 8691, 8692, nil)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -187,7 +228,7 @@ func TestOauth2InitProvider(t *testing.T) {
 }
 
 func TestOauth2InvalidHandler(t *testing.T) {
-	teardown := prepOauth2Test(t, 8691, 8692)
+	teardown := prepOauth2Test(t, 8691, 8692, nil)
 	defer teardown()
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -217,7 +258,7 @@ func TestMakeRedirURL(t *testing.T) {
 	}
 }
 
-func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
+func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook) func() {
 
 	provider := Oauth2Handler{
 		name: "mock",
@@ -235,6 +276,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 			}
 			return userInfo
 		},
+		bearerTokenHook: btHook,
 	}
 
 	jwtService := token.NewService(token.Opts{
@@ -260,13 +302,12 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 	provider = initOauth2Handler(params, provider)
 	svc := Service{Provider: provider}
 
-	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)}
+	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)} //nolint:gosec
 
 	count := 0
-	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
+	useIDs := []string{"myuser1", "myuser2"} // user for first ans second calls
 
-	//nolint dupl
-	oauth := &http.Server{
+	oauth := &http.Server{ //nolint:gosec
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[MOCK OAUTH] request %s %s %+v", r.Method, r.URL, r.Header)
@@ -294,7 +335,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int) func() {
 					"id": "%s",
 					"name":"blah",
 					"picture":"http://exmple.com/pic1.png"
-					}`, useIds[count])
+					}`, useIDs[count])
 				count++
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				w.WriteHeader(200)
@@ -321,7 +362,7 @@ func mockKeyStore(string) (string, error) { return "12345", nil }
 
 type mockAvatarSaver struct{}
 
-func (m *mockAvatarSaver) Put(u token.User, client *http.Client) (avatarURL string, err error) {
+func (m *mockAvatarSaver) Put(u token.User, _ *http.Client) (avatarURL string, err error) {
 	if u.Picture != "" {
 		return "http://example.com/ava12345.png", nil
 	}

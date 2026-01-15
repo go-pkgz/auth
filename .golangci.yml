@@ -1,71 +1,79 @@
-linters-settings:
-  govet:
-    check-shadowing: true
-  golint:
-    min-confidence: 0
-  gocyclo:
-    min-complexity: 20
-  maligned:
-    suggest-new: true
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-  misspell:
-    locale: US
-  lll:
-    line-length: 140
-  gocritic:
-    enabled-tags:
-      - performance
-      - style
-      - experimental
-    disabled-checks:
-      - wrapperFunc
-      - hugeParam
-
+version: "2"
 linters:
   enable:
-    - megacheck
-    - revive
-    - govet
-    - unconvert
-    - megacheck
-    - structcheck
-    - gas
-    - gocyclo
-    - misspell
-    - unparam
-    - varcheck
-    - deadcode
-    - typecheck
-    - ineffassign
-    - varcheck
-    - stylecheck
+    - copyloopvar
     - gochecknoinits
-    - exportloopref
-    - gocritic
+    - gosec
+    - misspell
     - nakedret
-    - gosimple
     - prealloc
-  fast: false
-  disable-all: true
-
-run:
-  output:
-    format: tab
-  skip-dirs:
-    - vendor
-
+    - revive
+    - staticcheck
+    - unconvert
+  settings:
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocritic:
+      disabled-checks:
+        - wrapperFunc
+        - hugeParam
+        - rangeValCopy
+      enabled-tags:
+        - performance
+        - style
+        - experimental
+    govet:
+      enable:
+        - shadow
+    lll:
+      line-length: 140
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - revive
+          - unparam
+          - unused
+        path: _test\.go$
+        text: unused-parameter
+      - linters:
+          - errcheck
+        path: _test\.go$
+      - path: (.+)\.go$
+        text: should have a package comment, unless it's in another file for this package
+      - path: (.+)\.go$
+        text: 'exitAfterDefer:'
+      - path: (.+)\.go$
+        text: 'whyNoLint: include an explanation for nolint directive'
+      - path: (.+)\.go$
+        text: go.mongodb.org/mongo-driver/bson/primitive.E
+      - path: (.+)\.go$
+        text: weak cryptographic primitive
+      - path: (.+)\.go$
+        text: at least one file in a package should have a package comment
+      - path: (.+)\.go$
+        text: should have a package comment
+      - path: (.+)\.go$
+        text: Deferring unsafe method "Close" on type "io.ReadCloser"
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-rules:
-    - text: "should have a package comment, unless it's in another file for this package"
-      linters:
-        - golint
-    - text: "G505: Blocklisted import crypto/sha1: weak cryptographic primitive"
-      linters:
-        - gosec
-    - text: "Use of weak cryptographic primitive"
-      linters:
-        - gosec
-
-  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -22,25 +22,28 @@ type Oauth2Handler struct {
 	Params
 
 	// all of these fields specific to particular oauth2 provider
-	name     string
-	infoURL  string
-	endpoint oauth2.Endpoint
-	scopes   []string
-	mapUser  func(UserData, []byte) token.User // map info from InfoURL to User
-	conf     oauth2.Config
+	name            string
+	infoURL         string
+	endpoint        oauth2.Endpoint
+	scopes          []string
+	mapUser         func(UserData, []byte) token.User // map info from InfoURL to User
+	bearerTokenHook BearerTokenHook                   // a way to get a Bearer token received from oauth2-provider
+	conf            oauth2.Config
 }
 
 // Params to make initialized and ready to use provider
 type Params struct {
 	logger.L
-	URL         string
-	JwtService  TokenService
-	Cid         string
-	Csecret     string
-	Issuer      string
-	AvatarSaver AvatarSaver
+	URL            string
+	JwtService     TokenService
+	Cid            string
+	Csecret        string
+	Issuer         string
+	AvatarSaver    AvatarSaver
+	UserAttributes UserAttributes
 
-	Port int // relevant for providers supporting port customization, for example dev oauth2
+	Port int    // relevant for providers supporting port customization, for example dev oauth2
+	Host string // relevant for providers supporting host customization, for example dev oauth2
 }
 
 // UserData is type for user information returned from oauth2 providers /info API method
@@ -54,6 +57,9 @@ func (u UserData) Value(key string) string {
 	}
 	return ""
 }
+
+// BearerTokenHook accepts provider name, user and token, received during oauth2 authentication
+type BearerTokenHook func(provider string, user token.User, token oauth2.Token)
 
 // initOauth2Handler makes oauth2 handler for given provider
 func initOauth2Handler(p Params, service Oauth2Handler) Oauth2Handler {
@@ -112,6 +118,9 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},
 		NoAva: r.URL.Query().Get("noava") == "1",
+		AuthProvider: &token.AuthProvider{
+			Name: p.name,
+		},
 	}
 
 	if _, err := p.JwtService.Set(w, claims); err != nil {
@@ -209,11 +218,19 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		},
 		SessionOnly: oauthClaims.SessionOnly,
 		NoAva:       oauthClaims.NoAva,
+		AuthProvider: &token.AuthProvider{
+			Name: p.name,
+		},
 	}
 
 	if _, err = p.JwtService.Set(w, claims); err != nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to set token")
 		return
+	}
+
+	if p.bearerTokenHook != nil && tok != nil {
+		p.Logf("[DEBUG] pass bearer token %s, %s", p.Name(), tok.TokenType)
+		p.bearerTokenHook(p.Name(), u, *tok)
 	}
 
 	p.Logf("[DEBUG] user info %+v", u)

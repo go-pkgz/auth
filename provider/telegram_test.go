@@ -50,7 +50,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
-	// Get token
+	// get token
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -68,7 +68,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 	assert.Equal(t, "my_auth_bot", resp.Bot)
 	token := resp.Token
 
-	// Make sure we get error without first confirming auth request
+	// make sure we get error without first confirming auth request
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -78,7 +78,7 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 
 	time.Sleep(tgAuthRequestLifetime)
 
-	// Confirm auth request expired
+	// confirm auth request expired
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -89,29 +89,53 @@ func TestTelegramUnconfirmedRequest(t *testing.T) {
 
 func TestTelegramConfirmedRequest(t *testing.T) {
 	var servedToken string
-	var mu sync.Mutex
+	// is set when token becomes used,
+	// no sync is required because only a single goroutine in TelegramHandler.Run() reads and writes it
+	var tokenAlreadyUsed bool
+
+	var wgToken sync.WaitGroup
+	wgToken.Add(1)
+	defer func() {
+		if t.Failed() && servedToken == "" {
+			wgToken.Done() // for the case when test fails before token is generated
+		}
+	}()
 
 	m := &TelegramAPIMock{
 		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
-			var upd telegramUpdate
+			wgToken.Wait()
 
-			mu.Lock()
-			defer mu.Unlock()
-			if servedToken != "" {
-				resp := fmt.Sprintf(getUpdatesResp, servedToken)
-
-				err := json.Unmarshal([]byte(resp), &upd)
-				if err != nil {
-					t.Fatal(err)
-				}
+			if tokenAlreadyUsed || t.Failed() {
+				return nil, fmt.Errorf("token %s has been already used", servedToken)
 			}
+
+			var upd telegramUpdate
+			resp := fmt.Sprintf(getUpdatesResp, servedToken)
+			err := json.Unmarshal([]byte(resp), &upd)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// token is served only once
+			tokenAlreadyUsed = true
+
 			return &upd, nil
 		},
 		AvatarFunc: func(ctx context.Context, userID int) (string, error) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			default:
+			}
 			assert.Equal(t, 313131313, userID)
 			return "http://t.me/avatar.png", nil
 		},
 		SendFunc: func(ctx context.Context, id int, text string) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 			assert.Equal(t, 313131313, id)
 			assert.Equal(t, "success", text)
 			return nil
@@ -122,7 +146,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
-	// Get token
+	// get token
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -137,19 +161,18 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
 	assert.Equal(t, "my_auth_bot", resp.Bot)
+	assert.NotEmpty(t, resp.Token)
 
-	mu.Lock()
 	servedToken = resp.Token
-	mu.Unlock()
+	wgToken.Done()
 
-	time.Sleep(apiPollInterval * 2)
-
-	// The token should be confirmed by now
-	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
-	w = httptest.NewRecorder()
-	tg.LoginHandler(w, r)
-
-	assert.Equal(t, http.StatusOK, w.Code, "response code should be 200")
+	// check the token confirmation
+	assert.Eventually(t, func() bool {
+		r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
+		w = httptest.NewRecorder()
+		tg.LoginHandler(w, r)
+		return w.Code == http.StatusOK
+	}, apiPollInterval*10, apiPollInterval, "response code should be 200")
 
 	info := struct {
 		Name    string `name:"name"`
@@ -163,7 +186,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.Contains(t, info.ID, "telegram_")
 	assert.Equal(t, "http://example.com/ava12345.png", info.Picture)
 
-	// Test request has been invalidated
+	// test request has been invalidated
 	r = httptest.NewRequest("GET", fmt.Sprintf("/?token=%s", resp.Token), nil)
 	w = httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -183,7 +206,7 @@ func TestTelegramLogout(t *testing.T) {
 	tg, cleanup := setupHandler(t, m)
 	defer cleanup()
 
-	// Same TestVerifyHandler_Logout
+	// same TestVerifyHandler_Logout
 	handler := http.HandlerFunc(tg.LogoutHandler)
 	rr := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/logout", http.NoBody)
@@ -214,10 +237,20 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 			return &telegramUpdate{}, nil
 		},
 		SendFunc: func(ctx context.Context, id int, text string) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 			assert.Equal(t, 313131313, id)
 			return nil
 		},
 		AvatarFunc: func(ctx context.Context, userID int) (string, error) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			default:
+			}
 			assert.Equal(t, 313131313, userID)
 			return "http://t.me/avatar.png", nil
 		},
@@ -259,7 +292,7 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 	assert.EqualError(t, tg.ProcessUpdate(context.Background(), ""), "failed to decode provided telegram update: unexpected end of JSON input")
 	assert.Len(t, tg.requests.data, 1, "expired token should be cleaned up despite the error")
 
-	// Verify that get token will return bot name
+	// verify that get token will return bot name
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	tg.LoginHandler(w, r)
@@ -276,11 +309,16 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 	assert.Equal(t, "my_auth_bot", resp.Bot)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go tg.Run(ctx)
+	runDone := make(chan struct{})
+	go func() {
+		_ = tg.Run(ctx)
+		close(runDone)
+	}()
 	assert.Eventually(t, func() bool {
 		return tg.ProcessUpdate(ctx, "").Error() == "Run goroutine should not be used with ProcessUpdate"
 	}, time.Millisecond*100, time.Millisecond*10, "ProcessUpdate should not work same time as Run")
+	cancel()
+	<-runDone
 }
 
 func TestTelegram_TokenVerification(t *testing.T) {
@@ -292,7 +330,7 @@ func TestTelegram_TokenVerification(t *testing.T) {
 	}
 
 	tg, cleanup := setupHandler(t, m)
-	defer cleanup()
+	cleanup() // we don't need tg.Run goroutine
 	assert.NotNil(t, tg)
 	tg.requests.data = make(map[string]tgAuthRequest) // usually done in Run()
 	err := tg.addToken("token", time.Now().Add(time.Minute))

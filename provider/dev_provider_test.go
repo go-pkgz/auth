@@ -36,7 +36,7 @@ func TestDevProvider(t *testing.T) {
 	router := http.NewServeMux()
 	router.Handle("/auth/dev/", http.HandlerFunc(s.Handler))
 
-	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router}
+	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router} //nolint:gosec
 	go devOauth2Srv.Run(context.TODO())
 	go ts.ListenAndServe()
 	defer func() {
@@ -55,7 +55,7 @@ func TestDevProvider(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -67,7 +67,7 @@ func TestDevProvider(t *testing.T) {
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
 
 	claims, err := params.JwtService.Parse(resp.Cookies()[0].Value)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, token.User{Name: "dev_user", ID: "dev_user",
 		Picture: "http://127.0.0.1:18084/avatar?user=dev_user", IP: "", Email: "dev_user@example.com"}, *claims.User)
@@ -77,7 +77,7 @@ func TestDevProvider(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 960, len(body))
 	t.Logf("headers: %+v", resp.Header)
 }

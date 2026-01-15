@@ -3,13 +3,13 @@ package provider
 import (
 	"crypto/sha1" //nolint
 	"encoding/json"
+	"fmt"
 	"mime"
 	"net/http"
 	"time"
 
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
-	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
@@ -69,11 +69,12 @@ func (p DirectHandler) Name() string { return p.ProviderName }
 // user=name&passwd=xyz&aud=bar
 //
 // application/json body example:
-// {
-//   "user": "name",
-//   "passwd": "xyz",
-//   "aud": "bar",
-// }
+//
+//	{
+//	  "user": "name",
+//	  "passwd": "xyz",
+//	  "aud": "bar",
+//	}
 func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	creds, err := p.getCredentials(w, r)
 	if err != nil {
@@ -83,7 +84,7 @@ func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	sessOnly := r.URL.Query().Get("sess") == "1"
 	if p.CredChecker == nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError,
-			errors.New("no credential checker"), "no credential checker")
+			fmt.Errorf("no credential checker"), "no credential checker")
 		return
 	}
 	ok, err := p.CredChecker.Check(creds.User, creds.Password)
@@ -125,6 +126,9 @@ func (p DirectHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			Audience: creds.Audience,
 		},
 		SessionOnly: sessOnly,
+		AuthProvider: &token.AuthProvider{
+			Name: p.ProviderName,
+		},
 	}
 
 	if _, err = p.TokenService.Set(w, claims); err != nil {
@@ -147,7 +151,7 @@ func (p DirectHandler) getCredentials(w http.ResponseWriter, r *http.Request) (c
 	}
 
 	if r.Method != "POST" {
-		return credentials{}, errors.Errorf("method %s not supported", r.Method)
+		return credentials{}, fmt.Errorf("method %s not supported", r.Method)
 	}
 
 	if r.Body != nil {
@@ -166,14 +170,14 @@ func (p DirectHandler) getCredentials(w http.ResponseWriter, r *http.Request) (c
 	if contentType == "application/json" {
 		var creds credentials
 		if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-			return credentials{}, errors.Wrap(err, "failed to parse request body")
+			return credentials{}, fmt.Errorf("failed to parse request body: %w", err)
 		}
 		return creds, nil
 	}
 
 	// POST with form
 	if err := r.ParseForm(); err != nil {
-		return credentials{}, errors.Wrap(err, "failed to parse request")
+		return credentials{}, fmt.Errorf("failed to parse request: %w", err)
 	}
 
 	return credentials{
@@ -184,9 +188,9 @@ func (p DirectHandler) getCredentials(w http.ResponseWriter, r *http.Request) (c
 }
 
 // AuthHandler doesn't do anything for direct login as it has no callbacks
-func (p DirectHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {}
+func (p DirectHandler) AuthHandler(http.ResponseWriter, *http.Request) {}
 
 // LogoutHandler - GET /logout
-func (p DirectHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (p DirectHandler) LogoutHandler(w http.ResponseWriter, _ *http.Request) {
 	p.TokenService.Reset(w)
 }

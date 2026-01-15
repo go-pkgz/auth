@@ -16,13 +16,15 @@ import (
 	"time"
 
 	"github.com/go-pkgz/rest"
-	"github.com/nullrocks/identicon"
-	"github.com/pkg/errors"
+	"github.com/rrivera/identicon"
 	"golang.org/x/image/draw"
 
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 )
+
+// http.sniffLen is 512 bytes which is how much we need to read to detect content type
+const sniffLen = 512
 
 // Proxy provides http handler for avatars from avatar.Store
 // On user login token will call Put and it will retrieve and save picture locally.
@@ -40,12 +42,12 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 	genIdenticon := func(userID string) (avatarURL string, err error) {
 		b, e := GenerateAvatar(userID)
 		if e != nil {
-			return "", errors.Wrapf(e, "no picture for %s", userID)
+			return "", fmt.Errorf("no picture for %s: %w", userID, e)
 		}
 		// put returns avatar base name, like 123456.image
 		avatarID, e := p.Store.Put(userID, p.resize(bytes.NewBuffer(b), p.ResizeLimit))
 		if e != nil {
-			return "", err
+			return "", e
 		}
 
 		p.Logf("[DEBUG] saved identicon avatar to %s, user %q", avatarID, u.Name)
@@ -88,12 +90,12 @@ func (p *Proxy) load(url string, client *http.Client) (rc io.ReadCloser, err err
 		return e
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to fetch avatar from the orig")
+		return nil, fmt.Errorf("failed to fetch avatar from the orig: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close() // caller won't close on error
-		return nil, errors.Errorf("failed to get avatar from the orig, status %s", resp.Status)
+		return nil, fmt.Errorf("failed to get avatar from the orig, status %s", resp.Status)
 	}
 
 	return resp.Body, nil
@@ -101,7 +103,6 @@ func (p *Proxy) load(url string, client *http.Client) (rc io.ReadCloser, err err
 
 // Handler returns token routes for given provider
 func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -137,9 +138,25 @@ func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	w.Header().Set("Content-Type", "image/*")
+	buf := make([]byte, sniffLen)
+	n, err := avReader.Read(buf)
+	if err != nil && err != io.EOF {
+		p.Logf("[WARN] can't read from avatar reader for %s, %s", avatarID, err)
+		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "can't read avatar")
+		return
+	}
 	w.Header().Set("Content-Length", strconv.Itoa(size))
+	contentType := http.DetectContentType(buf)
+	if contentType == "application/octet-stream" {
+		contentType = "image/*"
+	}
+	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
+	if _, err = w.Write(buf[:n]); err != nil {
+		p.Logf("[WARN] can't write response to %s, %s", r.RemoteAddr, err)
+		return
+	}
+	// write the rest of response size if it's bigger than 512 bytes, or nothing as EOF would be sent right away then
 	if _, err = io.Copy(w, avReader); err != nil {
 		p.Logf("[WARN] can't send response to %s, %s", r.RemoteAddr, err)
 	}
@@ -177,7 +194,7 @@ func (p *Proxy) resize(reader io.Reader, limit int) io.Reader {
 		newW, newH = limit, h*limit/w
 	}
 	m := image.NewRGBA(image.Rect(0, 0, newW, newH))
-	// Slower than `draw.ApproxBiLinear.Scale()` but better quality.
+	// slower than `draw.ApproxBiLinear.Scale()` but better quality.
 	draw.BiLinear.Scale(m, m.Bounds(), src, src.Bounds(), draw.Src, nil)
 
 	var out bytes.Buffer
@@ -193,12 +210,12 @@ func GenerateAvatar(user string) ([]byte, error) {
 
 	iconGen, err := identicon.New("pkgz/auth", 5, 5)
 	if err != nil {
-		return nil, errors.Wrap(err, "can't create identicon service")
+		return nil, fmt.Errorf("can't create identicon service: %w", err)
 	}
 
 	ii, err := iconGen.Draw(user) // generate an IdentIcon
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to draw avatar for %s", user)
+		return nil, fmt.Errorf("failed to draw avatar for %s: %w", user, err)
 	}
 
 	buf := &bytes.Buffer{}
@@ -209,18 +226,18 @@ func GenerateAvatar(user string) ([]byte, error) {
 // GetGravatarURL returns url to gravatar picture for given email
 func GetGravatarURL(email string) (res string, err error) {
 
-	hash := md5.Sum([]byte(email))
+	hash := md5.Sum([]byte(strings.ToLower(strings.TrimSpace(email))))
 	hexHash := hex.EncodeToString(hash[:])
 
-	client := http.Client{Timeout: 1 * time.Second}
-	res = "https://www.gravatar.com/avatar/" + hexHash + ".jpg"
+	client := http.Client{Timeout: 5 * time.Second}
+	res = "https://www.gravatar.com/avatar/" + hexHash
 	resp, err := client.Get(res + "?d=404&s=80")
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint gosec // we don't care about response body
 	if resp.StatusCode != 200 {
-		return "", errors.New(resp.Status)
+		return "", fmt.Errorf("%s", resp.Status)
 	}
 	return res, nil
 }
@@ -232,5 +249,8 @@ func retry(retries int, delay time.Duration, fn func() error) (err error) {
 		}
 		time.Sleep(delay)
 	}
-	return errors.Wrap(err, "retry failed")
+	if err != nil {
+		return fmt.Errorf("retry failed: %w", err)
+	}
+	return nil
 }

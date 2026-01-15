@@ -38,7 +38,7 @@ func TestOauth1Login(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 
@@ -51,7 +51,7 @@ func TestOauth1Login(t *testing.T) {
 
 	u := token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser1", Picture: "http://example.com/custom.png", IP: ""}, u)
 
 	tk := resp.Cookies()[0].Value
@@ -66,13 +66,13 @@ func TestOauth1Login(t *testing.T) {
 
 	// check admin user
 	resp, err = client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark", loginPort))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	u = token.User{}
 	err = json.Unmarshal(body, &u)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://example.com/ava12345.png",
 		Attributes: map[string]interface{}{"admin": true}}, u)
 
@@ -227,10 +227,10 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 	provider = initOauth1Handler(params, provider)
 	svc := Service{Provider: provider}
 
-	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)}
+	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)} //nolint:gosec
 
 	count := 0
-	useIds := []string{"myuser1", "myuser2"} // user for first ans second calls
+	useIDs := []string{"myuser1", "myuser2"} // user for first ans second calls
 
 	//nolint
 	var (
@@ -241,7 +241,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 		accessSecret  = "qfr1239UJAkmpaf3l"
 	)
 
-	oauth := &http.Server{
+	oauth := &http.Server{ //nolint:gosec
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[MOCK OAUTH] request %s %s %+v", r.Method, r.URL, r.Header)
@@ -270,7 +270,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 					"id": "%s",
 					"name":"blah",
 					"picture":"http://exmple.com/pic1.png"
-					}`, useIds[count])
+					}`, useIDs[count])
 				count++
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				_, err := w.Write([]byte(res))
