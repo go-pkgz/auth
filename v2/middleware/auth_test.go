@@ -565,3 +565,231 @@ func (c *testRefreshCache) Set(key string, value token.Claims) {
 	defer c.Unlock()
 	c.data[key] = value
 }
+
+func TestAuthWithCustomErrorHandler(t *testing.T) {
+	a := makeTestAuth(t)
+
+	var capturedErr error
+	var capturedStatusCode int
+	a.ErrorHandler = func(w http.ResponseWriter, r *http.Request, statusCode int, err error) {
+		capturedErr = err
+		capturedStatusCode = statusCode
+		http.Error(w, "Custom error page", http.StatusTeapot)
+	}
+
+	mux := http.NewServeMux()
+	handler := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(201)
+	}
+	mux.Handle("/auth", a.Auth(http.HandlerFunc(handler)))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	t.Run("custom handler called on auth failure", func(t *testing.T) {
+		capturedErr = nil
+		capturedStatusCode = 0
+		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+		assert.Equal(t, http.StatusUnauthorized, capturedStatusCode)
+		assert.NotNil(t, capturedErr)
+		assert.Contains(t, capturedErr.Error(), "can't get token")
+
+		data, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Equal(t, "Custom error page\n", string(data))
+	})
+
+	t.Run("custom handler called with invalid token", func(t *testing.T) {
+		capturedErr = nil
+		capturedStatusCode = 0
+		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+		require.NoError(t, err)
+		req.Header.Add("X-JWT", "invalid.token.here")
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+		assert.Equal(t, http.StatusUnauthorized, capturedStatusCode)
+		assert.NotNil(t, capturedErr)
+	})
+
+	t.Run("valid token bypasses error handler", func(t *testing.T) {
+		capturedErr = nil
+		capturedStatusCode = 0
+		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+		require.NoError(t, err)
+		req.Header.Add("X-JWT", testJwtValid)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, 201, resp.StatusCode)
+		assert.Nil(t, capturedErr)
+		assert.Equal(t, 0, capturedStatusCode)
+	})
+}
+
+func TestAdminOnlyWithCustomErrorHandler(t *testing.T) {
+	a := makeTestAuth(t)
+
+	var capturedErr error
+	var capturedStatusCode int
+	a.ErrorHandler = func(w http.ResponseWriter, r *http.Request, statusCode int, err error) {
+		capturedErr = err
+		capturedStatusCode = statusCode
+		http.Error(w, "Custom admin error", http.StatusTeapot)
+	}
+
+	mux := http.NewServeMux()
+	handler := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(201)
+	}
+	mux.Handle("/admin", a.AdminOnly(http.HandlerFunc(handler)))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	t.Run("custom handler called on auth failure", func(t *testing.T) {
+		capturedErr = nil
+		capturedStatusCode = 0
+		req, err := http.NewRequest("GET", server.URL+"/admin", http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+		assert.Equal(t, http.StatusUnauthorized, capturedStatusCode)
+		assert.NotNil(t, capturedErr)
+	})
+
+	t.Run("custom handler called when not admin", func(t *testing.T) {
+		// make user non-admin for this test
+		originalAdmin := adminUser.Attributes["admin"]
+		adminUser.SetAdmin(false)
+		defer func() { adminUser.Attributes["admin"] = originalAdmin }()
+
+		capturedErr = nil
+		capturedStatusCode = 0
+		req, err := http.NewRequest("GET", server.URL+"/admin", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("admin", "123456")
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+		assert.Equal(t, http.StatusForbidden, capturedStatusCode)
+		assert.NotNil(t, capturedErr)
+		assert.Contains(t, capturedErr.Error(), "not admin")
+	})
+
+	t.Run("admin access bypasses error handler", func(t *testing.T) {
+		// ensure admin is set
+		adminUser.SetAdmin(true)
+
+		capturedErr = nil
+		capturedStatusCode = 0
+		req, err := http.NewRequest("GET", server.URL+"/admin", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("admin", "123456")
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, 201, resp.StatusCode)
+		assert.Nil(t, capturedErr)
+		assert.Equal(t, 0, capturedStatusCode)
+	})
+}
+
+func TestRBACWithCustomErrorHandler(t *testing.T) {
+	a := makeTestAuth(t)
+
+	var capturedErr error
+	var capturedStatusCode int
+	a.ErrorHandler = func(w http.ResponseWriter, r *http.Request, statusCode int, err error) {
+		capturedErr = err
+		capturedStatusCode = statusCode
+		http.Error(w, "Custom RBAC error", http.StatusTeapot)
+	}
+
+	mux := http.NewServeMux()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(201)
+	})
+	mux.Handle("/employees", a.RBAC("employee")(handler))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	t.Run("custom handler called on auth failure", func(t *testing.T) {
+		capturedErr = nil
+		capturedStatusCode = 0
+		req, err := http.NewRequest("GET", server.URL+"/employees", http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+		assert.Equal(t, http.StatusUnauthorized, capturedStatusCode)
+		assert.NotNil(t, capturedErr)
+	})
+
+	t.Run("custom handler called when role mismatch", func(t *testing.T) {
+		capturedErr = nil
+		capturedStatusCode = 0
+		expiration := int(365 * 24 * time.Hour.Seconds())
+		req, err := http.NewRequest("GET", server.URL+"/employees", http.NoBody)
+		require.NoError(t, err)
+		// testJwtValid does not have an employee role
+		req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+		req.Header.Add("X-XSRF-TOKEN", "random id")
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+		assert.Equal(t, http.StatusForbidden, capturedStatusCode)
+		assert.NotNil(t, capturedErr)
+		assert.Contains(t, capturedErr.Error(), "not in allowed roles")
+	})
+
+	t.Run("correct role bypasses error handler", func(t *testing.T) {
+		capturedErr = nil
+		capturedStatusCode = 0
+		expiration := int(365 * 24 * time.Hour.Seconds())
+		req, err := http.NewRequest("GET", server.URL+"/employees", http.NoBody)
+		require.NoError(t, err)
+		// testJwtWithRole has employee role
+		req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtWithRole, HttpOnly: true, Path: "/", MaxAge: expiration, Secure: false})
+		req.Header.Add("X-XSRF-TOKEN", "random id")
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, 201, resp.StatusCode)
+		assert.Nil(t, capturedErr)
+		assert.Equal(t, 0, capturedStatusCode)
+	})
+}
