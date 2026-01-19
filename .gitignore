@@ -13,3 +13,5 @@
 .vscode
 *.cov
 Dockerfile
+# ralph progress logs
+progress-*.txt

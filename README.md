@@ -448,6 +448,27 @@ There are several ways to adjust functionality of the library:
 
 All of the interfaces above have corresponding Func adapters - `SecretFunc`, `ClaimsUpdFunc`, `ValidatorFunc` and `UserUpdFunc`.
 
+Additionally, `ErrorHandlerFunc` type is available in the middleware package for custom error handling on authentication failures:
+
+```go
+options := auth.Opts{
+    // ... other options ...
+    ErrorHandler: middleware.ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, code int, err error) {
+        // return JSON error for API routes
+        if strings.HasPrefix(r.URL.Path, "/api/") {
+            w.Header().Set("Content-Type", "application/json")
+            w.WriteHeader(code)
+            json.NewEncoder(w).Encode(map[string]string{"error": "authentication required"})
+            return
+        }
+        // redirect to login page for web routes
+        http.Redirect(w, r, "/login", http.StatusFound)
+    }),
+}
+```
+
+By default (when `ErrorHandler` is nil), the middleware returns "Unauthorized" (401) or "Access denied" (403) text responses.
+
 ### Implementing black list logic or some other filters
 
 Restricting some users or some tokens is two step process:
