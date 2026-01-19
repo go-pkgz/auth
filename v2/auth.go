@@ -79,20 +79,6 @@ type Opts struct {
 
 // NewService initializes everything
 func NewService(opts Opts) (res *Service) {
-
-	errorHandler := opts.ErrorHandler
-	if errorHandler == nil {
-		// default handler preserves original error messages for backward compatibility
-		errorHandler = func(w http.ResponseWriter, _ *http.Request, code int, _ error) {
-			switch code {
-			case http.StatusForbidden:
-				http.Error(w, "Access denied", code)
-			default:
-				http.Error(w, "Unauthorized", code)
-			}
-		}
-	}
-
 	res = &Service{
 		opts:   opts,
 		logger: opts.Logger,
@@ -101,7 +87,7 @@ func NewService(opts Opts) (res *Service) {
 			AdminPasswd:      opts.AdminPasswd,
 			BasicAuthChecker: opts.BasicAuthChecker,
 			RefreshCache:     opts.RefreshCache,
-			ErrorHandler:     errorHandler,
+			ErrorHandler:     opts.ErrorHandler,
 		},
 		issuer:      opts.Issuer,
 		useGravatar: opts.UseGravatar,
