@@ -605,6 +605,13 @@ _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://githu
 4. Choose the new project from the top right project dropdown (only if another project is selected)
 5.  Select "Certificates & secrets" and click on "+ New Client Secret".
 
+By default, the Microsoft provider uses the `common` tenant endpoint, which works for multi-tenant applications. For single-tenant Entra ID (Azure AD) applications, use `AddMicrosoftProvider` to specify the tenant:
+
+```go
+service.AddMicrosoftProvider("<Client ID>", "<Client Secret>", "<Tenant ID>")
+```
+
+The tenant value can be a tenant ID (GUID), domain name, or one of the well-known values: `common`, `organizations`, `consumers`.
 
 #### GitHub Auth Provider
 

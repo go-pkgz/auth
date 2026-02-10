@@ -192,9 +192,13 @@ func NewBattlenet(p Params) Oauth2Handler {
 
 // NewMicrosoft makes microsoft azure oauth2 provider
 func NewMicrosoft(p Params) Oauth2Handler {
+	tenant := p.MicrosoftTenant
+	if tenant == "" {
+		tenant = "common"
+	}
 	return initOauth2Handler(p, Oauth2Handler{
 		name:     "microsoft",
-		endpoint: microsoft.AzureADEndpoint("common"),
+		endpoint: microsoft.AzureADEndpoint(tenant),
 		scopes:   []string{"User.Read"},
 		infoURL:  "https://graph.microsoft.com/v1.0/me",
 		// non-beta doesn't provide photo for consumers yet
