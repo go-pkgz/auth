@@ -231,6 +231,14 @@ func TestProviders_NewMicrosoft(t *testing.T) {
 		assert.Contains(t, r.endpoint.AuthURL, "/my-tenant-id/")
 		assert.Contains(t, r.endpoint.TokenURL, "/my-tenant-id/")
 	})
+
+	t.Run("invalid tenant falls back to common", func(t *testing.T) {
+		for _, tenant := range []string{"ten/ant", "ten..ant", "ten?ant", "ten#ant", "ten ant"} {
+			r := NewMicrosoft(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+				MicrosoftTenant: tenant})
+			assert.Contains(t, r.endpoint.AuthURL, "/common/", "tenant %q should fall back to common", tenant)
+		}
+	})
 }
 
 func TestProviders_NewDiscord(t *testing.T) {

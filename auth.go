@@ -323,6 +323,7 @@ func (s *Service) AddProvider(name, cid, csecret string) {
 // AddMicrosoftProvider adds microsoft provider with a configurable tenant.
 // If tenant is empty, "common" is used. For single-tenant Entra ID apps,
 // pass the directory (tenant) ID or domain name.
+// For advanced configuration (e.g., UserAttributes), construct provider.Params directly.
 func (s *Service) AddMicrosoftProvider(cid, csecret, tenant string) {
 	p := provider.Params{
 		URL:             s.opts.URL,
