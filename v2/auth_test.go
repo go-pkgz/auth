@@ -90,6 +90,33 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "telegramBotMySiteCom", chp.Name())
 }
 
+func TestService_AddMicrosoftProvider(t *testing.T) {
+	options := Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:          "http://127.0.0.1:8089",
+		Logger:       logger.Std,
+	}
+
+	t.Run("with custom tenant", func(t *testing.T) {
+		svc := NewService(options)
+		svc.AddMicrosoftProvider("cid", "csecret", "my-tenant-id")
+		p, err := svc.Provider("microsoft")
+		assert.NoError(t, err)
+		op := p.Provider.(provider.Oauth2Handler)
+		assert.Equal(t, "microsoft", op.Name())
+		assert.Equal(t, "my-tenant-id", op.MicrosoftTenant)
+	})
+
+	t.Run("with empty tenant defaults to common", func(t *testing.T) {
+		svc := NewService(options)
+		svc.AddMicrosoftProvider("cid", "csecret", "")
+		p, err := svc.Provider("microsoft")
+		assert.NoError(t, err)
+		op := p.Provider.(provider.Oauth2Handler)
+		assert.Equal(t, "microsoft", op.Name())
+	})
+}
+
 func TestService_AddAppleProvider(t *testing.T) {
 
 	options := Opts{

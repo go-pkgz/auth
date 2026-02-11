@@ -209,6 +209,38 @@ func TestProviders_NewPatreon(t *testing.T) {
 	)
 }
 
+func TestProviders_NewMicrosoft(t *testing.T) {
+	t.Run("default tenant", func(t *testing.T) {
+		r := NewMicrosoft(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+		assert.Equal(t, "microsoft", r.Name())
+		assert.Contains(t, r.endpoint.AuthURL, "/common/")
+
+		udata := UserData{"id": "myid", "displayName": "test user"}
+		user := r.mapUser(udata, nil)
+		assert.Equal(t, token.User{
+			Name:    "test user",
+			ID:      "microsoft_6e34471f84557e1713012d64a7477c71bfdac631",
+			Picture: "https://graph.microsoft.com/beta/me/photo/$value",
+		}, user, "got %+v", user)
+	})
+
+	t.Run("custom tenant", func(t *testing.T) {
+		r := NewMicrosoft(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+			MicrosoftTenant: "my-tenant-id"})
+		assert.Equal(t, "microsoft", r.Name())
+		assert.Contains(t, r.endpoint.AuthURL, "/my-tenant-id/")
+		assert.Contains(t, r.endpoint.TokenURL, "/my-tenant-id/")
+	})
+
+	t.Run("invalid tenant falls back to common", func(t *testing.T) {
+		for _, tenant := range []string{"ten/ant", "ten..ant", "ten?ant", "ten#ant", "ten ant"} {
+			r := NewMicrosoft(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+				MicrosoftTenant: tenant})
+			assert.Contains(t, r.endpoint.AuthURL, "/common/", "tenant %q should fall back to common", tenant)
+		}
+	})
+}
+
 func TestProviders_NewDiscord(t *testing.T) {
 	r := NewDiscord(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
 	assert.Equal(t, "discord", r.Name())
