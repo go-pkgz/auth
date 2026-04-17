@@ -184,6 +184,32 @@ func TestOauth1MakeRedirURL(t *testing.T) {
 	}
 }
 
+func TestOauth1LoginFromRejectsExternalHost(t *testing.T) {
+	teardown := prepOauth1Test(t, loginPort, authPort)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	client := &http.Client{Jar: jar, Timeout: timeout * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if !strings.HasPrefix(req.URL.Host, "localhost") {
+				return fmt.Errorf("blocked external redirect to %s", req.URL)
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark&from=https://evil.example.com/phish", loginPort))
+	require.NoError(t, err, "no external redirect expected — fix should reject evil host")
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"name":"blah"`)
+	assert.NotContains(t, string(body), "evil.example.com")
+}
+
 func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 
 	provider := Oauth1Handler{

@@ -241,6 +241,112 @@ func TestOauth2InvalidHandler(t *testing.T) {
 	assert.Equal(t, 500, resp.StatusCode)
 }
 
+func TestOauth2LoginFromRejectsExternalHost(t *testing.T) {
+	teardown := prepOauth2Test(t, 8981, 8982, nil)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if !strings.HasPrefix(req.URL.Host, "localhost") {
+				return fmt.Errorf("blocked external redirect to %s", req.URL)
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get("http://localhost:8981/login?site=remark&from=https://evil.example.com/phish")
+	require.NoError(t, err, "no external redirect expected — fix should reject evil host")
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"name":"blah"`, "must return user JSON, not redirect to evil")
+	assert.NotContains(t, string(body), "evil.example.com")
+}
+
+func TestOauth2LoginFromAllowsAllowlistedHost(t *testing.T) {
+	provider := Oauth2Handler{
+		name: "mock",
+		endpoint: oauth2.Endpoint{
+			AuthURL:  "http://localhost:8986/login/oauth/authorize",
+			TokenURL: "http://localhost:8986/login/oauth/access_token",
+		},
+		scopes:  []string{"user:email"},
+		infoURL: "http://localhost:8986/user",
+		mapUser: func(data UserData, _ []byte) token.User {
+			return token.User{ID: "mock_" + data.Value("id"), Name: data.Value("name")}
+		},
+	}
+	jwtService := token.NewService(token.Opts{
+		SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31,
+	})
+	allowed := token.AllowedHostsFunc(func() ([]string, error) { return []string{"trusted.example.com"}, nil })
+	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std,
+		AllowedRedirectHosts: allowed}
+	provider = initOauth2Handler(params, provider)
+	svc := Service{Provider: provider}
+
+	loginSrv := &http.Server{Addr: ":8985", Handler: http.HandlerFunc(svc.Handler), ReadHeaderTimeout: time.Second} //nolint:gosec
+	oauthSrv := &http.Server{Addr: ":8986", ReadHeaderTimeout: time.Second,                                         //nolint:gosec
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
+				w.Header().Set("Location", fmt.Sprintf("http://localhost:8985/callback?code=g0&state=%s", r.URL.Query().Get("state")))
+				w.WriteHeader(302)
+			case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				_, _ = w.Write([]byte(`{"access_token":"AT","token_type":"bearer","expires_in":3600,"state":"x"}`))
+			case strings.HasPrefix(r.URL.Path, "/user"):
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				_, _ = w.Write([]byte(`{"id":"u1","name":"blah"}`))
+			}
+		})}
+	go func() { _ = loginSrv.ListenAndServe() }()
+	go func() { _ = oauthSrv.ListenAndServe() }()
+	defer func() { _ = loginSrv.Close(); _ = oauthSrv.Close() }()
+	waitForHTTP(t, "http://localhost:8985/")
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	var lastRedirect string
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			lastRedirect = req.URL.String()
+			if strings.Contains(req.URL.Host, "trusted.example.com") {
+				return http.ErrUseLastResponse // stop here, capture the 307
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get("http://localhost:8985/login?site=remark&from=https://trusted.example.com/back")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode, "must 307-redirect to trusted host")
+	assert.Equal(t, "https://trusted.example.com/back", resp.Header.Get("Location"))
+	assert.Contains(t, lastRedirect, "trusted.example.com")
+}
+
+// waitForHTTP polls the URL until it responds or times out.
+func waitForHTTP(t *testing.T, url string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if resp, err := http.Get(url); err == nil { //nolint:gosec
+			_ = resp.Body.Close()
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("server at %s did not start in time", url)
+}
+
 func TestMakeRedirURL(t *testing.T) {
 	cases := []struct{ rootURL, route, out string }{
 		{"localhost:8080/", "/my/auth/path/google", "localhost:8080/my/auth/path/callback"},
