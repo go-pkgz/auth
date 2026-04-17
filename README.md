@@ -745,6 +745,32 @@ may be excluded using the `XSRFIgnoreMethods` option. For example, to disable GE
 option to `XSRFIgnoreMethods: []string{"GET"}`. Adding methods other than GET to this list may result
 in XSRF vulnerabilities.
 
+### Browser apps: pair with `http.CrossOriginProtection` (Go 1.25+)
+
+The JWT XSRF check above only fires when the JWT arrives in a cookie and only after a request
+reaches the auth middleware. For browser-based applications it is recommended to additionally
+wrap the router with [`http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection)
+(Go 1.25+), which checks the browser-set `Sec-Fetch-Site` header (with an `Origin` vs `Host`
+fallback for older clients) and rejects cross-origin state-changing requests at the HTTP layer
+before they reach any handler:
+
+```go
+csrf := http.NewCrossOriginProtection()
+_ = csrf.AddTrustedOrigin("https://app.example.com") // for cross-origin SPAs
+csrf.AddInsecureBypassPattern("POST /auth/apple/")   // Apple Sign In uses form_post
+
+mux := http.NewServeMux()
+mux.Handle("/api/", authenticator.Auth(apiHandler))
+
+log.Fatal(http.ListenAndServe(":8080", csrf.Handler(mux)))
+```
+
+This is the algorithm recommended by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+as a primary CSRF defence. Unlike `SameSite=Lax`, it distinguishes _same-origin_ from
+_same-site_, so subdomain attacks are blocked. It composes with the JWT XSRF: the new
+middleware covers browser flows, the JWT XSRF still covers API clients sending the
+JWT-derived header.
+
 ## Status
 
 The library was originally extracted from the [remark42](https://github.com/umputun/remark) project. The code is in production use on multiple sites and has proven to be stable and reliable.
