@@ -1,17 +1,17 @@
 module github.com/go-pkgz/auth/_example
 
-go 1.25.0
+go 1.24.0
 
 replace github.com/go-pkgz/auth/v2 => ../v2
 
 require (
 	github.com/go-oauth2/oauth2/v4 v4.5.4
-	github.com/go-pkgz/auth/v2 v2.1.1
+	github.com/go-pkgz/auth/v2 v2.0.0-00010101000000-000000000000
 	github.com/go-pkgz/lgr v0.12.3
 	github.com/go-pkgz/rest v1.21.0
 	github.com/go-pkgz/routegroup v1.6.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.35.0
 )
 
 require (
@@ -37,9 +37,9 @@ require (
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.etcd.io/bbolt v1.4.3 // indirect
 	go.mongodb.org/mongo-driver v1.17.9 // indirect
-	golang.org/x/crypto v0.50.0 // indirect
-	golang.org/x/image v0.39.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/image v0.36.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 )
