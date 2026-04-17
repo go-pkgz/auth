@@ -241,6 +241,31 @@ func TestOauth2InvalidHandler(t *testing.T) {
 	assert.Equal(t, 500, resp.StatusCode)
 }
 
+// TestOauth2LoginFromRejectsExternalHost reproduces the open-redirect attack
+// against the oauth2 login flow.
+//
+// Attack scenario (before this fix):
+//
+//  1. Attacker crafts a link to the legitimate site:
+//     https://comments.example.com/auth/github/login?from=https://evil.example.com/phish
+//  2. Victim clicks the link, sees the real GitHub OAuth consent screen and approves.
+//  3. After the OAuth dance completes, the AuthHandler executed
+//     `http.Redirect(w, r, oauthClaims.Handshake.From, http.StatusTemporaryRedirect)`
+//     with no validation on `From` — so the browser was bounced straight to
+//     https://evil.example.com/phish, carrying a fresh session cookie and the
+//     trust the user had in the legitimate brand.
+//
+// The `from` value is signed into the handshake JWT, so it cannot be tampered
+// mid-flow — but the *initial* link is attacker-controlled and any URL fits
+// in the JWT. This is a textbook unvalidated-redirect / OAuth-flow phishing
+// vector applicable to oauth1, oauth2, apple and verify providers (they all
+// share the same redirect-from-handshake pattern).
+//
+// With the fix in place, `from` must point at the service's own host or a
+// host listed in Opts.AllowedRedirectHosts. Otherwise the handler renders
+// the user-info JSON and logs a [WARN]. This test exercises the rejection
+// path with the default (nil) allowlist, where service URL is "url" — so any
+// real external host is refused.
 func TestOauth2LoginFromRejectsExternalHost(t *testing.T) {
 	teardown := prepOauth2Test(t, 8981, 8982, nil)
 	defer teardown()
