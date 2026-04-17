@@ -182,7 +182,7 @@ Generally, adding support of `auth` includes a few relatively simple steps:
 
 For the example above authentication handlers wired as `/auth` and provides:
 
-- `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login.
+- `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login. Only redirect targets whose host matches `Opts.URL` or appears in `Opts.AllowedRedirectHosts` are honoured; others fall back to the user-info JSON response. See "Allowed redirect hosts" below.
 - `/avatar/<avatar_id>` - returns the avatar (image). Links to those pictures added into user info automatically, for details see "Avatar proxy"
 - `/auth/<provider>/logout` and `/auth/logout` - invalidate "session" by removing JWT cookie
 - `/auth/list` - gives a json list of active providers
@@ -291,7 +291,7 @@ used as `Sender`.
 
 The API for this provider:
 
- - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user
+ - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. The `from` URL is subject to the same allowlist check described in "Allowed redirect hosts".
  - `GET /auth/<name>/login?token=<conf.token>&sess=[1|0]` - authorize with confirmation token
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
@@ -492,6 +492,34 @@ Such functionality can be implemented in 3 different ways:
 - Using the standard JWT `aud` claim. This method conceptually very similar to the previous one, but done by library internally and consumer don't need to define special  `ClaimsUpdater` and `Validator` logic.
 
 In order to allow `aud` support the list of allowed audiences should be passed in as `opts.Audiences` parameter. Non-empty value will trigger internal checks for token generation (will reject token creation for alien `aud`) as well as `Auth` middleware.
+
+### Allowed redirect hosts
+
+The `from` query parameter accepted by oauth2/oauth1/apple/verify login flows tells the server where to send the user after a successful auth handshake. The value is signed into the handshake JWT, so it can't be tampered with mid-flow — but a caller can put any URL into the initial login link. To prevent phishing campaigns from leveraging legitimate OAuth flows to land victims on attacker-controlled pages, the library validates the `from` host before issuing the redirect.
+
+Default behaviour (no extra configuration): only `from` URLs whose host matches the host of `Opts.URL` are honoured. All other `from` values are silently dropped and the handler falls back to returning the user-info JSON instead of redirecting. This is safe for any single-host deployment.
+
+To accept additional hosts (multi-tenant deployments, separate admin/app subdomains, etc.), set `Opts.AllowedRedirectHosts` to anything implementing the `token.AllowedHosts` interface:
+
+```go
+type AllowedHosts interface {
+    Get() ([]string, error)
+}
+```
+
+The `token.AllowedHostsFunc` adapter wraps an ordinary function, mirroring the `token.AudienceFunc` pattern:
+
+```go
+opts := auth.Opts{
+    URL: "https://app.example.com",
+    AllowedRedirectHosts: token.AllowedHostsFunc(func() ([]string, error) {
+        return []string{"admin.example.com", "billing.example.com"}, nil
+    }),
+    // ...
+}
+```
+
+The host of `Opts.URL` is always permitted implicitly; values returned by `Get()` are appended to that. Subdomain wildcards are not supported — list each host explicitly. Rejected redirects are logged at `[WARN]` level with the offending value so misconfigurations are easy to spot in production.
 
 ### Dev provider
 
