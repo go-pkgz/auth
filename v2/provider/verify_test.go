@@ -144,7 +144,8 @@ func TestVerifyHandler_LoginAcceptConfirmFromRejectsExternalHost(t *testing.T) {
 		TokenService: jwtSvc,
 		Issuer:       "iss-test",
 		L:            logger.Std,
-		// no URL, no AllowedRedirectHosts -> any from is rejected
+		// non-nil empty allowlist enables the policy with no extra hosts
+		AllowedRedirectHosts: token.AllowedHostsFunc(func() ([]string, error) { return nil, nil }),
 	}
 
 	confTok, err := jwtSvc.Token(token.Claims{

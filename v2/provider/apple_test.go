@@ -308,7 +308,10 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 }
 
 func TestAppleHandler_LoginHandlerFromRejectsExternalHost(t *testing.T) {
-	teardown := prepareAppleOauthTest(t, 8987, 8988, nil)
+	enablePolicy := func(p *Params) {
+		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })
+	}
+	teardown := prepareAppleOauthTest(t, 8987, 8988, nil, enablePolicy)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -462,7 +465,7 @@ func prepareAppleHandlerTest(responseMode string, scopes []string) (*AppleHandle
 	return NewApple(p, aCfg, cl)
 }
 
-func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *string) func() {
+func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *string, paramOpts ...func(*Params)) func() {
 	signKey, testJWK := createTestSignKeyPairs(t)
 	provider, err := prepareAppleHandlerTest("", []string{})
 	assert.NoError(t, err)
@@ -509,6 +512,9 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
 		Issuer: "go-pkgz/auth", L: logger.Std}
+	for _, opt := range paramOpts {
+		opt(&params)
+	}
 	provider.Params = params
 
 	svc := Service{Provider: provider}

@@ -185,7 +185,10 @@ func TestOauth1MakeRedirURL(t *testing.T) {
 }
 
 func TestOauth1LoginFromRejectsExternalHost(t *testing.T) {
-	teardown := prepOauth1Test(t, loginPort, authPort)
+	enablePolicy := func(p *Params) {
+		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })
+	}
+	teardown := prepOauth1Test(t, loginPort, authPort, enablePolicy)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -210,7 +213,7 @@ func TestOauth1LoginFromRejectsExternalHost(t *testing.T) {
 	assert.NotContains(t, string(body), "evil.example.com")
 }
 
-func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
+func prepOauth1Test(t *testing.T, loginPort, authPort int, paramOpts ...func(*Params)) func() { //nolint
 
 	provider := Oauth1Handler{
 		name: "mock",
@@ -249,6 +252,9 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int) func() { //nolint
 
 	params := Params{URL: "url", Cid: "aFdj12348sdja", Csecret: "Dwehsq2387akss", JwtService: jwtService,
 		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std}
+	for _, opt := range paramOpts {
+		opt(&params)
+	}
 
 	provider = initOauth1Handler(params, provider)
 	svc := Service{Provider: provider}

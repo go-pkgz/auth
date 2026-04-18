@@ -267,7 +267,10 @@ func TestOauth2InvalidHandler(t *testing.T) {
 // path with the default (nil) allowlist, where service URL is "url" — so any
 // real external host is refused.
 func TestOauth2LoginFromRejectsExternalHost(t *testing.T) {
-	teardown := prepOauth2Test(t, 8981, 8982, nil)
+	enablePolicy := func(p *Params) {
+		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })
+	}
+	teardown := prepOauth2Test(t, 8981, 8982, nil, enablePolicy)
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -389,7 +392,7 @@ func TestMakeRedirURL(t *testing.T) {
 	}
 }
 
-func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook) func() {
+func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook, paramOpts ...func(*Params)) func() {
 
 	provider := Oauth2Handler{
 		name: "mock",
@@ -429,6 +432,9 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHoo
 
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
 		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std}
+	for _, opt := range paramOpts {
+		opt(&params)
+	}
 
 	provider = initOauth2Handler(params, provider)
 	svc := Service{Provider: provider}

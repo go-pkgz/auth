@@ -22,28 +22,37 @@ func TestIsAllowedRedirect(t *testing.T) {
 		allowed    token.AllowedHosts
 		want       bool
 	}{
-		{name: "empty from", from: "", serviceURL: "https://app.example.com", want: false},
-		{name: "relative path rejected", from: "/foo/bar", serviceURL: "https://app.example.com", want: false},
-		{name: "unparseable url rejected", from: "://not a url", serviceURL: "https://app.example.com", want: false},
-		{name: "same host as service allowed", from: "https://app.example.com/back", serviceURL: "https://app.example.com", want: true},
-		{name: "same host different scheme allowed", from: "http://app.example.com/back", serviceURL: "https://app.example.com", want: true},
-		{name: "same host with port matches", from: "https://app.example.com:443/x", serviceURL: "https://app.example.com:443", want: true},
-		{name: "explicit https default port matches no-port service", from: "https://app.example.com:443/x", serviceURL: "https://app.example.com", want: true},
-		{name: "explicit http default port matches no-port service", from: "http://app.example.com:80/x", serviceURL: "http://app.example.com", want: true},
-		{name: "different non-default port still allowed (hostname compare)", from: "https://app.example.com:8080/x", serviceURL: "https://app.example.com", want: true},
-		{name: "subdomain not implicitly allowed", from: "https://evil.app.example.com/x", serviceURL: "https://app.example.com", want: false},
-		{name: "different host rejected when no allowlist", from: "https://evil.com/phish", serviceURL: "https://app.example.com", want: false},
+		// permissive default (nil allowlist) — preserves pre-feature behaviour
+		{name: "nil allowlist allows arbitrary external host (legacy)", from: "https://evil.com/x", serviceURL: "https://app.example.com", want: true},
+		{name: "nil allowlist allows relative path (legacy)", from: "/foo/bar", serviceURL: "https://app.example.com", want: true},
+		{name: "nil allowlist rejects empty from", from: "", serviceURL: "https://app.example.com", want: false},
+
+		// policy enabled (any non-nil allowlist) — sanity checks reject malformed input
+		{name: "policy on: empty from rejected", from: "", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
+		{name: "policy on: relative path rejected", from: "/foo/bar", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
+		{name: "policy on: unparseable url rejected", from: "://not a url", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
+
+		// policy on, service URL host implicit
+		{name: "policy on: same host as service allowed", from: "https://app.example.com/back", serviceURL: "https://app.example.com", allowed: allowedFn(), want: true},
+		{name: "policy on: same host different scheme allowed", from: "http://app.example.com/back", serviceURL: "https://app.example.com", allowed: allowedFn(), want: true},
+		{name: "policy on: same host with port matches", from: "https://app.example.com:443/x", serviceURL: "https://app.example.com:443", allowed: allowedFn(), want: true},
+		{name: "policy on: explicit https default port matches no-port service", from: "https://app.example.com:443/x", serviceURL: "https://app.example.com", allowed: allowedFn(), want: true},
+		{name: "policy on: explicit http default port matches no-port service", from: "http://app.example.com:80/x", serviceURL: "http://app.example.com", allowed: allowedFn(), want: true},
+		{name: "policy on: different non-default port still allowed (hostname compare)", from: "https://app.example.com:8080/x", serviceURL: "https://app.example.com", allowed: allowedFn(), want: true},
+		{name: "policy on: subdomain not implicitly allowed", from: "https://evil.app.example.com/x", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
+		{name: "policy on: different host rejected", from: "https://evil.com/phish", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
+
+		// policy with explicit allowlist entries
 		{name: "host in allowlist accepted", from: "https://admin.example.com/back", serviceURL: "https://app.example.com",
 			allowed: allowedFn("admin.example.com", "other.example.com"), want: true},
 		{name: "host not in allowlist rejected", from: "https://evil.com/phish", serviceURL: "https://app.example.com",
 			allowed: allowedFn("admin.example.com"), want: false},
 		{name: "allowlist getter error treated as not allowed", from: "https://admin.example.com", serviceURL: "https://app.example.com",
 			allowed: errFn, want: false},
-		{name: "service URL same host always wins over allowlist absence", from: "https://app.example.com/x", serviceURL: "https://app.example.com",
-			allowed: allowedFn(), want: true},
 		{name: "malformed service URL falls back to allowlist", from: "https://admin.example.com", serviceURL: "://bad",
 			allowed: allowedFn("admin.example.com"), want: true},
-		{name: "malformed service URL no allowlist rejects", from: "https://admin.example.com", serviceURL: "://bad", want: false},
+		{name: "malformed service URL with empty allowlist rejects", from: "https://admin.example.com", serviceURL: "://bad",
+			allowed: allowedFn(), want: false},
 	}
 
 	for _, tt := range tests {

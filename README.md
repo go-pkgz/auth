@@ -495,11 +495,11 @@ In order to allow `aud` support the list of allowed audiences should be passed i
 
 ### Allowed redirect hosts
 
-The `from` query parameter accepted by oauth2/oauth1/apple/verify login flows tells the server where to send the user after a successful auth handshake. The value is signed into the handshake JWT, so it can't be tampered with mid-flow — but a caller can put any URL into the initial login link. To prevent phishing campaigns from leveraging legitimate OAuth flows to land victims on attacker-controlled pages, the library validates the `from` host before issuing the redirect.
+The `from` query parameter accepted by oauth2/oauth1/apple/verify login flows tells the server where to send the user after a successful auth handshake. The value is signed into the handshake JWT, so it can't be tampered with mid-flow — but a caller can put any URL into the initial login link. Without restriction this becomes a phishing vector: an attacker crafts a login link that bounces the victim through legitimate OAuth and then to an attacker-controlled landing page.
 
-Default behaviour (no extra configuration): only `from` URLs whose host matches the host of `Opts.URL` are honoured. All other `from` values are silently dropped and the handler falls back to returning the user-info JSON instead of redirecting. This is safe for any single-host deployment.
+**Default behaviour is permissive (`Opts.AllowedRedirectHosts` is nil):** any non-empty `from` value is honoured. This preserves the behaviour of versions before the redirect validator existed, so a dependency bump never silently breaks an existing deployment. **Hardening is opt-in.**
 
-To accept additional hosts (multi-tenant deployments, separate admin/app subdomains, etc.), set `Opts.AllowedRedirectHosts` to anything implementing the `token.AllowedHosts` interface:
+To enable host validation, set `Opts.AllowedRedirectHosts` to anything implementing the `token.AllowedHosts` interface:
 
 ```go
 type AllowedHosts interface {
@@ -519,7 +519,13 @@ opts := auth.Opts{
 }
 ```
 
-The host of `Opts.URL` is always permitted implicitly; values returned by `Get()` are appended to that. Subdomain wildcards are not supported — list each host explicitly. Rejected redirects are logged at `[WARN]` level with the offending value so misconfigurations are easy to spot in production.
+Once the policy is on:
+
+* The host of `Opts.URL` is always permitted implicitly (single-host deployments need no list entries — pass `func() ([]string, error) { return nil, nil }` to enable the policy with same-host-only semantics).
+* Values returned by `Get()` are appended to that. Subdomain wildcards are not supported — list each host explicitly.
+* Hostname comparison is port-insensitive: `https://app.example.com` and `https://app.example.com:443` are treated as the same host.
+* Relative paths and unparseable URLs are rejected.
+* Rejected redirects are logged at `[WARN]` level with only the host portion of the URL (paths and query strings are stripped to avoid logging attacker-supplied data).
 
 ### Dev provider
 
