@@ -164,7 +164,7 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	// redirect to back url if presented in login query params
 	if oauthClaims.Handshake != nil && oauthClaims.Handshake.From != "" {
 		if !isAllowedRedirect(oauthClaims.Handshake.From, h.URL, h.AllowedRedirectHosts) {
-			h.Logf("[WARN] rejected redirect to disallowed host: %s", oauthClaims.Handshake.From)
+			h.Logf("[WARN] rejected redirect to disallowed host: %s", redirectHostForLog(oauthClaims.Handshake.From))
 			rest.RenderJSON(w, &u)
 			return
 		}

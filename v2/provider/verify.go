@@ -135,7 +135,7 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if confClaims.Handshake != nil && confClaims.Handshake.From != "" {
 		if !isAllowedRedirect(confClaims.Handshake.From, e.URL, e.AllowedRedirectHosts) {
-			e.Logf("[WARN] rejected redirect to disallowed host: %s", confClaims.Handshake.From)
+			e.Logf("[WARN] rejected redirect to disallowed host: %s", redirectHostForLog(confClaims.Handshake.From))
 			rest.RenderJSON(w, claims.User)
 			return
 		}

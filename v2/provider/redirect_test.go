@@ -28,6 +28,9 @@ func TestIsAllowedRedirect(t *testing.T) {
 		{name: "same host as service allowed", from: "https://app.example.com/back", serviceURL: "https://app.example.com", want: true},
 		{name: "same host different scheme allowed", from: "http://app.example.com/back", serviceURL: "https://app.example.com", want: true},
 		{name: "same host with port matches", from: "https://app.example.com:443/x", serviceURL: "https://app.example.com:443", want: true},
+		{name: "explicit https default port matches no-port service", from: "https://app.example.com:443/x", serviceURL: "https://app.example.com", want: true},
+		{name: "explicit http default port matches no-port service", from: "http://app.example.com:80/x", serviceURL: "http://app.example.com", want: true},
+		{name: "different non-default port still allowed (hostname compare)", from: "https://app.example.com:8080/x", serviceURL: "https://app.example.com", want: true},
 		{name: "subdomain not implicitly allowed", from: "https://evil.app.example.com/x", serviceURL: "https://app.example.com", want: false},
 		{name: "different host rejected when no allowlist", from: "https://evil.com/phish", serviceURL: "https://app.example.com", want: false},
 		{name: "host in allowlist accepted", from: "https://admin.example.com/back", serviceURL: "https://app.example.com",
@@ -46,6 +49,25 @@ func TestIsAllowedRedirect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, isAllowedRedirect(tt.from, tt.serviceURL, tt.allowed))
+		})
+	}
+}
+
+func TestRedirectHostForLog(t *testing.T) {
+	tests := []struct {
+		name string
+		from string
+		want string
+	}{
+		{name: "https URL with path and query", from: "https://evil.example.com/phish?token=abc", want: "evil.example.com"},
+		{name: "URL with port", from: "https://evil.example.com:8080/path", want: "evil.example.com"},
+		{name: "empty string", from: "", want: "<unparseable>"},
+		{name: "relative path has no host", from: "/local/path", want: "<unparseable>"},
+		{name: "garbage", from: "://not a url", want: "<unparseable>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, redirectHostForLog(tt.from))
 		})
 	}
 }
