@@ -10,7 +10,7 @@ import (
 // after a successful auth handshake.
 //
 // The check is opt-in: when allowed is nil the function returns true for any
-// non-empty input, preserving the behaviour of versions before the redirect
+// non-empty input, preserving the behavior of versions before the redirect
 // validator existed. This keeps a dependency bump from breaking existing
 // consumers; hardening is enabled by setting Opts.AllowedRedirectHosts.
 //
@@ -24,7 +24,7 @@ import (
 // strict port-aware checks should list each host:port form explicitly via
 // AllowedHosts.
 func isAllowedRedirect(from, serviceURL string, allowed token.AllowedHosts) bool {
-	// permissive default: no allowlist configured = legacy behaviour
+	// permissive default: no allowlist configured = legacy behavior
 	if allowed == nil {
 		return from != ""
 	}

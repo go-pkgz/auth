@@ -22,7 +22,7 @@ func TestIsAllowedRedirect(t *testing.T) {
 		allowed    token.AllowedHosts
 		want       bool
 	}{
-		// permissive default (nil allowlist) — preserves pre-feature behaviour
+		// permissive default (nil allowlist) — preserves pre-feature behavior
 		{name: "nil allowlist allows arbitrary external host (legacy)", from: "https://evil.com/x", serviceURL: "https://app.example.com", want: true},
 		{name: "nil allowlist allows relative path (legacy)", from: "/foo/bar", serviceURL: "https://app.example.com", want: true},
 		{name: "nil allowlist rejects empty from", from: "", serviceURL: "https://app.example.com", want: false},
