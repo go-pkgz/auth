@@ -2,6 +2,7 @@ package provider
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/go-pkgz/auth/v2/token"
 )
@@ -15,25 +16,34 @@ import (
 // consumers; hardening is enabled by setting Opts.AllowedRedirectHosts.
 //
 // When allowed is non-nil:
+//   - only http/https schemes are accepted
 //   - relative paths and unparseable URLs are rejected
 //   - the service's own host (derived from serviceURL) is always allowed
 //   - any other host must appear in the allowed list
 //
-// Hostname comparison ignores the port: https://app.example.com:443 and
-// https://app.example.com are treated as the same host. Operators wanting
-// strict port-aware checks should list each host:port form explicitly via
-// AllowedHosts.
+// Hostname comparison is case-insensitive and ignores the port:
+// https://app.example.com:443 and https://App.Example.Com are treated as the
+// same host. Operators wanting strict port-aware checks should list each
+// host:port form explicitly via AllowedHosts.
 func isAllowedRedirect(from, serviceURL string, allowed token.AllowedHosts) bool {
-	// permissive default: no allowlist configured = legacy behavior
+	// permissive default: no allowlist configured = legacy behavior.
+	// guard against typed-nil AllowedHostsFunc values (non-nil interface
+	// wrapping a nil func) to avoid panicking in Get().
 	if allowed == nil {
+		return from != ""
+	}
+	if fn, ok := allowed.(token.AllowedHostsFunc); ok && fn == nil {
 		return from != ""
 	}
 	u, err := url.Parse(from)
 	if err != nil || u.Hostname() == "" {
 		return false
 	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
 	fromHost := u.Hostname()
-	if svc, sErr := url.Parse(serviceURL); sErr == nil && svc.Hostname() != "" && svc.Hostname() == fromHost {
+	if svc, sErr := url.Parse(serviceURL); sErr == nil && svc.Hostname() != "" && strings.EqualFold(svc.Hostname(), fromHost) {
 		return true
 	}
 	hosts, hErr := allowed.Get()
@@ -41,7 +51,7 @@ func isAllowedRedirect(from, serviceURL string, allowed token.AllowedHosts) bool
 		return false
 	}
 	for _, h := range hosts {
-		if h == fromHost || h == u.Host {
+		if strings.EqualFold(h, fromHost) || strings.EqualFold(h, u.Host) {
 			return true
 		}
 	}

@@ -26,6 +26,8 @@ func TestIsAllowedRedirect(t *testing.T) {
 		{name: "nil allowlist allows arbitrary external host (legacy)", from: "https://evil.com/x", serviceURL: "https://app.example.com", want: true},
 		{name: "nil allowlist allows relative path (legacy)", from: "/foo/bar", serviceURL: "https://app.example.com", want: true},
 		{name: "nil allowlist rejects empty from", from: "", serviceURL: "https://app.example.com", want: false},
+		{name: "typed-nil AllowedHostsFunc treated as nil allowlist", from: "https://evil.com/x", serviceURL: "https://app.example.com",
+			allowed: token.AllowedHostsFunc(nil), want: true},
 
 		// policy enabled (any non-nil allowlist) — sanity checks reject malformed input
 		{name: "policy on: empty from rejected", from: "", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
@@ -41,10 +43,20 @@ func TestIsAllowedRedirect(t *testing.T) {
 		{name: "policy on: different non-default port still allowed (hostname compare)", from: "https://app.example.com:8080/x", serviceURL: "https://app.example.com", allowed: allowedFn(), want: true},
 		{name: "policy on: subdomain not implicitly allowed", from: "https://evil.app.example.com/x", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
 		{name: "policy on: different host rejected", from: "https://evil.com/phish", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
+		{name: "policy on: same host case-insensitive", from: "https://App.Example.Com/back", serviceURL: "https://app.example.com", allowed: allowedFn(), want: true},
+
+		// non-http(s) schemes are rejected even if host looks sane
+		{name: "policy on: javascript scheme rejected", from: "javascript:alert(1)", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
+		{name: "policy on: ftp scheme rejected", from: "ftp://app.example.com/file", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
+		{name: "policy on: data scheme rejected", from: "data:text/html,<script>alert(1)</script>", serviceURL: "https://app.example.com", allowed: allowedFn(), want: false},
 
 		// policy with explicit allowlist entries
 		{name: "host in allowlist accepted", from: "https://admin.example.com/back", serviceURL: "https://app.example.com",
 			allowed: allowedFn("admin.example.com", "other.example.com"), want: true},
+		{name: "host in allowlist case-insensitive", from: "https://Admin.Example.Com/back", serviceURL: "https://app.example.com",
+			allowed: allowedFn("admin.example.com"), want: true},
+		{name: "allowlist entry case-insensitive vs mixed-case from", from: "https://admin.example.com/back", serviceURL: "https://app.example.com",
+			allowed: allowedFn("ADMIN.EXAMPLE.COM"), want: true},
 		{name: "host not in allowlist rejected", from: "https://evil.com/phish", serviceURL: "https://app.example.com",
 			allowed: allowedFn("admin.example.com"), want: false},
 		{name: "allowlist getter error treated as not allowed", from: "https://admin.example.com", serviceURL: "https://app.example.com",

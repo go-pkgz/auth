@@ -85,7 +85,7 @@ func TestOauth2Login(t *testing.T) {
 	err = json.Unmarshal(body, &u)
 	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://example.com/ava12345.png",
-		Attributes: map[string]interface{}{"admin": true}}, u)
+		Attributes: map[string]any{"admin": true}}, u)
 }
 
 func TestOauth2LoginBearerTokenHook(t *testing.T) {
@@ -296,48 +296,11 @@ func TestOauth2LoginFromRejectsExternalHost(t *testing.T) {
 }
 
 func TestOauth2LoginFromAllowsAllowlistedHost(t *testing.T) {
-	provider := Oauth2Handler{
-		name: "mock",
-		endpoint: oauth2.Endpoint{
-			AuthURL:  "http://localhost:8986/login/oauth/authorize",
-			TokenURL: "http://localhost:8986/login/oauth/access_token",
-		},
-		scopes:  []string{"user:email"},
-		infoURL: "http://localhost:8986/user",
-		mapUser: func(data UserData, _ []byte) token.User {
-			return token.User{ID: "mock_" + data.Value("id"), Name: data.Value("name")}
-		},
+	enablePolicy := func(p *Params) {
+		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return []string{"trusted.example.com"}, nil })
 	}
-	jwtService := token.NewService(token.Opts{
-		SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
-		TokenDuration: time.Hour, CookieDuration: days31,
-	})
-	allowed := token.AllowedHostsFunc(func() ([]string, error) { return []string{"trusted.example.com"}, nil })
-	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
-		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std,
-		AllowedRedirectHosts: allowed}
-	provider = initOauth2Handler(params, provider)
-	svc := Service{Provider: provider}
-
-	loginSrv := &http.Server{Addr: ":8985", Handler: http.HandlerFunc(svc.Handler), ReadHeaderTimeout: time.Second} //nolint:gosec
-	oauthSrv := &http.Server{Addr: ":8986", ReadHeaderTimeout: time.Second,                                         //nolint:gosec
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch {
-			case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
-				w.Header().Set("Location", fmt.Sprintf("http://localhost:8985/callback?code=g0&state=%s", r.URL.Query().Get("state")))
-				w.WriteHeader(302)
-			case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				_, _ = w.Write([]byte(`{"access_token":"AT","token_type":"bearer","expires_in":3600,"state":"x"}`))
-			case strings.HasPrefix(r.URL.Path, "/user"):
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				_, _ = w.Write([]byte(`{"id":"u1","name":"blah"}`))
-			}
-		})}
-	go func() { _ = loginSrv.ListenAndServe() }()
-	go func() { _ = oauthSrv.ListenAndServe() }()
-	defer func() { _ = loginSrv.Close(); _ = oauthSrv.Close() }()
-	waitForHTTP(t, "http://localhost:8985/")
+	teardown := prepOauth2Test(t, 8985, 8986, nil, enablePolicy)
+	defer teardown()
 
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
@@ -359,20 +322,6 @@ func TestOauth2LoginFromAllowsAllowlistedHost(t *testing.T) {
 	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode, "must 307-redirect to trusted host")
 	assert.Equal(t, "https://trusted.example.com/back", resp.Header.Get("Location"))
 	assert.Contains(t, lastRedirect, "trusted.example.com")
-}
-
-// waitForHTTP polls the URL until it responds or times out.
-func waitForHTTP(t *testing.T, url string) {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if resp, err := http.Get(url); err == nil { //nolint:gosec
-			_ = resp.Body.Close()
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("server at %s did not start in time", url)
 }
 
 func TestMakeRedirURL(t *testing.T) {
