@@ -85,7 +85,7 @@ func TestOauth2Login(t *testing.T) {
 	err = json.Unmarshal(body, &u)
 	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://example.com/ava12345.png",
-		Attributes: map[string]interface{}{"admin": true}}, u)
+		Attributes: map[string]any{"admin": true}}, u)
 }
 
 func TestOauth2LoginBearerTokenHook(t *testing.T) {
@@ -241,6 +241,92 @@ func TestOauth2InvalidHandler(t *testing.T) {
 	assert.Equal(t, 500, resp.StatusCode)
 }
 
+// TestOauth2LoginFromRejectsExternalHost reproduces the open-redirect attack
+// against the oauth2 login flow.
+//
+// Attack scenario (before this fix):
+//
+//  1. Attacker crafts a link to the legitimate site:
+//     https://comments.example.com/auth/github/login?from=https://evil.example.com/phish
+//  2. Victim clicks the link, sees the real GitHub OAuth consent screen and approves.
+//  3. After the OAuth dance completes, the AuthHandler executed
+//     `http.Redirect(w, r, oauthClaims.Handshake.From, http.StatusTemporaryRedirect)`
+//     with no validation on `From` — so the browser was bounced straight to
+//     https://evil.example.com/phish, carrying a fresh session cookie and the
+//     trust the user had in the legitimate brand.
+//
+// The `from` value is signed into the handshake JWT, so it cannot be tampered
+// mid-flow — but the *initial* link is attacker-controlled and any URL fits
+// in the JWT. This is a textbook unvalidated-redirect / OAuth-flow phishing
+// vector applicable to oauth1, oauth2, apple and verify providers (they all
+// share the same redirect-from-handshake pattern).
+//
+// With the fix in place and host validation enabled (Opts.AllowedRedirectHosts
+// non-nil), `from` must point at the service's own host or a host listed in
+// the allowlist. Otherwise the handler renders the user-info JSON and logs a
+// [WARN]. This test enables the policy via `enablePolicy` (a getter that
+// returns an empty slice, which restricts redirects to the service URL host
+// only — here "url"), so any real external host is refused. The default (nil)
+// allowlist is permissive by design and is covered separately by the
+// validator unit tests in redirect_test.go.
+func TestOauth2LoginFromRejectsExternalHost(t *testing.T) {
+	enablePolicy := func(p *Params) {
+		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })
+	}
+	teardown := prepOauth2Test(t, 8981, 8982, nil, enablePolicy)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if !strings.HasPrefix(req.URL.Host, "localhost") {
+				return fmt.Errorf("blocked external redirect to %s", req.URL)
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get("http://localhost:8981/login?site=remark&from=https://evil.example.com/phish")
+	require.NoError(t, err, "no external redirect expected — fix should reject evil host")
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"name":"blah"`, "must return user JSON, not redirect to evil")
+	assert.NotContains(t, string(body), "evil.example.com")
+}
+
+func TestOauth2LoginFromAllowsAllowlistedHost(t *testing.T) {
+	enablePolicy := func(p *Params) {
+		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return []string{"trusted.example.com"}, nil })
+	}
+	teardown := prepOauth2Test(t, 8985, 8986, nil, enablePolicy)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	var lastRedirect string
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			lastRedirect = req.URL.String()
+			if strings.Contains(req.URL.Host, "trusted.example.com") {
+				return http.ErrUseLastResponse // stop here, capture the 307
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get("http://localhost:8985/login?site=remark&from=https://trusted.example.com/back")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode, "must 307-redirect to trusted host")
+	assert.Equal(t, "https://trusted.example.com/back", resp.Header.Get("Location"))
+	assert.Contains(t, lastRedirect, "trusted.example.com")
+}
+
 func TestMakeRedirURL(t *testing.T) {
 	cases := []struct{ rootURL, route, out string }{
 		{"localhost:8080/", "/my/auth/path/google", "localhost:8080/my/auth/path/callback"},
@@ -258,7 +344,7 @@ func TestMakeRedirURL(t *testing.T) {
 	}
 }
 
-func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook) func() {
+func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook, paramOpts ...func(*Params)) func() {
 
 	provider := Oauth2Handler{
 		name: "mock",
@@ -298,6 +384,9 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHoo
 
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
 		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std}
+	for _, opt := range paramOpts {
+		opt(&params)
+	}
 
 	provider = initOauth2Handler(params, provider)
 	svc := Service{Provider: provider}

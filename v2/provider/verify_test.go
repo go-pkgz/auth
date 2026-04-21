@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -130,6 +131,81 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	assert.True(t, claims.ExpiresAt.After(time.Now()))
 	assert.Equal(t, "test123", claims.User.Name)
 	assert.Equal(t, true, claims.SessionOnly)
+}
+
+func TestVerifyHandler_LoginAcceptConfirmFromRejectsExternalHost(t *testing.T) {
+	jwtSvc := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		TokenDuration:  time.Hour,
+		CookieDuration: time.Hour * 24 * 31,
+	})
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: jwtSvc,
+		Issuer:       "iss-test",
+		L:            logger.Std,
+		// non-nil empty allowlist enables the policy with no extra hosts
+		AllowedRedirectHosts: token.AllowedHostsFunc(func() ([]string, error) { return nil, nil }),
+	}
+
+	confTok, err := jwtSvc.Token(token.Claims{
+		Handshake: &token.Handshake{
+			ID:   "test123::blah@user.com",
+			From: "https://evil.example.com/phish",
+		},
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  jwt.ClaimStrings{"remark42"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s", confTok), http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "must return user JSON, not 307 to evil")
+	assert.Equal(t, "", rr.Header().Get("Location"))
+	assert.Contains(t, rr.Body.String(), `"name":"test123"`)
+	assert.NotContains(t, rr.Body.String(), "evil.example.com")
+}
+
+func TestVerifyHandler_LoginAcceptConfirmFromAllowsAllowlistedHost(t *testing.T) {
+	jwtSvc := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		TokenDuration:  time.Hour,
+		CookieDuration: time.Hour * 24 * 31,
+	})
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: jwtSvc,
+		Issuer:       "iss-test",
+		L:            logger.Std,
+		AllowedRedirectHosts: token.AllowedHostsFunc(func() ([]string, error) {
+			return []string{"trusted.example.com"}, nil
+		}),
+	}
+
+	confTok, err := jwtSvc.Token(token.Claims{
+		Handshake: &token.Handshake{
+			ID:   "test123::blah@user.com",
+			From: "https://trusted.example.com/back",
+		},
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  jwt.ClaimStrings{"remark42"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s", confTok), http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusTemporaryRedirect, rr.Code)
+	assert.Equal(t, "https://trusted.example.com/back", rr.Header().Get("Location"))
 }
 
 func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {

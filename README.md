@@ -182,7 +182,7 @@ Generally, adding support of `auth` includes a few relatively simple steps:
 
 For the example above authentication handlers wired as `/auth` and provides:
 
-- `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login.
+- `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login. When `Opts.AllowedRedirectHosts` is set, only targets whose host matches `Opts.URL` or appears in the allowlist are honoured; others fall back to the user-info JSON response. With the default (nil) allowlist any non-empty `from` is honoured — see "Allowed redirect hosts" below for the opt-in details.
 - `/avatar/<avatar_id>` - returns the avatar (image). Links to those pictures added into user info automatically, for details see "Avatar proxy"
 - `/auth/<provider>/logout` and `/auth/logout` - invalidate "session" by removing JWT cookie
 - `/auth/list` - gives a json list of active providers
@@ -291,7 +291,7 @@ used as `Sender`.
 
 The API for this provider:
 
- - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user
+ - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. When host validation is enabled via `Opts.AllowedRedirectHosts`, the `from` URL is subject to the same allowlist check described in "Allowed redirect hosts"; otherwise any non-empty value is honoured.
  - `GET /auth/<name>/login?token=<conf.token>&sess=[1|0]` - authorize with confirmation token
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
@@ -492,6 +492,40 @@ Such functionality can be implemented in 3 different ways:
 - Using the standard JWT `aud` claim. This method conceptually very similar to the previous one, but done by library internally and consumer don't need to define special  `ClaimsUpdater` and `Validator` logic.
 
 In order to allow `aud` support the list of allowed audiences should be passed in as `opts.Audiences` parameter. Non-empty value will trigger internal checks for token generation (will reject token creation for alien `aud`) as well as `Auth` middleware.
+
+### Allowed redirect hosts
+
+The `from` query parameter accepted by oauth2/oauth1/apple/verify login flows tells the server where to send the user after a successful auth handshake. The value is signed into the handshake JWT, so it can't be tampered with mid-flow — but a caller can put any URL into the initial login link. Without restriction this becomes a phishing vector: an attacker crafts a login link that bounces the victim through legitimate OAuth and then to an attacker-controlled landing page.
+
+**Default behaviour is permissive (`Opts.AllowedRedirectHosts` is nil):** any non-empty `from` value is honoured. This preserves the behaviour of versions before the redirect validator existed, so a dependency bump never silently breaks an existing deployment. **Hardening is opt-in.**
+
+To enable host validation, set `Opts.AllowedRedirectHosts` to anything implementing the `token.AllowedHosts` interface:
+
+```go
+type AllowedHosts interface {
+    Get() ([]string, error)
+}
+```
+
+The `token.AllowedHostsFunc` adapter wraps an ordinary function, mirroring the `token.AudienceFunc` pattern:
+
+```go
+opts := auth.Opts{
+    URL: "https://app.example.com",
+    AllowedRedirectHosts: token.AllowedHostsFunc(func() ([]string, error) {
+        return []string{"admin.example.com", "billing.example.com"}, nil
+    }),
+    // ...
+}
+```
+
+Once the policy is on:
+
+* The host of `Opts.URL` is always permitted implicitly (single-host deployments need no list entries — pass `func() ([]string, error) { return nil, nil }` to enable the policy with same-host-only semantics).
+* Values returned by `Get()` are appended to that. Subdomain wildcards are not supported — list each host explicitly.
+* Hostname comparison is port-insensitive: `https://app.example.com` and `https://app.example.com:443` are treated as the same host.
+* Relative paths and unparseable URLs are rejected.
+* Rejected redirects are logged at `[WARN]` level with only the host portion of the URL (paths and query strings are stripped to avoid logging attacker-supplied data).
 
 ### Dev provider
 
