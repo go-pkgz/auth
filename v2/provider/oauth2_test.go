@@ -261,11 +261,14 @@ func TestOauth2InvalidHandler(t *testing.T) {
 // vector applicable to oauth1, oauth2, apple and verify providers (they all
 // share the same redirect-from-handshake pattern).
 //
-// With the fix in place, `from` must point at the service's own host or a
-// host listed in Opts.AllowedRedirectHosts. Otherwise the handler renders
-// the user-info JSON and logs a [WARN]. This test exercises the rejection
-// path with the default (nil) allowlist, where service URL is "url" — so any
-// real external host is refused.
+// With the fix in place and host validation enabled (Opts.AllowedRedirectHosts
+// non-nil), `from` must point at the service's own host or a host listed in
+// the allowlist. Otherwise the handler renders the user-info JSON and logs a
+// [WARN]. This test enables the policy via `enablePolicy` (a getter that
+// returns an empty slice, which restricts redirects to the service URL host
+// only — here "url"), so any real external host is refused. The default (nil)
+// allowlist is permissive by design and is covered separately by the
+// validator unit tests in redirect_test.go.
 func TestOauth2LoginFromRejectsExternalHost(t *testing.T) {
 	enablePolicy := func(p *Params) {
 		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })

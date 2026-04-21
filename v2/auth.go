@@ -64,8 +64,12 @@ type Opts struct {
 	Validator token.Validator // validator allows to reject some valid tokens with user-defined logic
 
 	// AllowedRedirectHosts lists hostnames accepted in the "from" query
-	// parameter of OAuth/verify login flows. The host of URL is always
-	// allowed implicitly. Nil means same-host-only.
+	// parameter of OAuth/verify login flows. Setting this field enables
+	// host validation: the host of URL is always implicit, and any other
+	// host must appear here. Nil (the default) disables validation and
+	// preserves legacy permissive behavior — any non-empty "from" value
+	// is honoured. Hardening is opt-in; to restrict to the service host
+	// only, pass a getter returning an empty slice.
 	AllowedRedirectHosts token.AllowedHosts
 
 	AvatarStore       avatar.Store // store to save/load avatars, required (use avatar.NoOp to disable avatars support)

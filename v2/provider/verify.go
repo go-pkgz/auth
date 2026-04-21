@@ -33,7 +33,10 @@ type VerifyHandler struct {
 	// a "from" redirect target. Optional but recommended.
 	URL string
 	// AllowedRedirectHosts lists additional hostnames permitted as "from"
-	// redirect targets. Nil means same-host-only.
+	// redirect targets. Setting this field enables host validation: the
+	// host of URL is always implicit, and any other host must appear
+	// here. Nil disables validation and preserves legacy permissive
+	// behavior — any non-empty "from" value is honoured.
 	AllowedRedirectHosts token.AllowedHosts
 }
 

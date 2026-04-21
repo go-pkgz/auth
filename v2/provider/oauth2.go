@@ -43,8 +43,11 @@ type Params struct {
 	UserAttributes UserAttributes
 
 	// AllowedRedirectHosts lists hostnames accepted in the "from" query
-	// parameter of OAuth/verify login flows. The host of URL is always
-	// allowed implicitly. Nil disables additional hosts (same-host only).
+	// parameter. Setting this field enables host validation: the host of
+	// URL is always implicit, and any other host must appear here. Nil
+	// disables validation and preserves legacy permissive behavior — any
+	// non-empty "from" value is honoured. See isAllowedRedirect for the
+	// full policy.
 	AllowedRedirectHosts token.AllowedHosts
 
 	Port int    // relevant for providers supporting port customization, for example dev oauth2

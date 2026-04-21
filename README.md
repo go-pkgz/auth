@@ -182,7 +182,7 @@ Generally, adding support of `auth` includes a few relatively simple steps:
 
 For the example above authentication handlers wired as `/auth` and provides:
 
-- `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login. Only redirect targets whose host matches `Opts.URL` or appears in `Opts.AllowedRedirectHosts` are honoured; others fall back to the user-info JSON response. See "Allowed redirect hosts" below.
+- `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login. When `Opts.AllowedRedirectHosts` is set, only targets whose host matches `Opts.URL` or appears in the allowlist are honoured; others fall back to the user-info JSON response. With the default (nil) allowlist any non-empty `from` is honoured — see "Allowed redirect hosts" below for the opt-in details.
 - `/avatar/<avatar_id>` - returns the avatar (image). Links to those pictures added into user info automatically, for details see "Avatar proxy"
 - `/auth/<provider>/logout` and `/auth/logout` - invalidate "session" by removing JWT cookie
 - `/auth/list` - gives a json list of active providers
@@ -291,7 +291,7 @@ used as `Sender`.
 
 The API for this provider:
 
- - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. The `from` URL is subject to the same allowlist check described in "Allowed redirect hosts".
+ - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. When host validation is enabled via `Opts.AllowedRedirectHosts`, the `from` URL is subject to the same allowlist check described in "Allowed redirect hosts"; otherwise any non-empty value is honoured.
  - `GET /auth/<name>/login?token=<conf.token>&sess=[1|0]` - authorize with confirmation token
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
