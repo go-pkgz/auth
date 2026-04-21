@@ -46,7 +46,7 @@ type Params struct {
 	// parameter. Setting this field enables host validation: the host of
 	// URL is always implicit, and any other host must appear here. Nil
 	// disables validation and preserves legacy permissive behavior — any
-	// non-empty "from" value is honoured. See isAllowedRedirect for the
+	// non-empty "from" value is honored. See isAllowedRedirect for the
 	// full policy.
 	AllowedRedirectHosts token.AllowedHosts
 

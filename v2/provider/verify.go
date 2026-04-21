@@ -36,7 +36,7 @@ type VerifyHandler struct {
 	// redirect targets. Setting this field enables host validation: the
 	// host of URL is always implicit, and any other host must appear
 	// here. Nil disables validation and preserves legacy permissive
-	// behavior — any non-empty "from" value is honoured.
+	// behavior — any non-empty "from" value is honored.
 	AllowedRedirectHosts token.AllowedHosts
 }
 

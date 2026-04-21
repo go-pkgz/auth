@@ -68,7 +68,7 @@ type Opts struct {
 	// host validation: the host of URL is always implicit, and any other
 	// host must appear here. Nil (the default) disables validation and
 	// preserves legacy permissive behavior — any non-empty "from" value
-	// is honoured. Hardening is opt-in; to restrict to the service host
+	// is honored. Hardening is opt-in; to restrict to the service host
 	// only, pass a getter returning an empty slice.
 	AllowedRedirectHosts token.AllowedHosts
 
