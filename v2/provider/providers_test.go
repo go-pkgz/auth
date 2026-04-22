@@ -176,7 +176,7 @@ func TestProviders_NewPatreon(t *testing.T) {
 			},
 			"id": "0000000"
 		}}`))
-	assert.Equal(t, token.User{Name: "Corgi The Dev", ID: "patreon_da39a3ee5e6b4b0d3255bfef95601890afd80709",
+	assert.Equal(t, token.User{Name: "Corgi The Dev", ID: "patreon_4e079d0555e5a2b460969c789d3ad968a795921f",
 		Picture: "https://c8.patreon.com/2/400/0000000", IP: ""}, user, "got %+v", user)
 
 	udata = UserData{}
@@ -201,12 +201,29 @@ func TestProviders_NewPatreon(t *testing.T) {
 		}}`))
 	assert.Equal(
 		t,
-		token.User{Name: "Corgi The Dev", ID: "patreon_da39a3ee5e6b4b0d3255bfef95601890afd80709",
+		token.User{Name: "Corgi The Dev", ID: "patreon_4e079d0555e5a2b460969c789d3ad968a795921f",
 			Picture: "https://c8.patreon.com/2/400/0000000", IP: "", Attributes: map[string]interface{}{"is_paid_sub": true}},
 		user,
 		"got %+v",
 		user,
 	)
+}
+
+// distinct Patreon accounts must produce distinct local user IDs.
+// the previous implementation hashed the uninitialized userInfo.ID, so every
+// Patreon user collapsed into the same identity.
+func TestProviders_NewPatreon_DistinctIDs(t *testing.T) {
+	r := NewPatreon(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+
+	alice := r.mapUser(UserData{}, []byte(`{"data":{"attributes":{"full_name":"Alice"},"id":"1111111"}}`))
+	bob := r.mapUser(UserData{}, []byte(`{"data":{"attributes":{"full_name":"Bob"},"id":"9999999"}}`))
+
+	assert.NotEqual(t, alice.ID, bob.ID, "different Patreon ids must map to different local user IDs")
+	assert.Equal(t, "patreon_2ea6201a068c5fa0eea5d81a3863321a87f8d533", alice.ID)
+	assert.Equal(t, "patreon_22067cb54a7b24764186f1e48cb4586772733cd7", bob.ID)
+
+	empty := r.mapUser(UserData{}, []byte(`{"data":{"attributes":{"full_name":"Nobody"},"id":""}}`))
+	assert.NotEqual(t, alice.ID, empty.ID, "empty Patreon id must not collide with a real one")
 }
 
 func TestProviders_NewMicrosoft(t *testing.T) {
