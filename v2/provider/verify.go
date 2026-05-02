@@ -19,6 +19,18 @@ import (
 
 // VerifyHandler implements non-oauth2 provider authorizing users with some confirmation.
 // can be email, IM or anything else implementing Sender interface
+//
+// Identity caveat: the local user id returned to the application is derived
+// from the verified address (ProviderName + "_" + HashID(address)). The
+// confirmation round-trip proves current control of the address at login
+// time; it does not guarantee a stable+unique identity over time. The owner
+// of an address can change without the address changing — employer
+// offboarding, lapsed free-mail accounts, and recycled domains all hand
+// control of an address to the next person who claims it. Integrators that
+// need stable identity should map the verified address to a server-side
+// immutable user id at first successful verify and key their records on
+// that id, not on the value returned here. See the "Email-as-identity
+// caveat" section of the README for guidance.
 type VerifyHandler struct {
 	logger.L
 	ProviderName string
