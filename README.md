@@ -296,6 +296,24 @@ The API for this provider:
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
 
+#### Email-as-identity caveat
+
+The verify provider returns a local user id of the form `<provider>_<sha1(address)>`. The confirmation round-trip proves current control of the address at the moment of login; it does **not** prove stable+unique identity over time. The owner of an address can change without the address changing:
+
+- **Employer offboarding** — `alice@example-corp.com` returns to the company when Alice leaves and may be reassigned to a new employee.
+- **Lapsed free-mail accounts** — providers reclaim and recycle inactive mailboxes; the next person who registers the same handle inherits any service that keys on the address.
+- **Domain recycling** — when a personal domain is not renewed and is re-registered, the new owner can receive mail for every local part it ever had.
+
+This is inherent to email-as-identity, not specific to this library — the verify flow has no upstream identifier (such as an OIDC `sub`) it could fall back on. Any application that keys its own records directly on the returned id will treat the new owner of an address as the original user.
+
+Integrators that need stable identity should:
+
+- Map the verified address to a server-side immutable user id (e.g., a `users` table primary key) at first successful verify, and key application records, ACLs, and audit logs on that internal id rather than on the value returned by the provider.
+- Treat a verified address whose internal id is missing as a new account, not as a reactivation of an old one.
+- For higher-stakes systems, consider re-verification policies (re-prove address control after long inactivity) and reuse-detection signals before granting access to historical data.
+
+If your threat model accepts that whoever currently controls an address gets the corresponding account (e.g. low-stakes commenting), no extra handling is required — but the property should be a deliberate choice, not an inherited default.
+
 ### Email
 
 For email notify provider, please use `github.com/go-pkgz/auth/provider/sender` package:
