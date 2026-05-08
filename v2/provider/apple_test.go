@@ -232,6 +232,26 @@ func TestPrepareLoginURLWithCustomResponseMode(t *testing.T) {
 	assert.Equal(t, q.Get("client_id"), ah.conf.ClientID)
 }
 
+func TestAppleVerificationResponseLogSummary(t *testing.T) {
+	resp := appleVerificationResponse{
+		AccessToken:  "secret-access-token-XYZ",
+		TokenType:    "bearer",
+		ExpiresIn:    3600,
+		RefreshToken: "secret-refresh-token-XYZ",
+		IDToken:      "secret-id-token-eyJhbGc",
+	}
+	summary := appleVerificationResponseLogSummary(resp)
+	assert.NotContains(t, summary, "secret-access-token-XYZ", "access token must not appear in log summary")
+	assert.NotContains(t, summary, "secret-refresh-token-XYZ", "refresh token must not appear in log summary")
+	assert.NotContains(t, summary, "secret-id-token-eyJhbGc", "id token must not appear in log summary")
+	assert.Contains(t, summary, "bearer", "token type is safe to log")
+	assert.Contains(t, summary, "3600", "expiry seconds is safe to log")
+	assert.Contains(t, summary, "id_token=present", "presence of id token should be loggable")
+
+	missing := appleVerificationResponseLogSummary(appleVerificationResponse{TokenType: "bearer"})
+	assert.Contains(t, missing, "id_token=missing")
+}
+
 func TestThrowsWhenNotEmptyScopeAndWrongResponseMode(t *testing.T) {
 	ah, err := prepareAppleHandlerTest("query", []string{"email"})
 	assert.NoError(t, err)
