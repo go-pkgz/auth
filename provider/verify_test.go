@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -130,6 +131,132 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	assert.True(t, claims.ExpiresAt > time.Now().Unix())
 	assert.Equal(t, "test123", claims.User.Name)
 	assert.Equal(t, true, claims.SessionOnly)
+}
+
+// TestVerifyHandler_PublicFromFlow_RejectsExternalHost drives the public flow:
+// /login?from=... -> sendConfirmation -> email-link click -> /login?token=...
+// -> validator rejects. Catches regressions where sendConfirmation drops the
+// from query param (the JWT then carries an empty Handshake.From, the
+// validator never fires, and production silently ignores the redirect).
+func TestVerifyHandler_PublicFromFlow_RejectsExternalHost(t *testing.T) {
+	emailer := &mockSender{}
+	jwtSvc := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		TokenDuration:  time.Hour,
+		CookieDuration: time.Hour * 24 * 31,
+	})
+	e := VerifyHandler{
+		ProviderName:         "test",
+		TokenService:         jwtSvc,
+		Issuer:               "iss-test",
+		L:                    logger.Std,
+		Sender:               SenderFunc(emailer.Send),
+		Template:             "token:{{.Token}}",
+		AllowedRedirectHosts: token.AllowedHostsFunc(func() ([]string, error) { return nil, nil }),
+	}
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET",
+		"/login?address=blah@user.com&user=test123&site=remark42&from=https://evil.example.com/phish",
+		http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	tknStr := strings.TrimPrefix(emailer.text, "token:")
+	require.NotEmpty(t, tknStr, "sendConfirmation must produce a token")
+
+	// sanity: the produced token MUST carry from in the handshake claim --
+	// otherwise the validator at the redemption side has nothing to act on
+	// and the redirect would silently no-op in production.
+	parsed, err := jwtSvc.Parse(tknStr)
+	require.NoError(t, err)
+	require.NotNil(t, parsed.Handshake)
+	require.Equal(t, "https://evil.example.com/phish", parsed.Handshake.From,
+		"sendConfirmation must propagate ?from to handshake JWT, otherwise the redirect validator never runs in production")
+
+	// redeem and assert the validator rejects the external host
+	rr2 := httptest.NewRecorder()
+	req2, err := http.NewRequest("GET", "/login?token="+tknStr, http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr2, req2)
+	assert.Equal(t, http.StatusOK, rr2.Code, "must return user JSON, not 307 to evil")
+	assert.Equal(t, "", rr2.Header().Get("Location"))
+	assert.NotContains(t, rr2.Body.String(), "evil.example.com")
+}
+
+func TestVerifyHandler_LoginAcceptConfirmFromRejectsExternalHost(t *testing.T) {
+	jwtSvc := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		TokenDuration:  time.Hour,
+		CookieDuration: time.Hour * 24 * 31,
+	})
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: jwtSvc,
+		Issuer:       "iss-test",
+		L:            logger.Std,
+		// non-nil empty allowlist enables the policy with no extra hosts
+		AllowedRedirectHosts: token.AllowedHostsFunc(func() ([]string, error) { return nil, nil }),
+	}
+
+	confTok, err := jwtSvc.Token(token.Claims{
+		Handshake: &token.Handshake{
+			ID:   "test123::blah@user.com",
+			From: "https://evil.example.com/phish",
+		},
+		StandardClaims: jwt.StandardClaims{
+			Audience:  "remark42",
+			ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		},
+	})
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s", confTok), http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "must return user JSON, not 307 to evil")
+	assert.Equal(t, "", rr.Header().Get("Location"))
+	assert.Contains(t, rr.Body.String(), `"name":"test123"`)
+	assert.NotContains(t, rr.Body.String(), "evil.example.com")
+}
+
+func TestVerifyHandler_LoginAcceptConfirmFromAllowsAllowlistedHost(t *testing.T) {
+	jwtSvc := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		TokenDuration:  time.Hour,
+		CookieDuration: time.Hour * 24 * 31,
+	})
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: jwtSvc,
+		Issuer:       "iss-test",
+		L:            logger.Std,
+		AllowedRedirectHosts: token.AllowedHostsFunc(func() ([]string, error) {
+			return []string{"trusted.example.com"}, nil
+		}),
+	}
+
+	confTok, err := jwtSvc.Token(token.Claims{
+		Handshake: &token.Handshake{
+			ID:   "test123::blah@user.com",
+			From: "https://trusted.example.com/back",
+		},
+		StandardClaims: jwt.StandardClaims{
+			Audience:  "remark42",
+			ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		},
+	})
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", fmt.Sprintf("/login?token=%s", confTok), http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusTemporaryRedirect, rr.Code, "must 307-redirect to trusted host")
+	assert.Equal(t, "https://trusted.example.com/back", rr.Header().Get("Location"))
 }
 
 func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {

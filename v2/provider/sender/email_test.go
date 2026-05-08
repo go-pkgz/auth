@@ -59,7 +59,7 @@ func TestEmail_New(t *testing.T) {
 func TestEmail_SendDoesNotLogBody(t *testing.T) {
 	const secretBody = "Confirmation token: super-secret-magic-link-XYZ"
 	var buf strings.Builder
-	capturing := logger.Func(func(format string, args ...interface{}) {
+	capturing := logger.Func(func(format string, args ...any) {
 		fmt.Fprintf(&buf, format, args...)
 	})
 	p := EmailParams{Host: "127.0.0.2", Port: 25, From: "from@example.com",

@@ -423,3 +423,23 @@ type AudienceFunc func() ([]string, error)
 func (f AudienceFunc) Get() ([]string, error) {
 	return f()
 }
+
+// AllowedHosts defines interface returning list of hostnames allowed in the
+// "from" redirect parameter of OAuth and verify flows. The service's own host
+// (derived from Opts.URL) is always allowed implicitly; this list is for
+// additional hosts.
+type AllowedHosts interface {
+	Get() ([]string, error)
+}
+
+// AllowedHostsFunc adapter to allow ordinary functions to be used as AllowedHosts.
+// Assigning a nil AllowedHostsFunc to an interface field (e.g.
+// Opts.AllowedRedirectHosts) produces a typed-nil interface that would panic
+// when Get is called; the provider-side validator recognizes this form and
+// treats it as "no allowlist configured".
+type AllowedHostsFunc func() ([]string, error)
+
+// Get calls f()
+func (f AllowedHostsFunc) Get() ([]string, error) {
+	return f()
+}

@@ -327,6 +327,37 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 
 }
 
+// TestAppleHandler_LoginHandlerFromRejectsExternalHost is the regression
+// test for the redirect validator on the apple login path: with an allowlist
+// policy enabled, /login?from=https://evil.example.com must NOT 302 to evil.
+func TestAppleHandler_LoginHandlerFromRejectsExternalHost(t *testing.T) {
+	enablePolicy := func(p *Params) {
+		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })
+	}
+	teardown := prepareAppleOauthTest(t, 8987, 8988, nil, enablePolicy)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if !strings.HasPrefix(req.URL.Host, "localhost") {
+				return fmt.Errorf("blocked external redirect to %s", req.URL)
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get("http://localhost:8987/login?site=remark&from=https://evil.example.com/phish")
+	require.NoError(t, err, "no external redirect expected -- fix should reject evil host")
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "evil.example.com")
+}
+
 func TestAppleHandler_LogoutHandler(t *testing.T) {
 
 	teardown := prepareAppleOauthTest(t, 8691, 8692, nil)
@@ -457,7 +488,7 @@ func prepareAppleHandlerTest(responseMode string, scopes []string) (*AppleHandle
 	return NewApple(p, aCfg, cl)
 }
 
-func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *string) func() {
+func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *string, paramOpts ...func(*Params)) func() {
 	signKey, testJWK := createTestSignKeyPairs(t)
 	provider, err := prepareAppleHandlerTest("", []string{})
 	assert.NoError(t, err)
@@ -504,6 +535,9 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
 		Issuer: "go-pkgz/auth", L: logger.Std}
+	for _, opt := range paramOpts {
+		opt(&params)
+	}
 	provider.Params = params
 
 	svc := Service{Provider: provider}

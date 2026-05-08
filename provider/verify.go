@@ -40,6 +40,16 @@ type VerifyHandler struct {
 	Sender       Sender
 	Template     string
 	UseGravatar  bool
+
+	// URL is the service's own root URL; its host is always permitted as
+	// a "from" redirect target. Optional but recommended.
+	URL string
+	// AllowedRedirectHosts lists additional hostnames permitted as "from"
+	// redirect targets. Setting this field enables host validation: the
+	// host of URL is always implicit, and any other host must appear
+	// here. Nil disables validation and preserves legacy permissive
+	// behavior — any non-empty "from" value is honored.
+	AllowedRedirectHosts token.AllowedHosts
 }
 
 // Sender defines interface to send emails
@@ -139,6 +149,11 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if confClaims.Handshake != nil && confClaims.Handshake.From != "" {
+		if !isAllowedRedirect(confClaims.Handshake.From, e.URL, e.AllowedRedirectHosts) {
+			e.Logf("[WARN] rejected redirect to disallowed host: %s", redirectHostForLog(confClaims.Handshake.From))
+			rest.RenderJSON(w, claims.User)
+			return
+		}
 		http.Redirect(w, r, confClaims.Handshake.From, http.StatusTemporaryRedirect)
 		return
 	}
@@ -159,6 +174,13 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		Handshake: &token.Handshake{
 			State: "",
 			ID:    user + "::" + address,
+			// without copying "from" here the redirect validator at the
+			// other end has nothing to validate or to redirect to. The
+			// docs (and #275) advertise ?from=<url> on the verify login
+			// path, but the original sendConfirmation never put it on
+			// the handshake JWT, so production verify flows could never
+			// honor from at all.
+			From: r.URL.Query().Get("from"),
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
 		StandardClaims: jwt.StandardClaims{
