@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -178,6 +180,187 @@ func TestVerifyHandler_PublicFromFlow_RejectsExternalHost(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr2.Code, "must return user JSON, not 307 to evil")
 	assert.Equal(t, "", rr2.Header().Get("Location"))
 	assert.NotContains(t, rr2.Body.String(), "evil.example.com")
+}
+
+func TestInMemoryVerifStore(t *testing.T) {
+	mark := func(s VerifConfirmationStore, k string, ttl time.Duration) bool {
+		used, err := s.MarkUsed(k, ttl)
+		require.NoError(t, err)
+		return used
+	}
+
+	t.Run("first MarkUsed returns false, second returns true", func(t *testing.T) {
+		s := NewInMemoryVerifStore()
+		assert.False(t, mark(s, "k1", time.Hour), "first call must mark and return not-used")
+		assert.True(t, mark(s, "k1", time.Hour), "second call must report already-used")
+	})
+	t.Run("expired entry is not considered used", func(t *testing.T) {
+		s := NewInMemoryVerifStore()
+		assert.False(t, mark(s, "k1", time.Nanosecond))
+		time.Sleep(2 * time.Millisecond)
+		assert.False(t, mark(s, "k1", time.Hour), "expired entry should be reusable")
+	})
+	t.Run("distinct keys are independent", func(t *testing.T) {
+		s := NewInMemoryVerifStore()
+		assert.False(t, mark(s, "k1", time.Hour))
+		assert.False(t, mark(s, "k2", time.Hour))
+		assert.True(t, mark(s, "k1", time.Hour))
+		assert.True(t, mark(s, "k2", time.Hour))
+	})
+	t.Run("concurrent same-key redemption: exactly one succeeds", func(t *testing.T) {
+		s := NewInMemoryVerifStore()
+		const goroutines = 50
+		var wg sync.WaitGroup
+		successes := int32(0)
+		errs := int32(0)
+		wg.Add(goroutines)
+		for i := 0; i < goroutines; i++ {
+			go func() {
+				defer wg.Done()
+				used, err := s.MarkUsed("hot-key", time.Hour)
+				if err != nil {
+					atomic.AddInt32(&errs, 1)
+					return
+				}
+				if !used {
+					atomic.AddInt32(&successes, 1)
+				}
+			}()
+		}
+		wg.Wait()
+		assert.EqualValues(t, 0, errs)
+		assert.EqualValues(t, 1, successes, "exactly one redemption must observe alreadyUsed=false")
+	})
+	t.Run("amortized sweep evicts expired entries", func(t *testing.T) {
+		orig := inMemoryVerifStoreSweepEvery
+		inMemoryVerifStoreSweepEvery = 4
+		defer func() { inMemoryVerifStoreSweepEvery = orig }()
+
+		s := NewInMemoryVerifStore().(*inMemoryVerifStore)
+		// 3 inserts with nanosecond TTL — quickly expire, no sweep yet
+		// (insertCount=3 < 4)
+		for i := 0; i < 3; i++ {
+			used, err := s.MarkUsed(fmt.Sprintf("expired-%d", i), time.Nanosecond)
+			require.NoError(t, err)
+			require.False(t, used)
+		}
+		time.Sleep(5 * time.Millisecond) // let them expire
+		s.mu.Lock()
+		require.Equal(t, 3, len(s.used), "sanity: pre-sweep map holds the 3 expired entries")
+		s.mu.Unlock()
+
+		// 4th insert hits the sweep threshold, should evict the 3 expired
+		_, err := s.MarkUsed("fresh", time.Hour)
+		require.NoError(t, err)
+
+		s.mu.Lock()
+		assert.Equal(t, 1, len(s.used), "sweep evicted the expired entries; only fresh remains")
+		s.mu.Unlock()
+	})
+}
+
+func TestVerifConfirmationStoreFunc(t *testing.T) {
+	calls := 0
+	var lastKey string
+	var lastTTL time.Duration
+	var s VerifConfirmationStore = VerifConfirmationStoreFunc(func(key string, ttl time.Duration) (bool, error) {
+		calls++
+		lastKey, lastTTL = key, ttl
+		return calls > 1, nil
+	})
+
+	used, err := s.MarkUsed("k1", 5*time.Minute)
+	require.NoError(t, err)
+	assert.False(t, used)
+	assert.Equal(t, "k1", lastKey)
+	assert.Equal(t, 5*time.Minute, lastTTL)
+
+	used, err = s.MarkUsed("k1", 5*time.Minute)
+	require.NoError(t, err)
+	assert.True(t, used)
+	assert.Equal(t, 2, calls)
+}
+
+func TestVerifyHandler_LoginAcceptConfirm_TypedNilStoreFuncDoesNotPanic(t *testing.T) {
+	// Opts.VerifConfirmationStore can be set to a typed-nil
+	// VerifConfirmationStoreFunc, which is a non-nil interface wrapping a
+	// nil func. The handler must treat that as "no store configured" and
+	// fall back to legacy replayable behavior, not panic.
+	var nilFn VerifConfirmationStoreFunc
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:            "iss-test",
+		L:                 logger.Std,
+		ConfirmationStore: nilFn,
+	}
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?token="+testConfirmedToken, http.NoBody)
+	require.NoError(t, err)
+	require.NotPanics(t, func() {
+		http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+	})
+	assert.Equal(t, 200, rr.Code, "typed-nil store func must behave like no store")
+}
+
+func TestVerifyHandler_LoginAcceptConfirm_FailClosedOnStoreError(t *testing.T) {
+	// MarkUsed returning a non-nil err is the security-critical fail-closed
+	// branch: a backend (e.g. Redis) outage MUST reject the redemption to
+	// avoid replay during the outage window.
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer: "iss-test",
+		L:      logger.Std,
+		ConfirmationStore: VerifConfirmationStoreFunc(func(string, time.Duration) (bool, error) {
+			return false, fmt.Errorf("redis down")
+		}),
+	}
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?token="+testConfirmedToken, http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+	assert.Equal(t, 403, rr.Code, "non-nil markErr must fail closed")
+	assert.Contains(t, rr.Body.String(), "store unavailable")
+}
+
+func TestVerifyHandler_LoginAcceptConfirm_RejectsReplay(t *testing.T) {
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:            "iss-test",
+		L:                 logger.Std,
+		ConfirmationStore: NewInMemoryVerifStore(),
+	}
+
+	handler := http.HandlerFunc(e.LoginHandler)
+
+	// first use: success
+	rr1 := httptest.NewRecorder()
+	req1, err := http.NewRequest("GET", "/login?token="+testConfirmedToken, http.NoBody)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr1, req1)
+	require.Equal(t, 200, rr1.Code, "first consumption must succeed")
+
+	// second use: must be rejected
+	rr2 := httptest.NewRecorder()
+	req2, err := http.NewRequest("GET", "/login?token="+testConfirmedToken, http.NoBody)
+	require.NoError(t, err)
+	handler.ServeHTTP(rr2, req2)
+	assert.Equal(t, 403, rr2.Code, "replay must be rejected")
+	assert.Contains(t, rr2.Body.String(), "already")
 }
 
 func TestVerifyHandler_LoginAcceptConfirmFromRejectsExternalHost(t *testing.T) {

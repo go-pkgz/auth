@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-pkgz/rest"
@@ -26,14 +27,16 @@ type Client struct {
 
 // Service provides higher level wrapper allowing to construct everything and get back token middleware
 type Service struct {
-	logger         logger.L
-	opts           Opts
-	jwtService     *token.Service
-	providers      []provider.Service
-	authMiddleware middleware.Authenticator
-	avatarProxy    *avatar.Proxy
-	issuer         string
-	useGravatar    bool
+	logger             logger.L
+	opts               Opts
+	jwtService         *token.Service
+	providers          []provider.Service
+	authMiddleware     middleware.Authenticator
+	avatarProxy        *avatar.Proxy
+	issuer             string
+	useGravatar        bool
+	verifConfirmStore  provider.VerifConfirmationStore
+	verifConfirmStoreOnce sync.Once
 }
 
 // Opts is a full set of all parameters to initialize Service
@@ -83,6 +86,15 @@ type Opts struct {
 	AudSecrets       bool                     // allow multiple secrets (secret per aud)
 	Logger           logger.L                 // logger interface, default is no logging at all
 	RefreshCache     middleware.RefreshCache  // optional cache to keep refreshed tokens
+
+	// VerifConfirmationStore enforces one-shot consumption of email
+	// confirmation tokens issued by the verify provider. The default
+	// (nil) installs an in-memory store on first use of AddVerifProvider —
+	// fine for single-instance deployments. Multi-instance deployments
+	// MUST supply a shared backend (e.g. Redis) implementing
+	// provider.VerifConfirmationStore, otherwise replay rejection works
+	// only on the instance that consumed the token.
+	VerifConfirmationStore provider.VerifConfirmationStore
 }
 
 // NewService initializes everything
@@ -434,6 +446,13 @@ func (s *Service) AddDirectProviderWithUserIDFunc(name string, credChecker provi
 
 // AddVerifProvider adds provider user's verification sent by sender
 func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender) {
+	s.verifConfirmStoreOnce.Do(func() {
+		if s.opts.VerifConfirmationStore != nil {
+			s.verifConfirmStore = s.opts.VerifConfirmationStore
+			return
+		}
+		s.verifConfirmStore = provider.NewInMemoryVerifStore()
+	})
 	dh := provider.VerifyHandler{
 		L:                    s.logger,
 		ProviderName:         name,
@@ -445,6 +464,7 @@ func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender)
 		UseGravatar:          s.useGravatar,
 		URL:                  s.opts.URL,
 		AllowedRedirectHosts: s.opts.AllowedRedirectHosts,
+		ConfirmationStore:    s.verifConfirmStore,
 	}
 	s.addProvider(dh)
 }

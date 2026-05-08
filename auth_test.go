@@ -117,6 +117,39 @@ func TestService_AddMicrosoftProvider(t *testing.T) {
 	})
 }
 
+func TestService_AddVerifProvider_UsesCustomConfirmationStore(t *testing.T) {
+	custom := &countingVerifStore{}
+	svc := NewService(Opts{
+		SecretReader:           token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:                    "http://127.0.0.1",
+		Logger:                 logger.Std,
+		VerifConfirmationStore: custom,
+	})
+	svc.AddVerifProvider("email", "{{.Token}}", provider.SenderFunc(func(string, string) error { return nil }))
+	assert.Same(t, custom, svc.verifConfirmStore, "custom store from Opts must be used, not the in-memory default")
+}
+
+func TestService_AddVerifProvider_DefaultsToInMemory(t *testing.T) {
+	svc := NewService(Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:          "http://127.0.0.1",
+		Logger:       logger.Std,
+	})
+	svc.AddVerifProvider("email", "{{.Token}}", provider.SenderFunc(func(string, string) error { return nil }))
+	require.NotNil(t, svc.verifConfirmStore, "default store must be installed when Opts.VerifConfirmationStore is nil")
+	// second call must reuse the same store (sync.Once guards against re-init)
+	first := svc.verifConfirmStore
+	svc.AddVerifProvider("email2", "{{.Token}}", provider.SenderFunc(func(string, string) error { return nil }))
+	assert.Same(t, first, svc.verifConfirmStore, "subsequent AddVerifProvider calls must reuse the same store")
+}
+
+type countingVerifStore struct{ calls int }
+
+func (s *countingVerifStore) MarkUsed(string, time.Duration) (bool, error) {
+	s.calls++
+	return false, nil
+}
+
 func TestService_AddAppleProvider(t *testing.T) {
 
 	options := Opts{

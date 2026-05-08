@@ -296,6 +296,25 @@ The API for this provider:
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
 
+#### Confirmation token replay protection
+
+Confirmation tokens are one-shot: a token redeemed once cannot be redeemed again within its TTL. This stops anyone with read access to the email link (forwarded mail, mail-gateway logs, mailbox archive) from independently consuming it after the user has.
+
+By default the library installs an in-memory store on first call to `AddVerifProvider`. This is correct for **single-instance** deployments.
+
+**Multi-instance deployments behind a load balancer MUST supply a shared backend.** With the default in-memory store, replay protection works only on the instance that originally consumed the token; an attacker who hits any other instance can still replay within the TTL. **This is silent: the request succeeds and the auth flow completes normally, with no log indicating the protection was bypassed.** Plug in Redis or any shared KV by setting `Opts.VerifConfirmationStore` to a value implementing `provider.VerifConfirmationStore`:
+
+```go
+type VerifConfirmationStore interface {
+    // MarkUsed records key as consumed and returns alreadyUsed=true if it was
+    // already recorded. err signals a backend failure -- callers fail-closed
+    // (reject the redemption) on non-nil err to avoid replay during outages.
+    MarkUsed(key string, ttl time.Duration) (alreadyUsed bool, err error)
+}
+```
+
+The store key is the SHA-256 of the raw confirmation token, so existing tokens issued before this protection landed are de-dup'd correctly without changing the wire format. Consumption is final: a transient downstream failure after the mark burns the token; the user must request a new confirmation email rather than retry the same link.
+
 #### Email-as-identity caveat
 
 The verify provider returns a local user id of the form `<provider>_<sha1(address)>`. The confirmation round-trip proves current control of the address at the moment of login; it does **not** prove stable+unique identity over time. The owner of an address can change without the address changing:
