@@ -331,7 +331,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, err, "exchange failed")
 		return
 	}
-	ah.Logf("[DEBUG] response data %+v", resp)
+	ah.Logf("[DEBUG] apple exchange response: %s", appleVerificationResponseLogSummary(resp))
 	if resp.Error != "" {
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("fetch IDtoken response error: %s", resp.Error))
 		return
@@ -548,4 +548,23 @@ func (ah AppleHandler) makeRedirURL(path string) string {
 	newPath := strings.Join(elems[:len(elems)-1], "/")
 
 	return strings.TrimRight(ah.URL, "/") + strings.TrimSuffix(newPath, "/") + urlCallbackSuffix
+}
+
+// appleVerificationResponseLogSummary formats appleVerificationResponse for safe
+// logging. The struct's AccessToken, RefreshToken and IDToken fields are
+// credentials and must never appear verbatim in logs that may be shipped to
+// centralized logging or third-party observability systems; this helper logs
+// only their presence (present|missing), the non-secret token type and
+// expiry, plus any provider-side error string.
+func appleVerificationResponseLogSummary(r appleVerificationResponse) string {
+	return fmt.Sprintf("type=%s expires_in=%d access_token=%s refresh_token=%s id_token=%s error=%q",
+		r.TokenType, r.ExpiresIn,
+		presence(r.AccessToken), presence(r.RefreshToken), presence(r.IDToken), r.Error)
+}
+
+func presence(s string) string {
+	if s == "" {
+		return "missing"
+	}
+	return "present"
 }
