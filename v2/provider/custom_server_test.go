@@ -26,6 +26,38 @@ import (
 	"github.com/go-pkgz/auth/v2/token"
 )
 
+// TestCustomServer_Run_BadURLDoesNotDeadlockShutdown drives the early-return
+// branches of CustomServer.Run (URL parse failure and host:port split failure)
+// and asserts that Shutdown() can still acquire the mutex afterwards. Before
+// the fix, those branches returned with c.lock held; Shutdown would then
+// block on the inherited mutex and this test would time out.
+func TestCustomServer_Run_BadURLDoesNotDeadlockShutdown(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+	}{
+		{name: "unparseable URL", url: "://broken"},
+		{name: "URL without port", url: "http://localhost"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &CustomServer{L: logger.NoOp, URL: tc.url}
+			c.Run(context.Background())
+
+			done := make(chan struct{})
+			go func() {
+				c.Shutdown()
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("Shutdown blocked -- Run left c.lock held on error path")
+			}
+		})
+	}
+}
+
 func TestCustomProvider(t *testing.T) {
 	srv := initGoauth2Srv(t)
 
