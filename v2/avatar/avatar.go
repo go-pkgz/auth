@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,12 @@ import (
 
 // http.sniffLen is 512 bytes which is how much we need to read to detect content type
 const sniffLen = 512
+
+// maxAvatarFetchSize bounds the bytes read from a remote avatar URL. 10 MiB is
+// generous for any reasonable avatar (Telegram caps photo at 5 MiB; Gravatar is
+// much smaller); the cap protects Proxy.Put against an upstream sending an
+// unbounded body that would exhaust process memory inside resize.
+const maxAvatarFetchSize = 10 << 20
 
 // Proxy provides http handler for avatars from avatar.Store
 // On user login token will call Put and it will retrieve and save picture locally.
@@ -61,7 +68,7 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 
 	body, err := p.load(u.Picture, client)
 	if err != nil {
-		p.Logf("[DEBUG] failed to fetch avatar from the orig %s, %v", u.Picture, err)
+		p.Logf("[DEBUG] failed to fetch avatar from the orig %s, %v", redactAvatarURL(u.Picture), err)
 		return genIdenticon(u.ID)
 	}
 
@@ -76,8 +83,34 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 		return "", err
 	}
 
-	p.Logf("[DEBUG] saved avatar from %s to %s, user %q", u.Picture, avatarID, u.Name)
+	p.Logf("[DEBUG] saved avatar from %s to %s, user %q", redactAvatarURL(u.Picture), avatarID, u.Name)
 	return p.URL + p.RoutePath + "/" + avatarID, nil
+}
+
+// PutContent stores already-fetched avatar bytes via the underlying Store and returns
+// the proxied URL. It exists so providers that authenticate with credentials embedded
+// in the upstream URL (e.g. Telegram bot file API: /file/bot{TOKEN}/...) can fetch the
+// content themselves and avoid exposing the credential to Put's URL-fetching path —
+// where it would land in u.Picture, debug logs, and the user JSON returned to clients.
+func (p *Proxy) PutContent(userID string, content io.Reader) (avatarURL string, err error) {
+	avatarID, err := p.Store.Put(userID, p.resize(content, p.ResizeLimit))
+	if err != nil {
+		return "", err
+	}
+	p.Logf("[DEBUG] saved avatar bytes to %s, user %q", avatarID, userID)
+	return p.URL + p.RoutePath + "/" + avatarID, nil
+}
+
+// redactAvatarURL returns the hostname only, dropping scheme, userinfo, path,
+// query and fragment. This is enough to keep avatar URLs identifiable in logs
+// while ensuring credentials carried in any of those parts (e.g. Telegram bot
+// tokens, time-limited signed-URL tokens, basic-auth in userinfo) don't reach
+// log destinations. On parse failure a sentinel is returned.
+func redactAvatarURL(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return "<unparseable>"
 }
 
 // load avatar from remote url and return body. Caller has to close the reader
@@ -98,7 +131,17 @@ func (p *Proxy) load(url string, client *http.Client) (rc io.ReadCloser, err err
 		return nil, fmt.Errorf("failed to get avatar from the orig, status %s", resp.Status)
 	}
 
-	return resp.Body, nil
+	// buffer the body up to the cap to fail fast on oversized inputs.
+	// Reading +1 byte beyond the cap distinguishes "exactly cap" from "too big".
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAvatarFetchSize+1))
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read avatar body: %w", err)
+	}
+	if int64(len(body)) > maxAvatarFetchSize {
+		return nil, fmt.Errorf("avatar body exceeds %d bytes", maxAvatarFetchSize)
+	}
+	return io.NopCloser(bytes.NewReader(body)), nil
 }
 
 // Handler returns token routes for given provider

@@ -377,6 +377,29 @@ go func() {
 service.AddCustomHandler(&telegram)
 ```
 
+#### Avatar handling
+
+Telegram's file API requires the bot token in the URL path
+(`https://api.telegram.org/file/bot<TOKEN>/...`), so the URL is a bearer
+credential and must never reach the JWT, the user JSON, or any debug log.
+The provider fetches the avatar bytes server-side and stores them via
+`AvatarSaver`, returning a clean local proxy URL.
+
+This requires `AvatarSaver` to support direct content saving.
+`avatar.Proxy` (the default returned by `service.AvatarProxy()`) does -- no
+extra setup needed. **Custom `AvatarSaver` implementations** that don't
+implement `PutContent(userID string, content io.Reader) (string, error)`
+will see an empty `User.Picture` for Telegram logins, and the avatar proxy
+will fall back to identicon. To preserve avatars with a custom saver,
+implement that method alongside `Put`.
+
+> **Behaviour change for custom `AvatarSaver`:** before this change, custom
+> savers received the raw Telegram file URL (which included the bot token)
+> via `Put`. After this change they no longer do, because that URL is a
+> bearer credential. Implementations that relied on receiving and refetching
+> that URL must now implement `PutContent` to keep saving Telegram avatars,
+> or accept that Telegram users get identicons.
+
 Now all your users have to do is click one of the following links and press **start**
 `tg://resolve?domain=<botname>&start=<token>` or `https://t.me/<botname>/?start=<token>`
 

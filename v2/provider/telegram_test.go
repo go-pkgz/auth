@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +14,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/go-pkgz/auth/v2/avatar"
+	"github.com/go-pkgz/auth/v2/logger"
 	authtoken "github.com/go-pkgz/auth/v2/token"
 )
 
@@ -121,15 +125,6 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 
 			return &upd, nil
 		},
-		AvatarFunc: func(ctx context.Context, userID int) (string, error) {
-			select {
-			case <-ctx.Done():
-				return "", ctx.Err()
-			default:
-			}
-			assert.Equal(t, 313131313, userID)
-			return "http://t.me/avatar.png", nil
-		},
 		SendFunc: func(ctx context.Context, id int, text string) error {
 			select {
 			case <-ctx.Done():
@@ -141,6 +136,20 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 			return nil
 		},
 		BotInfoFunc: botInfoFunc,
+	}
+
+	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("png-bytes"))
+	}))
+	defer avatarSrv.Close()
+	m.AvatarFunc = func(ctx context.Context, userID int) (string, error) {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+		assert.Equal(t, 313131313, userID)
+		return avatarSrv.URL + "/file/botSECRET-TOKEN/photo.jpg", nil
 	}
 
 	tg, cleanup := setupHandler(t, m)
@@ -193,6 +202,287 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code, "request should get revoked")
 	assert.Equal(t, `{"error":"request is not found"}`+"\n", w.Body.String())
+}
+
+func TestRedactBotURLInErr(t *testing.T) {
+	tests := []struct {
+		name string
+		in   error
+		want string
+	}{
+		{name: "nil error", in: nil, want: ""},
+		{name: "error without bot pattern is unchanged", in: fmt.Errorf("plain error"), want: "plain error"},
+		{name: "bot token in URL is redacted", in: fmt.Errorf(`Get "https://api.telegram.org/file/bot1234567:SECRET-TOK_EN-x/photo.jpg": dial tcp`),
+			want: `Get "https://api.telegram.org/file/bot<redacted>/photo.jpg": dial tcp`},
+		{name: "wrapped error with bot pattern is redacted",
+			in:   fmt.Errorf("wrap: %w", fmt.Errorf(`Get "https://api.telegram.org/bot1234:abc-def_99/getMe": context deadline`)),
+			want: `wrap: Get "https://api.telegram.org/bot<redacted>/getMe": context deadline`},
+		{name: "non-path bot identifiers (botFather, botanic) are not over-redacted",
+			in:   fmt.Errorf("user @botFather mentioned in chat about botanic gardens"),
+			want: `user @botFather mentioned in chat about botanic gardens`},
+		{name: "bot id without trailing slash is not redacted (anchored regex requires path boundaries)",
+			in:   fmt.Errorf(`reference to bot1234:abc-def_99 in narrative text`),
+			want: `reference to bot1234:abc-def_99 in narrative text`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := redactBotURLInErr(tt.in)
+			if tt.in == nil {
+				assert.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got)
+			assert.Equal(t, tt.want, got.Error())
+		})
+	}
+}
+
+func TestSaveTelegramAvatar_TransportErrorDoesNotLeakBotToken(t *testing.T) {
+	const botToken = "1234567:SECRET-bot-token-do-not-log"
+	var logBuf strings.Builder
+	captureLog := logger.Func(func(format string, args ...any) {
+		fmt.Fprintf(&logBuf, format, args...)
+	})
+
+	th := &TelegramHandler{
+		AvatarSaver: &mockAvatarSaver{},
+		L:           captureLog,
+	}
+	got := th.saveTelegramAvatar(context.Background(), "user1",
+		"https://api.telegram.invalid/file/bot"+botToken+"/photo.jpg")
+	assert.Equal(t, "", got)
+	assert.NotContains(t, logBuf.String(), botToken,
+		"bot token must not appear in log even when http.Client.Do returns an error containing the URL")
+}
+
+func TestSaveTelegramAvatar_BotTokenNeverLogged(t *testing.T) {
+	const botToken = "1234567:SECRET-bot-token-do-not-log"
+	var logBuf strings.Builder
+	captureLog := logger.Func(func(format string, args ...any) {
+		fmt.Fprintf(&logBuf, format, args...)
+	})
+
+	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("png"))
+	}))
+	defer avatarSrv.Close()
+
+	t.Run("returns proxy URL via PutContent and does not leak bot token", func(t *testing.T) {
+		logBuf.Reset()
+		th := &TelegramHandler{
+			AvatarSaver: &mockAvatarSaver{},
+			L:           captureLog,
+		}
+		got := th.saveTelegramAvatar(context.Background(), "user1",
+			avatarSrv.URL+"/file/bot"+botToken+"/photo.jpg")
+		assert.Equal(t, "http://example.com/ava12345.png", got)
+		assert.NotContains(t, logBuf.String(), botToken, "bot token must never appear in logs")
+	})
+
+	t.Run("returns empty when saver lacks PutContent and warns operator", func(t *testing.T) {
+		logBuf.Reset()
+		th := &TelegramHandler{
+			AvatarSaver: legacyAvatarSaver{},
+			L:           captureLog,
+		}
+		got := th.saveTelegramAvatar(context.Background(), "user1",
+			avatarSrv.URL+"/file/bot"+botToken+"/photo.jpg")
+		assert.Equal(t, "", got, "Picture must be empty rather than carry bot URL")
+		assert.NotContains(t, logBuf.String(), botToken, "bot token must never appear in logs")
+		assert.Contains(t, logBuf.String(), "telegram avatar dropped")
+	})
+
+	t.Run("empty avatar URL returns empty without fetch attempt", func(t *testing.T) {
+		logBuf.Reset()
+		th := &TelegramHandler{AvatarSaver: &mockAvatarSaver{}, L: captureLog}
+		got := th.saveTelegramAvatar(context.Background(), "user1", "")
+		assert.Equal(t, "", got)
+	})
+
+	t.Run("non-200 status from Telegram file API returns empty", func(t *testing.T) {
+		logBuf.Reset()
+		failSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "expired file_id", http.StatusNotFound)
+		}))
+		defer failSrv.Close()
+
+		th := &TelegramHandler{AvatarSaver: &mockAvatarSaver{}, L: captureLog}
+		got := th.saveTelegramAvatar(context.Background(), "user1",
+			failSrv.URL+"/file/bot"+botToken+"/photo.jpg")
+		assert.Equal(t, "", got)
+		assert.Contains(t, logBuf.String(), "telegram avatar fetch returned status 404")
+		assert.NotContains(t, logBuf.String(), botToken, "bot token must never appear in logs")
+	})
+
+	t.Run("PutContent error returns empty and warns operator", func(t *testing.T) {
+		logBuf.Reset()
+		th := &TelegramHandler{
+			AvatarSaver: &failingAvatarSaver{},
+			L:           captureLog,
+		}
+		got := th.saveTelegramAvatar(context.Background(), "user1",
+			avatarSrv.URL+"/file/bot"+botToken+"/photo.jpg")
+		assert.Equal(t, "", got)
+		assert.Contains(t, logBuf.String(), "telegram avatar save failed")
+		assert.NotContains(t, logBuf.String(), botToken, "bot token must never appear in logs")
+	})
+
+	t.Run("oversized body is rejected and warns operator", func(t *testing.T) {
+		logBuf.Reset()
+		bigSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			buf := make([]byte, 64<<10)
+			for i := 0; i < (maxTelegramAvatarSize/len(buf))+32; i++ {
+				if _, err := w.Write(buf); err != nil {
+					return
+				}
+			}
+		}))
+		defer bigSrv.Close()
+
+		th := &TelegramHandler{AvatarSaver: &mockAvatarSaver{}, L: captureLog}
+		got := th.saveTelegramAvatar(context.Background(), "user1",
+			bigSrv.URL+"/file/bot"+botToken+"/photo.jpg")
+		assert.Equal(t, "", got)
+		assert.Contains(t, logBuf.String(), "telegram avatar dropped: body exceeds")
+		assert.NotContains(t, logBuf.String(), botToken, "bot token must never appear in logs")
+	})
+}
+
+type legacyAvatarSaver struct{}
+
+func (legacyAvatarSaver) Put(authtoken.User, *http.Client) (string, error) { return "", nil }
+
+// failingAvatarSaver implements both Put and PutContent but its PutContent
+// returns an error -- exercises the saver-side failure branch in
+// saveTelegramAvatar without going through a real avatar.Proxy.
+type failingAvatarSaver struct{}
+
+func (failingAvatarSaver) Put(authtoken.User, *http.Client) (string, error) { return "", nil }
+func (failingAvatarSaver) PutContent(string, io.Reader) (string, error)     { return "", fmt.Errorf("disk full") }
+
+func TestSaveTelegramAvatar_TypedNilAvatarSaverDoesNotPanic(t *testing.T) {
+	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("png-bytes"))
+	}))
+	defer avatarSrv.Close()
+
+	var nilProxy *avatar.Proxy
+	th := &TelegramHandler{AvatarSaver: nilProxy, L: logger.NoOp}
+	got := th.saveTelegramAvatar(context.Background(), "user1", avatarSrv.URL+"/file/botSECRET/photo.jpg")
+	assert.Equal(t, "", got, "typed-nil AvatarSaver must short-circuit before fetch + PutContent")
+}
+
+func TestTelegramLoginHandler_DoesNotOverwriteSavedAvatar(t *testing.T) {
+	dir := t.TempDir()
+	store := avatar.NewLocalFS(dir)
+	proxy := &avatar.Proxy{
+		Store:     store,
+		URL:       "http://127.0.0.1:1",
+		RoutePath: "/avatar",
+		L:         logger.NoOp,
+	}
+
+	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("png-bytes"))
+	}))
+	defer avatarSrv.Close()
+
+	const tok = "registered-token"
+	th := &TelegramHandler{
+		ProviderName: "telegram",
+		Telegram: &TelegramAPIMock{
+			AvatarFunc: func(context.Context, int) (string, error) {
+				return avatarSrv.URL + "/file/botSECRET/photo.jpg", nil
+			},
+			SendFunc:    func(context.Context, int, string) error { return nil },
+			BotInfoFunc: botInfoFunc,
+		},
+		AvatarSaver: proxy,
+		L:           logger.NoOp,
+		SuccessMsg:  "ok",
+	}
+	th.requests.data = map[string]tgAuthRequest{
+		tok: {expires: time.Now().Add(time.Hour)},
+	}
+
+	updates := &telegramUpdate{}
+	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(getUpdatesResp, tok)), updates))
+	th.processUpdates(context.Background(), updates)
+
+	got := th.requests.data[tok]
+	require.NotNil(t, got.user, "request must be confirmed")
+	pictureFromUpdate := got.user.Picture
+	require.NotEmpty(t, pictureFromUpdate, "telegram path must populate Picture via PutContent")
+	require.True(t, strings.HasPrefix(pictureFromUpdate, "http://127.0.0.1:1/avatar/"),
+		"Picture should point at proxy URL, got: %s", pictureFromUpdate)
+
+	jwtSvc := authtoken.NewService(authtoken.Opts{
+		SecretReader: authtoken.SecretFunc(func(string) (string, error) { return "secret", nil }),
+	})
+	th.TokenService = jwtSvc
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?token="+tok, http.NoBody)
+	require.NoError(t, err)
+	th.LoginHandler(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), pictureFromUpdate, "Picture must round-trip unchanged from saveTelegramAvatar")
+}
+
+// TestTelegramProcessUpdates_BotTokenNeverInUserPicture is the regression-style
+// property test the user asked for: drives the full update-processing flow with
+// a TelegramAPI mock that hands back a URL containing a bot-token-like marker,
+// then asserts (a) the marker never lands in authRequest.user.Picture and
+// (b) the marker never appears in any captured log line.
+func TestTelegramProcessUpdates_BotTokenNeverInUserPicture(t *testing.T) {
+	const botToken = "secret-bot-token-marker"
+	var logBuf strings.Builder
+	var logMu sync.Mutex
+	captureLog := logger.Func(func(format string, args ...any) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		fmt.Fprintf(&logBuf, format+"\n", args...)
+	})
+
+	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("png"))
+	}))
+	defer avatarSrv.Close()
+
+	m := &TelegramAPIMock{
+		AvatarFunc: func(context.Context, int) (string, error) {
+			return avatarSrv.URL + "/file/bot" + botToken + "/photo.jpg", nil
+		},
+		SendFunc:    func(context.Context, int, string) error { return nil },
+		BotInfoFunc: botInfoFunc,
+	}
+
+	const tok = "registered-token"
+	th := &TelegramHandler{
+		ProviderName: "telegram",
+		Telegram:     m,
+		AvatarSaver:  &mockAvatarSaver{},
+		L:            captureLog,
+		SuccessMsg:   "ok",
+	}
+	th.requests.data = map[string]tgAuthRequest{
+		tok: {expires: time.Now().Add(time.Hour)},
+	}
+
+	updates := &telegramUpdate{}
+	err := json.Unmarshal(fmt.Appendf(nil, getUpdatesResp, tok), updates)
+	require.NoError(t, err)
+
+	th.processUpdates(context.Background(), updates)
+
+	got := th.requests.data[tok]
+	require.NotNil(t, got.user, "auth request should have been confirmed")
+	assert.NotContains(t, got.user.Picture, botToken, "User.Picture must not carry the bot token")
+
+	logMu.Lock()
+	logged := logBuf.String()
+	logMu.Unlock()
+	assert.NotContains(t, logged, botToken, "no log line must contain the bot token")
 }
 
 func TestTelegramLogout(t *testing.T) {
