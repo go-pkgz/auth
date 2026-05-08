@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -354,6 +355,12 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err = validateAppleIDClaims(tokenClaims, ah.conf.ClientID); err != nil {
+		ah.Logf("[WARN] apple id_token rejected: %s", err.Error())
+		rest.SendErrorJSON(w, r, ah.L, http.StatusForbidden, nil, "invalid id_token")
+		return
+	}
+
 	u := ah.mapUser(tokenClaims)
 
 	u, err = setAvatar(ah.AvatarSaver, u, &http.Client{Timeout: 5 * time.Second})
@@ -567,4 +574,22 @@ func presence(s string) string {
 		return "missing"
 	}
 	return "present"
+}
+
+// appleIDTokenIssuer is the issuer Apple sets on every id_token issued by Sign in with Apple.
+// see https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api/verifying_a_user
+const appleIDTokenIssuer = "https://appleid.apple.com" // #nosec G101 -- public Apple issuer URL, not a credential
+
+// validateAppleIDClaims checks that the id_token claims have the expected Apple
+// issuer and that the audience matches the relying party's client ID. The signature
+// must already have been verified by the caller; this only catches confused-deputy
+// cases where another Apple-signed token is replayed against the wrong audience.
+func validateAppleIDClaims(claims jwt.MapClaims, expectedAud string) error {
+	if !claims.VerifyIssuer(appleIDTokenIssuer, true) {
+		return errors.New("invalid id_token issuer")
+	}
+	if !claims.VerifyAudience(expectedAud, true) {
+		return errors.New("invalid id_token audience")
+	}
+	return nil
 }

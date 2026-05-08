@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -345,10 +346,22 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get token claims for extract uid (and email or name if they exist in scope)
+	// get token claims for extract uid (and email or name if they exist in scope).
+	// jwt v5 parser options enforce iss == https://appleid.apple.com and
+	// aud == ClientID inline so we don't need a separate validate pass.
 	tokenClaims := jwt.MapClaims{}
-	_, err = jwt.ParseWithClaims(resp.IDToken, tokenClaims, keySet.keyFunc)
+	_, err = jwt.ParseWithClaims(resp.IDToken, tokenClaims, keySet.keyFunc,
+		jwt.WithIssuer(appleIDTokenIssuer),
+		jwt.WithAudience(ah.conf.ClientID))
 	if err != nil {
+		// distinguish a confused-deputy reject (iss/aud) from a server-side
+		// parse/sig failure so the handler returns the same 403 + body as
+		// before for the security-relevant case.
+		if errors.Is(err, jwt.ErrTokenInvalidIssuer) || errors.Is(err, jwt.ErrTokenInvalidAudience) {
+			ah.Logf("[WARN] apple id_token rejected: %s", err.Error())
+			rest.SendErrorJSON(w, r, ah.L, http.StatusForbidden, nil, "invalid id_token")
+			return
+		}
 		ah.Logf("[ERROR] failed to get claims: " + err.Error())
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("failed to token validation, key is invalid: %s", resp.Error))
 		return
@@ -568,3 +581,7 @@ func presence(s string) string {
 	}
 	return "present"
 }
+
+// appleIDTokenIssuer is the issuer Apple sets on every id_token issued by Sign in with Apple.
+// see https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api/verifying_a_user
+const appleIDTokenIssuer = "https://appleid.apple.com" // #nosec G101 -- public Apple issuer URL, not a credential

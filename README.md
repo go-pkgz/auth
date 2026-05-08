@@ -780,6 +780,15 @@ Then add an Apple provider that accepts the following parameters:
   Subsequent logins to your app using Sign In with Apple with the same account do not share any user info and will only return a user identifier in IDToken claims.
   This behaves correctly until a user delete sign in for you service with Apple ID in own Apple account profile (security section).
   It is recommend that you securely cache the at first login containing the user info for bind it with a user UID at next login.
+
+**Token validation:**
+
+The provider verifies the Apple `id_token` signature against Apple's published JWK, then enforces:
+
+* `iss == "https://appleid.apple.com"` -- per Apple's Sign-in-with-Apple [REST API spec](https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api/verifying_a_user)
+* `aud == ClientID` (your Service ID or App ID)
+
+A token signed by Apple but issued for a different `aud` is rejected with `403 invalid id_token`. The `aud` check (not the `iss` check) is what closes the confused-deputy attack: a sibling service in the same Apple developer team (or any other Sign-in-with-Apple client) holds tokens with the real Apple `iss` but their own `aud`, and could replay one of those tokens against this service if `aud` were not enforced.
   Provider always get user `UID` (`sub` claim) in `IDToken`.
 
 * Apple doesn't have an API for fetch avatar and user info.

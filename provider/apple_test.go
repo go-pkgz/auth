@@ -177,6 +177,51 @@ func TestAppleHandlerCreateClientSecret(t *testing.T) {
 	assert.Equal(t, "auth.example.com", testClaims["sub"])
 }
 
+func TestValidateAppleIDClaims(t *testing.T) {
+	const clientID = "auth.example.com"
+	tests := []struct {
+		name    string
+		claims  jwt.MapClaims
+		wantErr string
+	}{
+		{
+			name:   "valid iss and aud accepted",
+			claims: jwt.MapClaims{"iss": "https://appleid.apple.com", "aud": clientID, "sub": "u1"},
+		},
+		{
+			name:    "wrong issuer rejected",
+			claims:  jwt.MapClaims{"iss": "https://attacker.example.com", "aud": clientID, "sub": "u1"},
+			wantErr: "invalid id_token issuer",
+		},
+		{
+			name:    "missing issuer rejected",
+			claims:  jwt.MapClaims{"aud": clientID, "sub": "u1"},
+			wantErr: "invalid id_token issuer",
+		},
+		{
+			name:    "wrong audience rejected",
+			claims:  jwt.MapClaims{"iss": "https://appleid.apple.com", "aud": "other.example.com", "sub": "u1"},
+			wantErr: "invalid id_token audience",
+		},
+		{
+			name:    "missing audience rejected",
+			claims:  jwt.MapClaims{"iss": "https://appleid.apple.com", "sub": "u1"},
+			wantErr: "invalid id_token audience",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAppleIDClaims(tt.claims, clientID)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 func TestAppleParseUserData(t *testing.T) {
 
 	ah := AppleHandler{Params: Params{L: logger.NoOp}}
@@ -327,14 +372,54 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 
 }
 
+// TestAppleHandler_LoginHandler_RejectsWrongIssuer is the regression-style
+// integration test: drives the full LoginHandler exchange flow with a token
+// signed by the test JWK but carrying iss other than https://appleid.apple.com.
+func TestAppleHandler_LoginHandler_RejectsWrongIssuer(t *testing.T) {
+	override := testIDTokenOverride{iss: "https://attacker.example.com"}
+	teardown := prepareAppleOauthTest(t, 8983, 8984, nil, override)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	resp, err := client.Get("http://localhost:8983/login?site=remark")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "wrong issuer must be rejected at the handler boundary")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "invalid id_token")
+}
+
+// TestAppleHandler_LoginHandler_RejectsWrongAudience is the symmetric
+// regression test to TestAppleHandler_LoginHandler_RejectsWrongIssuer.
+func TestAppleHandler_LoginHandler_RejectsWrongAudience(t *testing.T) {
+	override := testIDTokenOverride{aud: "other.example.com"}
+	teardown := prepareAppleOauthTest(t, 8985, 8986, nil, override)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	resp, err := client.Get("http://localhost:8985/login?site=remark")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "wrong audience must be rejected at the handler boundary")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "invalid id_token")
+}
+
 // TestAppleHandler_LoginHandlerFromRejectsExternalHost is the regression
-// test for the redirect validator on the apple login path: with an allowlist
-// policy enabled, /login?from=https://evil.example.com must NOT 302 to evil.
+// test for the redirect validator on the apple login path.
 func TestAppleHandler_LoginHandlerFromRejectsExternalHost(t *testing.T) {
 	enablePolicy := func(p *Params) {
 		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })
 	}
-	teardown := prepareAppleOauthTest(t, 8987, 8988, nil, enablePolicy)
+	teardown := prepareAppleOauthTest(t, 8987, 8988, nil, paramOpts(enablePolicy))
 	defer teardown()
 
 	jar, err := cookiejar.New(nil)
@@ -488,7 +573,25 @@ func prepareAppleHandlerTest(responseMode string, scopes []string) (*AppleHandle
 	return NewApple(p, aCfg, cl)
 }
 
-func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *string, paramOpts ...func(*Params)) func() {
+// paramOpts wraps a Params modifier so it can be passed alongside a
+// testIDTokenOverride through prepareAppleOauthTest's variadic any list.
+type paramOpts func(*Params)
+
+func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *string, opts ...any) func() {
+	var override testIDTokenOverride
+	var paramMods []func(*Params)
+	for _, o := range opts {
+		switch v := o.(type) {
+		case testIDTokenOverride:
+			override = v
+		case paramOpts:
+			paramMods = append(paramMods, v)
+		case func(*Params):
+			paramMods = append(paramMods, v)
+		default:
+			t.Fatalf("prepareAppleOauthTest: unsupported option type %T", o)
+		}
+	}
 	signKey, testJWK := createTestSignKeyPairs(t)
 	provider, err := prepareAppleHandlerTest("", []string{})
 	assert.NoError(t, err)
@@ -511,7 +614,7 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 	require.NoError(t, err)
 
 	// create self-signed JWT
-	testResponseToken, err := createTestResponseToken(signKey)
+	testResponseToken, err := createTestResponseTokenWith(signKey, override.issOrDefault(), override.audOrDefault())
 	require.NoError(t, err)
 	require.NotEmpty(t, testResponseToken)
 	if testToken != nil {
@@ -535,7 +638,7 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 
 	params := Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
 		Issuer: "go-pkgz/auth", L: logger.Std}
-	for _, opt := range paramOpts {
+	for _, opt := range paramMods {
 		opt(&params)
 	}
 	provider.Params = params
@@ -647,12 +750,35 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 	}
 }
 
-func createTestResponseToken(privKey any) (string, error) {
+// testIDTokenOverride lets a test inject a token with non-default iss/aud
+// through prepareAppleOauthTest. The default (zero value) produces a token
+// with the canonical Apple issuer and the test ClientID, exercising the
+// happy path through validateAppleIDClaims.
+type testIDTokenOverride struct {
+	iss string
+	aud string
+}
+
+func (o testIDTokenOverride) issOrDefault() string {
+	if o.iss == "" {
+		return appleIDTokenIssuer
+	}
+	return o.iss
+}
+
+func (o testIDTokenOverride) audOrDefault() string {
+	if o.aud == "" {
+		return "auth.example.com"
+	}
+	return o.aud
+}
+
+func createTestResponseTokenWith(privKey any, iss, aud string) (string, error) {
 	claims := &jwt.MapClaims{
-		"iss":   "http://go.localhost.test",
+		"iss":   iss,
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Second * 30).Unix(),
-		"aud":   "go-pkgz/auth",
+		"aud":   aud,
 		"sub":   "userid1",
 		"email": "test@example.go",
 	}
