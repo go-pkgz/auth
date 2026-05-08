@@ -44,7 +44,7 @@ func TestAuthJWTCookie(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, token.User{Name: "name1", ID: "provider1_id1", Picture: "http://example.com/pic.png",
 			IP: "127.0.0.1", Email: "me@example.com", Audience: "test_sys",
-			Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, u)
+			Attributes: map[string]any{"boola": true, "stra": "stra-val"}}, u)
 		w.WriteHeader(201)
 	}
 	mux.Handle("/auth", a.Auth(http.HandlerFunc(handler)))
@@ -178,7 +178,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	var wg sync.WaitGroup
 	a.RefreshCache = newTestRefreshCache()
 	wg.Add(100)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		time.Sleep(1 * time.Millisecond) // TODO! not sure how testRefreshCache may have misses without this delay
 		go func() {
 			defer wg.Done()
@@ -466,7 +466,7 @@ func TestRBAC(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, token.User{Name: "name1", ID: "provider1_id1", Picture: "http://example.com/pic.png",
 			IP: "127.0.0.1", Email: "me@example.com", Audience: "test_sys",
-			Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"},
+			Attributes: map[string]any{"boola": true, "stra": "stra-val"},
 			Role:       "employee"}, u)
 		w.WriteHeader(201)
 	})

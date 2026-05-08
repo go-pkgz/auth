@@ -34,7 +34,7 @@ func TestProviders_NewGoogle(t *testing.T) {
 			"email": "test@email.com"}
 		user := r.mapUser(udata, nil)
 		assert.Equal(t, token.User{Name: "test user", ID: "google_01b307acba4f54f55aafc33bb06bbbf6ca803e9a",
-			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]interface{}{"email": "test@email.com"}}, user, "got %+v", user)
+			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]any{"email": "test@email.com"}}, user, "got %+v", user)
 	})
 }
 
@@ -65,7 +65,7 @@ func TestProviders_NewGithub(t *testing.T) {
 			"email": "test@email.com"}
 		user := r.mapUser(udata, nil)
 		assert.Equal(t, token.User{Name: "test user", ID: "github_e80b2d2608711cbb3312db7c4727a46fbad9601a",
-			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]interface{}{"email": "test@email.com"}}, user, "got %+v", user)
+			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]any{"email": "test@email.com"}}, user, "got %+v", user)
 	})
 }
 
@@ -94,7 +94,7 @@ func TestProviders_NewFacebook(t *testing.T) {
 		udata := UserData{"id": "myid", "name": "test user", "email": "test@email.com"}
 		user := r.mapUser(udata, []byte(`{"picture": {"data": {"url": "http://demo.remark42.com/blah.png"} }}`))
 		assert.Equal(t, token.User{Name: "test user", ID: "facebook_6e34471f84557e1713012d64a7477c71bfdac631",
-			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]interface{}{"email": "test@email.com"}},
+			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]any{"email": "test@email.com"}},
 			user, "got %+v", user)
 
 	})
@@ -202,7 +202,7 @@ func TestProviders_NewPatreon(t *testing.T) {
 	assert.Equal(
 		t,
 		token.User{Name: "Corgi The Dev", ID: "patreon_4e079d0555e5a2b460969c789d3ad968a795921f",
-			Picture: "https://c8.patreon.com/2/400/0000000", IP: "", Attributes: map[string]interface{}{"is_paid_sub": true}},
+			Picture: "https://c8.patreon.com/2/400/0000000", IP: "", Attributes: map[string]any{"is_paid_sub": true}},
 		user,
 		"got %+v",
 		user,

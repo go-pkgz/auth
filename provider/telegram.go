@@ -449,7 +449,7 @@ func (tg *tgAPI) BotInfo(ctx context.Context) (*botInfo, error) {
 	return resp.Result, nil
 }
 
-func (tg *tgAPI) request(ctx context.Context, method string, data interface{}) error {
+func (tg *tgAPI) request(ctx context.Context, method string, data any) error {
 	return repeater.NewFixed(3, time.Millisecond*50).Do(ctx, func() error {
 		url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tg.token, method)
 
