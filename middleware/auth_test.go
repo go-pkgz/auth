@@ -340,7 +340,7 @@ func TestBasicAdminUserDoesNotLogPassword(t *testing.T) {
 	const secret = "super-secret-attempted-passwd"
 	var buf strings.Builder
 	a := makeTestAuth(t)
-	a.L = logger.Func(func(format string, args ...interface{}) {
+	a.L = logger.Func(func(format string, args ...any) {
 		fmt.Fprintf(&buf, format, args...)
 	})
 

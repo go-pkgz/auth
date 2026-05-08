@@ -174,6 +174,13 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		Handshake: &token.Handshake{
 			State: "",
 			ID:    user + "::" + address,
+			// without copying "from" here the redirect validator at the
+			// other end has nothing to validate or to redirect to. The
+			// docs (and #275) advertise ?from=<url> on the verify login
+			// path, but the original sendConfirmation never put it on
+			// the handshake JWT, so production verify flows could never
+			// honor from at all.
+			From: r.URL.Query().Get("from"),
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
 		RegisteredClaims: jwt.RegisteredClaims{

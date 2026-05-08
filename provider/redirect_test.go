@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/go-pkgz/auth/v2/token"
+	"github.com/go-pkgz/auth/token"
 )
 
 func TestIsAllowedRedirect(t *testing.T) {
