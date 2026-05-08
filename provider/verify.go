@@ -3,10 +3,13 @@ package provider
 import (
 	"bytes"
 	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-pkgz/rest"
@@ -50,6 +53,105 @@ type VerifyHandler struct {
 	// here. Nil disables validation and preserves legacy permissive
 	// behavior — any non-empty "from" value is honored.
 	AllowedRedirectHosts token.AllowedHosts
+
+	// ConfirmationStore enforces one-shot consumption of confirmation tokens.
+	// When non-nil, a token cannot be redeemed twice within its TTL window.
+	// Leave nil to keep the legacy behavior (token replayable until expiry).
+	ConfirmationStore VerifConfirmationStore
+}
+
+// VerifConfirmationStore tracks consumed confirmation tokens to prevent replay.
+// Implementations must be safe for concurrent use.
+type VerifConfirmationStore interface {
+	// MarkUsed records key as consumed and returns alreadyUsed=true if it was
+	// already recorded. The implementation MUST retain the marker for at
+	// least the supplied ttl, or return a non-nil err if it cannot --
+	// dropping a marker before its ttl while the underlying JWT is still
+	// valid reopens the replay window the store is meant to close. err
+	// signals a backend failure (network, disk, capacity, etc.); callers
+	// MUST treat a non-nil err as fail-closed (reject the redemption).
+	MarkUsed(key string, ttl time.Duration) (alreadyUsed bool, err error)
+}
+
+// VerifConfirmationStoreFunc is an adapter to use ordinary functions as
+// VerifConfirmationStore, mirroring the SenderFunc / token.AllowedHostsFunc
+// house pattern for closure-based config.
+type VerifConfirmationStoreFunc func(key string, ttl time.Duration) (alreadyUsed bool, err error)
+
+// MarkUsed calls f(key, ttl) to implement VerifConfirmationStore.
+func (f VerifConfirmationStoreFunc) MarkUsed(key string, ttl time.Duration) (bool, error) {
+	return f(key, ttl)
+}
+
+// NewInMemoryVerifStore returns a process-local default VerifConfirmationStore.
+// Suitable for single-instance deployments. Multi-instance deployments behind
+// a load balancer MUST supply a shared backend (e.g. Redis) -- otherwise an
+// attacker who lands on a different instance from the legitimate user can
+// replay the token there. The default's failure is silent: the request
+// completes normally and no log indicates the protection was bypassed.
+func NewInMemoryVerifStore() VerifConfirmationStore {
+	return &inMemoryVerifStore{used: make(map[string]time.Time)}
+}
+
+type inMemoryVerifStore struct {
+	mu          sync.Mutex
+	used        map[string]time.Time // key -> expiry
+	insertCount int
+}
+
+// inMemoryVerifStoreSweepEvery is the in-memory store's amortization cadence.
+// Walking the whole map on every redemption is O(n) under a single mutex,
+// which serializes the hot path. Sweeping every N inserts keeps the map size
+// bounded by ~N + (concurrent redemptions during the gap) without holding
+// the lock through a full walk on most calls. Declared as a var rather than
+// a const so tests can lower it to exercise the sweep branch.
+var inMemoryVerifStoreSweepEvery = 256
+
+func (s *inMemoryVerifStore) MarkUsed(key string, ttl time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	if exp, ok := s.used[key]; ok && exp.After(now) {
+		return true, nil
+	}
+	// amortized eviction: walk the map only every Nth insert, not on every
+	// hot-path call. The lookup above already rejects unexpired duplicates,
+	// so worst-case staleness is bounded by N inserts between sweeps.
+	s.insertCount++
+	if s.insertCount >= inMemoryVerifStoreSweepEvery {
+		s.insertCount = 0
+		for k, exp := range s.used {
+			if !exp.After(now) {
+				delete(s.used, k)
+			}
+		}
+	}
+	s.used[key] = now.Add(ttl)
+	return false, nil
+}
+
+// confirmationKey hashes the raw token so the store key length is bounded
+// regardless of token size, and so the in-memory map doesn't retain the
+// signed token itself.
+func confirmationKey(rawToken string) string {
+	sum := sha256.Sum256([]byte(rawToken))
+	return hex.EncodeToString(sum[:])
+}
+
+// scrubTokenFromRequest returns a shallow clone of r with the "token" query
+// parameter replaced by "<redacted>". rest.SendErrorJSON logs r.URL, and the
+// fail-closed branches in LoginHandler fire while the confirmation JWT is
+// still live (store didn't record consumption) -- a single log line equals
+// an unredeemed magic link without this scrub.
+func scrubTokenFromRequest(r *http.Request) *http.Request {
+	if r == nil || r.URL == nil || r.URL.Query().Get("token") == "" {
+		return r
+	}
+	rc := r.Clone(r.Context())
+	q := rc.URL.Query()
+	q.Set("token", "<redacted>")
+	rc.URL.RawQuery = q.Encode()
+	return rc
 }
 
 // Sender defines interface to send emails
@@ -78,7 +180,13 @@ type VerifTokenService interface {
 func (e VerifyHandler) Name() string { return e.ProviderName }
 
 // LoginHandler gets name and address from query, makes confirmation token and sends it to user.
-// In case if confirmation token presented in the query uses it to create auth token
+// In case if confirmation token presented in the query uses it to create auth token.
+//
+// Consumption is final when ConfirmationStore is configured: the token is
+// marked used before any further side effects (avatar fetch, token issuance),
+// so a transient downstream failure burns the token and the user must request
+// a new confirmation email rather than retry the same link. This trade-off
+// keeps the replay check atomic with the security boundary.
 func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GET /login?site=site&user=name&address=someone@example.com
@@ -99,6 +207,34 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if e.TokenService.IsExpired(confClaims) {
 		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, fmt.Errorf("expired"), "failed to verify confirmation token")
 		return
+	}
+
+	store := e.ConfirmationStore
+	// guard against a typed-nil VerifConfirmationStoreFunc: a non-nil
+	// interface wrapping a nil func survives the != nil check above and
+	// would panic at MarkUsed. Treat it as no store configured. Mirrors
+	// the AllowedHostsFunc nil-guard in token/jwt.go.
+	if fn, ok := store.(VerifConfirmationStoreFunc); ok && fn == nil {
+		store = nil
+	}
+	if store != nil {
+		ttl := time.Until(time.Unix(confClaims.ExpiresAt, 0))
+		if ttl <= 0 {
+			ttl = time.Minute
+		}
+		alreadyUsed, markErr := store.MarkUsed(confirmationKey(tkn), ttl)
+		if markErr != nil {
+			// fail-closed: a backend outage must not let attackers replay
+			// tokens. Reject with the token scrubbed from the logged URL,
+			// since on this branch the store did NOT record consumption so
+			// the JWT in the URL is still live.
+			rest.SendErrorJSON(w, scrubTokenFromRequest(r), e.L, http.StatusForbidden, markErr, "confirmation token store unavailable")
+			return
+		}
+		if alreadyUsed {
+			rest.SendErrorJSON(w, scrubTokenFromRequest(r), e.L, http.StatusForbidden, fmt.Errorf("token already used"), "confirmation token already consumed")
+			return
+		}
 	}
 
 	elems := strings.Split(confClaims.Handshake.ID, "::")
