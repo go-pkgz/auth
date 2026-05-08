@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,6 +57,32 @@ func TestRandToken(t *testing.T) {
 	assert.NotEqual(t, "", s2)
 	assert.NotEqual(t, s2, s1)
 	t.Log(s2)
+}
+
+func TestLocalBindAddr(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		port string
+		want string
+	}{
+		{name: "empty host defaults to 127.0.0.1 (the security-relevant default)", host: "", port: "8080", want: "127.0.0.1:8080"},
+		{name: "explicit 127.0.0.1 honored", host: "127.0.0.1", port: "8080", want: "127.0.0.1:8080"},
+		{name: "explicit non-loopback honored (opt-in to LAN exposure)", host: "192.168.1.10", port: "8080", want: "192.168.1.10:8080"},
+		{name: "explicit 0.0.0.0 honored (caller is asking for it)", host: "0.0.0.0", port: "8080", want: "0.0.0.0:8080"},
+		{name: "ipv6 hostname is bracketed by net.JoinHostPort", host: "::1", port: "8080", want: "[::1]:8080"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, localBindAddr(tt.host, tt.port))
+		})
+	}
+}
+
+func TestLocalBindAddr_DefaultIsNotAllInterfaces(t *testing.T) {
+	addr := localBindAddr("", "12345")
+	assert.NotEqual(t, ":12345", addr, "default bind must not be all-interfaces")
+	assert.False(t, strings.HasPrefix(addr, ":"), "default bind must include a hostname, not the bare-port shorthand")
 }
 
 func TestSetAvatar(t *testing.T) {

@@ -547,7 +547,7 @@ Once the policy is on:
 
 ### Dev provider
 
-Working with oauth2 providers can be a pain, especially during development phase. A special, development-only provider `dev` can make it less painful. This one can be registered directly, i.e. `service.AddProvider("dev", "", "")` or `service.AddDevProvider(port)` and should be activated like this:
+Working with oauth2 providers can be a pain, especially during development phase. A special, development-only provider `dev` can make it less painful. This one can be registered directly, i.e. `service.AddProvider("dev", "", "")` or `service.AddDevProvider(host, port)` and should be activated like this:
 
 ```go
 	// runs dev oauth2 server on :8084 by default
@@ -563,6 +563,31 @@ Working with oauth2 providers can be a pain, especially during development phase
 It will run fake aouth2 "server" on port :8084 and user could login with any user name. See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go) for more details.
 
 _Warning: this is not the real oauth2 server but just a small fake thing for development and testing only. Don't use `dev` provider with any production code._
+
+#### Listen address
+
+The dev OAuth server and the embedded `CustomServer` helper bind to **`127.0.0.1` by default** so the dev login UI is not silently exposed to the LAN, Docker network siblings, kubernetes pods on the same node, etc.
+
+##### Dev provider
+
+The dev provider has a separate `Host` field for the listen address; the OAuth callback URL is taken from `Opts.URL` and is independent. To bind to all interfaces (e.g. when the auth process runs inside a container and needs to be reachable from the host) pass `Host` explicitly:
+
+```go
+// dev provider -- listen on all interfaces, callback URL stays whatever you set in Opts.URL
+service.AddDevProvider("0.0.0.0", 8084)
+```
+
+##### CustomServer
+
+`CustomServer` is the awkward case: `CustomServerOpt.URL` is used **both** as the bind source **and** as the advertised OAuth endpoint (it appears verbatim in `AuthURL`, `TokenURL` and `InfoURL` returned to clients). There is no separate bind setting today, so `URL: "http://0.0.0.0:9096"` is **only** appropriate when every consumer of those advertised endpoints is fine with `0.0.0.0` as a hostname -- which is essentially never the case in practice.
+
+Recommended approaches:
+
+* **Single host, no proxy** -- leave `URL: "http://localhost:9096"` (or your real hostname). The default loopback bind matches the advertised host and everything works.
+* **Behind a reverse proxy (typical Docker/kubernetes pattern)** -- terminate at the proxy on the public hostname and let the auth process talk to the proxy over a docker network or unix socket. Set `URL` to the public-facing value the proxy serves and bind the auth process to a network the proxy can reach (e.g. a docker network, or `0.0.0.0` if the proxy is on a different host and the network is otherwise restricted). The advertised URL stays correct because that is what `Opts.URL` says.
+* **Direct LAN exposure with a sensible advertised URL** -- set `URL` to a real hostname or LAN IP that resolves on every consumer (e.g. `http://oauth.lan.example:9096`); the bind extracts the host and listens there. Avoid embedding `0.0.0.0` in `URL` unless you have already accepted the consequence that clients will see `0.0.0.0` in the advertised metadata.
+
+A future change is likely to add a separate bind option (`CustomServerOpt.BindAddr` or similar) so the bind and the advertised URL can diverge cleanly; until then, the bind follows `URL`.
 
 By default, Dev provider doesn't return `email` claim from `/user` endpoint, to match behaviour of other providers which only request minimal scopes.
 However sometimes it is useful to have `email` included into user info. This can be done by configuring `devAuthServer.GetEmailFn` function:
