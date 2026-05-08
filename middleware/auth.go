@@ -28,8 +28,8 @@ type Authenticator struct {
 
 // RefreshCache defines interface storing and retrieving refreshed tokens
 type RefreshCache interface {
-	Get(key interface{}) (value interface{}, ok bool)
-	Set(key, value interface{})
+	Get(key any) (value any, ok bool)
+	Set(key, value any)
 }
 
 // TokenService defines interface accessing tokens
@@ -49,7 +49,7 @@ type BasicAuthFunc func(user, passwd string) (ok bool, userInfo token.User, err 
 var adminUser = token.User{
 	ID:   "admin",
 	Name: "admin",
-	Attributes: map[string]interface{}{
+	Attributes: map[string]any{
 		"admin": true,
 	},
 }

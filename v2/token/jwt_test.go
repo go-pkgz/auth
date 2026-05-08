@@ -123,7 +123,7 @@ func TestJWT_Parse(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
-		Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
+		Email: "me@example.com", Attributes: map[string]any{"boola": true, "stra": "stra-val"}}, claims.User)
 
 	claims, err = j.Parse(testJwtExpired)
 	assert.NoError(t, err)
@@ -348,7 +348,7 @@ func TestJWT_GetFromHeader(t *testing.T) {
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
 		Email: "me@example.com", Audience: "test_sys",
-		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
+		Attributes: map[string]any{"boola": true, "stra": "stra-val"}}, claims.User)
 	assert.Equal(t, "remark42", claims.Issuer)
 
 	req = httptest.NewRequest("GET", "/", nil)
@@ -380,7 +380,7 @@ func TestJWT_GetFromQuery(t *testing.T) {
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
 		Email: "me@example.com", Audience: "test_sys",
-		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
+		Attributes: map[string]any{"boola": true, "stra": "stra-val"}}, claims.User)
 	assert.Equal(t, "remark42", claims.Issuer)
 
 	req = httptest.NewRequest("GET", "/blah?token="+testJwtExpired, nil)
@@ -435,7 +435,7 @@ func TestJWT_SetAndGetWithCookies(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
 		Email: "me@example.com", Audience: "test_sys",
-		Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, r.User)
+		Attributes: map[string]any{"boola": true, "stra": "stra-val"}}, r.User)
 	assert.Equal(t, "remark42", claims.Issuer)
 	assert.Equal(t, true, claims.SessionOnly)
 	t.Log(resp.Cookies())
@@ -666,7 +666,7 @@ func TestParseWithAud(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, j.IsExpired(claims))
 	assert.Equal(t, &User{Name: "name1", ID: "id1", Picture: "http://example.com/pic.png", IP: "127.0.0.1",
-		Email: "me@example.com", Attributes: map[string]interface{}{"boola": true, "stra": "stra-val"}}, claims.User)
+		Email: "me@example.com", Attributes: map[string]any{"boola": true, "stra": "stra-val"}}, claims.User)
 
 	claims, err = j.Parse(testJwtValidAud)
 	assert.NoError(t, err)

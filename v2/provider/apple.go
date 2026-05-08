@@ -76,7 +76,7 @@ type AppleConfig struct {
 	ResponseMode string // changes method of receiving data in callback. Default value "form_post" (https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168)
 
 	scopes       []string         // for this package allow only username scope and UID in token claims. Apple service API provide only "email" and "name" scope values (https://developer.apple.com/documentation/sign_in_with_apple/clientconfigi/3230955-scope)
-	privateKey   interface{}      // private key from Apple obtained in developer account (the keys section). Required for create the Client Secret (https://developer.apple.com/documentation/sign_in_with_apple/generate_and_validate_tokens#3262048)
+	privateKey   any              // private key from Apple obtained in developer account (the keys section). Required for create the Client Secret (https://developer.apple.com/documentation/sign_in_with_apple/generate_and_validate_tokens#3262048)
 	publicKey    crypto.PublicKey // need for validate sign of token
 	clientSecret string           // is the JWT client secret will create after first call and then used until expired
 	jwkURL       string           // URL for fetch JWK Apple keys, need redefine for tests
@@ -228,7 +228,7 @@ func (ah *AppleHandler) initPrivateKey() error {
 }
 
 // tokenKeyFunc use for verify JWT sign, it receives the parsed token and should return the key for validating.
-func (ah *AppleHandler) tokenKeyFunc(jwtToken *jwt.Token) (interface{}, error) {
+func (ah *AppleHandler) tokenKeyFunc(jwtToken *jwt.Token) (any, error) {
 	if jwtToken == nil {
 		return nil, fmt.Errorf("failed to call token keyFunc, because token is nil")
 	}

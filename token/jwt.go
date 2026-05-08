@@ -171,7 +171,7 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 		return Claims{}, fmt.Errorf("can't get secret: %w", err)
 	}
 
-	token, err := parser.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := parser.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}

@@ -131,7 +131,7 @@ func TestAppleKeySet_Get(t *testing.T) {
 
 func TestAppleKeySet_KeyFunc(t *testing.T) {
 
-	tokenHdr := map[string]interface{}{"kid": "86D88Kf"}
+	tokenHdr := map[string]any{"kid": "86D88Kf"}
 	validToken := jwt.Token{Header: tokenHdr}
 	testKeySet, err := parseAppleJWK([]byte(`{"keys":[{
 					  "kty": "RSA",

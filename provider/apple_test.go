@@ -593,7 +593,7 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 	}
 }
 
-func createTestResponseToken(privKey interface{}) (string, error) {
+func createTestResponseToken(privKey any) (string, error) {
 	claims := &jwt.MapClaims{
 		"iss":   "http://go.localhost.test",
 		"iat":   time.Now().Unix(),

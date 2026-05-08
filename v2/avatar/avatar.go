@@ -243,7 +243,7 @@ func GetGravatarURL(email string) (res string, err error) {
 }
 
 func retry(retries int, delay time.Duration, fn func() error) (err error) {
-	for i := 0; i < retries; i++ {
+	for range retries {
 		if err = fn(); err == nil {
 			return nil
 		}

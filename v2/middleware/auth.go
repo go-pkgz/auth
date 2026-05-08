@@ -57,7 +57,7 @@ type ErrorHandlerFunc func(w http.ResponseWriter, r *http.Request, statusCode in
 var adminUser = token.User{
 	ID:   "admin",
 	Name: "admin",
-	Attributes: map[string]interface{}{
+	Attributes: map[string]any{
 		"admin": true,
 	},
 }

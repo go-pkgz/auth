@@ -74,7 +74,7 @@ func TestOauth1Login(t *testing.T) {
 	err = json.Unmarshal(body, &u)
 	assert.NoError(t, err)
 	assert.Equal(t, token.User{Name: "blah", ID: "mock_myuser2", Picture: "http://example.com/ava12345.png",
-		Attributes: map[string]interface{}{"admin": true}}, u)
+		Attributes: map[string]any{"admin": true}}, u)
 
 }
 
