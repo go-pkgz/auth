@@ -1,7 +1,9 @@
 package sender
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +54,23 @@ func TestEmail_New(t *testing.T) {
 	}
 	e := NewEmailClient(p, logger.Std)
 	assert.Equal(t, p, e.EmailParams)
+}
+
+func TestEmail_SendDoesNotLogBody(t *testing.T) {
+	const secretBody = "Confirmation token: super-secret-magic-link-XYZ"
+	var buf strings.Builder
+	capturing := logger.Func(func(format string, args ...interface{}) {
+		fmt.Fprintf(&buf, format, args...)
+	})
+	p := EmailParams{Host: "127.0.0.2", Port: 25, From: "from@example.com",
+		Subject: "subj", ContentType: "text/html", TimeOut: time.Millisecond * 100}
+	e := NewEmailClient(p, capturing)
+	_ = e.Send("victim@example.com", secretBody) // expected to fail (no smtp server) — we only assert the log
+
+	logged := buf.String()
+	assert.NotContains(t, logged, secretBody, "email body must not appear in logs")
+	assert.NotContains(t, logged, "super-secret-magic-link-XYZ", "any substring of the body must not appear in logs")
+	assert.Contains(t, logged, "victim@example.com", "recipient is safe to log")
 }
 
 func TestEmail_SendFailed(t *testing.T) {
