@@ -243,7 +243,7 @@ func (a *Authenticator) basicAdminUser(r *http.Request) bool {
 
 	// using ConstantTimeCompare to avoid timing attack
 	if user != "admin" || subtle.ConstantTimeCompare([]byte(passwd), []byte(a.AdminPasswd)) != 1 {
-		a.Logf("[WARN] admin basic auth failed, user/passwd mismatch, %s:%s", user, passwd)
+		a.Logf("[WARN] admin basic auth failed for user %q", user)
 		return false
 	}
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -332,6 +333,23 @@ func TestAuthWithBasic(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode, "admin with basic not allowed")
+}
+
+func TestBasicAdminUserDoesNotLogPassword(t *testing.T) {
+	const secret = "super-secret-attempted-passwd"
+	var buf strings.Builder
+	a := makeTestAuth(t)
+	a.L = logger.Func(func(format string, args ...interface{}) {
+		fmt.Fprintf(&buf, format, args...)
+	})
+
+	r, err := http.NewRequest("GET", "/auth", http.NoBody)
+	require.NoError(t, err)
+	r.SetBasicAuth("admin", secret)
+
+	assert.False(t, a.basicAdminUser(r), "wrong password must not authenticate")
+	assert.NotContains(t, buf.String(), secret, "attempted password must not appear in logs")
+	assert.Contains(t, buf.String(), "admin basic auth failed", "rejection should still be logged")
 }
 
 func TestAuthWithBasicChecker(t *testing.T) {
