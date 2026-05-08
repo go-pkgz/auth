@@ -58,6 +58,34 @@ func TestAvatar_Put(t *testing.T) {
 	assert.Equal(t, int64(21), fi.Size())
 }
 
+func TestAvatar_PutContent(t *testing.T) {
+	defer func() { _ = os.RemoveAll("/tmp/avatars.put-content.test/") }()
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.put-content.test"), L: logger.Std}
+	got, err := p.PutContent("user1", strings.NewReader("png-bytes"))
+	require.NoError(t, err)
+	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", got)
+	fi, err := os.Stat("/tmp/avatars.put-content.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
+	require.NoError(t, err)
+	assert.Greater(t, fi.Size(), int64(0))
+}
+
+func TestAvatar_RedactAvatarURL(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{in: "https://api.telegram.org/file/botSECRET/photo.jpg", want: "api.telegram.org"},
+		{in: "https://x:y@example.com/path?q=1", want: "example.com"}, // #nosec G101 -- deliberate test fixture for userinfo redaction
+		{in: "", want: "<unparseable>"},
+		{in: "/local/path", want: "<unparseable>"},
+		{in: "://malformed", want: "<unparseable>"},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			assert.Equal(t, c.want, redactAvatarURL(c.in))
+		})
+	}
+}
+
 func TestAvatar_PutIdenticon(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Print("request: ", r.URL.Path)
@@ -101,6 +129,29 @@ func TestAvatar_PutFailed(t *testing.T) {
 	fi, err := os.Stat("/tmp/avatars.test/84/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image")
 	require.NoError(t, err)
 	assert.Equal(t, int64(992), fi.Size())
+}
+
+func TestAvatar_PutCapsBodySize(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/*")
+		w.WriteHeader(http.StatusOK)
+		buf := make([]byte, 64<<10)
+		for i := 0; i < (maxAvatarFetchSize/len(buf))+32; i++ {
+			if _, err := w.Write(buf); err != nil {
+				return
+			}
+		}
+	}))
+	defer ts.Close()
+
+	dir := t.TempDir()
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS(dir), L: logger.NoOp}
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	u := token.User{ID: "user1", Name: "huge avatar", Picture: ts.URL + "/pic.png"}
+	res, err := p.Put(u, client)
+	require.NoError(t, err, "Put falls back to identicon on capped fetch failure")
+	assert.Contains(t, res, "/avatar/", "still returns a proxy URL via identicon fallback")
 }
 
 func TestAvatar_Routes(t *testing.T) {

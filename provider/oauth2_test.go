@@ -450,3 +450,14 @@ func (m *mockAvatarSaver) Put(u token.User, _ *http.Client) (avatarURL string, e
 	return "http://example.com/fake.png", nil
 
 }
+
+// PutContent satisfies the avatarContentSaver type assertion in telegram.go so
+// the test mock behaves like avatar.Proxy and the bot-token-aware path can be
+// exercised. The body is drained but the saver returns the same canned URL it
+// would for a regular Put, so existing tests asserting on Picture stay valid.
+func (m *mockAvatarSaver) PutContent(_ string, content io.Reader) (avatarURL string, err error) {
+	if _, e := io.Copy(io.Discard, content); e != nil {
+		return "", e
+	}
+	return "http://example.com/ava12345.png", nil
+}
