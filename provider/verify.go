@@ -70,6 +70,13 @@ type VerifConfirmationStore interface {
 	// valid reopens the replay window the store is meant to close. err
 	// signals a backend failure (network, disk, capacity, etc.); callers
 	// MUST treat a non-nil err as fail-closed (reject the redemption).
+	//
+	// Adapter authors: do NOT embed key (or any caller-supplied data) in
+	// returned errors. The handler logs err on the fail-closed branch, and
+	// although key is the SHA-256 of the raw token rather than the token
+	// itself, it still uniquely identifies the live, unredeemed JWT in
+	// log destinations. Wrap the underlying backend error with a generic
+	// description (e.g. "redis SET failed: %w") instead.
 	MarkUsed(key string, ttl time.Duration) (alreadyUsed bool, err error)
 }
 
