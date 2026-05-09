@@ -27,15 +27,15 @@ type Client struct {
 
 // Service provides higher level wrapper allowing to construct everything and get back token middleware
 type Service struct {
-	logger             logger.L
-	opts               Opts
-	jwtService         *token.Service
-	providers          []provider.Service
-	authMiddleware     middleware.Authenticator
-	avatarProxy        *avatar.Proxy
-	issuer             string
-	useGravatar        bool
-	verifConfirmStore  provider.VerifConfirmationStore
+	logger                logger.L
+	opts                  Opts
+	jwtService            *token.Service
+	providers             []provider.Service
+	authMiddleware        middleware.Authenticator
+	avatarProxy           *avatar.Proxy
+	issuer                string
+	useGravatar           bool
+	verifConfirmStore     provider.VerifConfirmationStore
 	verifConfirmStoreOnce sync.Once
 }
 
@@ -447,8 +447,16 @@ func (s *Service) AddDirectProviderWithUserIDFunc(name string, credChecker provi
 // AddVerifProvider adds provider user's verification sent by sender
 func (s *Service) AddVerifProvider(name, msgTmpl string, sender provider.Sender) {
 	s.verifConfirmStoreOnce.Do(func() {
-		if s.opts.VerifConfirmationStore != nil {
-			s.verifConfirmStore = s.opts.VerifConfirmationStore
+		store := s.opts.VerifConfirmationStore
+		// guard against a typed-nil VerifConfirmationStoreFunc: a non-nil
+		// interface wrapping a nil func would survive the != nil check below
+		// and silently disable replay protection (the handler-level guard
+		// at LoginHandler then normalizes it to nil).
+		if fn, ok := store.(provider.VerifConfirmationStoreFunc); ok && fn == nil {
+			store = nil
+		}
+		if store != nil {
+			s.verifConfirmStore = store
 			return
 		}
 		s.verifConfirmStore = provider.NewInMemoryVerifStore()

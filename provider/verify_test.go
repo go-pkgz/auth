@@ -338,6 +338,26 @@ func TestInMemoryVerifStore(t *testing.T) {
 	})
 }
 
+func TestScrubTokenFromRequest(t *testing.T) {
+	t.Run("token query is replaced with redacted sentinel", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/login?token=secret-jwt&sess=1", http.NoBody)
+		require.NoError(t, err)
+		out := scrubTokenFromRequest(req)
+		assert.Equal(t, "secret-jwt", req.URL.Query().Get("token"), "original request must not be mutated")
+		assert.Equal(t, "<redacted>", out.URL.Query().Get("token"))
+		assert.Equal(t, "1", out.URL.Query().Get("sess"), "other query params preserved")
+	})
+	t.Run("missing token query returns request unchanged", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/login?sess=1", http.NoBody)
+		require.NoError(t, err)
+		out := scrubTokenFromRequest(req)
+		assert.Same(t, req, out)
+	})
+	t.Run("nil request returns nil", func(t *testing.T) {
+		assert.Nil(t, scrubTokenFromRequest(nil))
+	})
+}
+
 func TestVerifConfirmationStoreFunc(t *testing.T) {
 	calls := 0
 	var lastKey string

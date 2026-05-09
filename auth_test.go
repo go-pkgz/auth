@@ -129,6 +129,25 @@ func TestService_AddVerifProvider_UsesCustomConfirmationStore(t *testing.T) {
 	assert.Same(t, custom, svc.verifConfirmStore, "custom store from Opts must be used, not the in-memory default")
 }
 
+func TestService_AddVerifProvider_TypedNilStoreFuncFallsBackToDefault(t *testing.T) {
+	// Opts.VerifConfirmationStore set to a typed-nil VerifConfirmationStoreFunc
+	// is a non-nil interface wrapping a nil func. Without a service-level
+	// guard the != nil check at AddVerifProvider succeeds, NewInMemoryVerifStore
+	// is skipped, and the handler-level guard then normalizes the typed-nil to
+	// nil at redemption -- net result is replay protection silently disabled.
+	var nilFn provider.VerifConfirmationStoreFunc
+	svc := NewService(Opts{
+		SecretReader:           token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:                    "http://127.0.0.1",
+		Logger:                 logger.Std,
+		VerifConfirmationStore: nilFn,
+	})
+	svc.AddVerifProvider("email", "{{.Token}}", provider.SenderFunc(func(string, string) error { return nil }))
+	require.NotNil(t, svc.verifConfirmStore, "typed-nil func must fall back to in-memory default, not silently disable protection")
+	_, ok := svc.verifConfirmStore.(provider.VerifConfirmationStoreFunc)
+	assert.False(t, ok, "fallback must be the in-memory default, not the typed-nil func itself")
+}
+
 func TestService_AddVerifProvider_DefaultsToInMemory(t *testing.T) {
 	svc := NewService(Opts{
 		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
