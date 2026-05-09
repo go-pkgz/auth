@@ -26,6 +26,12 @@ import (
 // http.sniffLen is 512 bytes which is how much we need to read to detect content type
 const sniffLen = 512
 
+// maxAvatarFetchSize bounds the bytes read from a remote avatar URL. 10 MiB is
+// generous for any reasonable avatar (Telegram caps photo at 5 MiB; Gravatar is
+// much smaller); the cap protects Proxy.Put against an upstream sending an
+// unbounded body that would exhaust process memory inside resize.
+const maxAvatarFetchSize = 10 << 20
+
 // Proxy provides http handler for avatars from avatar.Store
 // On user login token will call Put and it will retrieve and save picture locally.
 type Proxy struct {
@@ -98,7 +104,17 @@ func (p *Proxy) load(url string, client *http.Client) (rc io.ReadCloser, err err
 		return nil, fmt.Errorf("failed to get avatar from the orig, status %s", resp.Status)
 	}
 
-	return resp.Body, nil
+	// buffer the body up to the cap to fail fast on oversized inputs.
+	// Reading +1 byte beyond the cap distinguishes "exactly cap" from "too big".
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAvatarFetchSize+1))
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read avatar body: %w", err)
+	}
+	if int64(len(body)) > maxAvatarFetchSize {
+		return nil, fmt.Errorf("avatar body exceeds %d bytes", maxAvatarFetchSize)
+	}
+	return io.NopCloser(bytes.NewReader(body)), nil
 }
 
 // Handler returns token routes for given provider

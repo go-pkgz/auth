@@ -103,6 +103,32 @@ func TestAvatar_PutFailed(t *testing.T) {
 	assert.Equal(t, int64(992), fi.Size())
 }
 
+func TestAvatar_PutCapsBodySize(t *testing.T) {
+	// upstream that streams indefinitely past the cap; without
+	// cappedReadCloser the resize loop would read until OOM.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/*")
+		w.WriteHeader(http.StatusOK)
+		buf := make([]byte, 64<<10)
+		// write ~12 MiB which is over the 10 MiB cap
+		for i := 0; i < (maxAvatarFetchSize/len(buf))+32; i++ {
+			if _, err := w.Write(buf); err != nil {
+				return
+			}
+		}
+	}))
+	defer ts.Close()
+
+	dir := t.TempDir()
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS(dir), L: logger.NoOp}
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	u := token.User{ID: "user1", Name: "huge avatar", Picture: ts.URL + "/pic.png"}
+	res, err := p.Put(u, client)
+	require.NoError(t, err, "Put falls back to identicon on capped fetch failure")
+	assert.Contains(t, res, "/avatar/", "still returns a proxy URL via identicon fallback")
+}
+
 func TestAvatar_Routes(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

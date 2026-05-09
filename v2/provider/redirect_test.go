@@ -65,6 +65,32 @@ func TestIsAllowedRedirect(t *testing.T) {
 			allowed: allowedFn("admin.example.com"), want: true},
 		{name: "malformed service URL with empty allowlist rejects", from: "https://admin.example.com", serviceURL: "://bad",
 			allowed: allowedFn(), want: false},
+
+		// bypass-category characterization. None of these URLs grant access to
+		// hosts outside the allowlist; the test pins that behavior so a future
+		// refactor of url.Parse usage doesn't silently weaken it.
+		{name: "scheme-relative URL rejected (no scheme)", from: "//evil.com/x", serviceURL: "https://app.example.com",
+			allowed: allowedFn("admin.example.com"), want: false},
+		{name: "userinfo does not bypass: allowed-looking user, evil host", from: "https://admin.example.com@evil.com/x",
+			serviceURL: "https://app.example.com", allowed: allowedFn("admin.example.com"), want: false},
+		{name: "userinfo does not change allowed host check (evil userinfo, allowed host)", from: "https://evil@admin.example.com/x",
+			serviceURL: "https://app.example.com", allowed: allowedFn("admin.example.com"), want: true},
+		{name: "IPv6 literal not in allowlist rejected", from: "https://[::1]/x", serviceURL: "https://app.example.com",
+			allowed: allowedFn("admin.example.com"), want: false},
+		{name: "IPv6 literal explicitly allowed", from: "https://[::1]/x", serviceURL: "https://app.example.com",
+			allowed: allowedFn("::1"), want: true},
+		{name: "IDN homoglyph not equal to ASCII allowlist entry", from: "https://аpp.example.com/x", serviceURL: "https://app.example.com",
+			allowed: allowedFn("app.example.com"), want: false},
+		{name: "punycode form of homoglyph not equal to ASCII allowlist entry", from: "https://xn--pp-7lc.example.com/x",
+			serviceURL: "https://app.example.com", allowed: allowedFn("app.example.com"), want: false},
+		{name: "percent-encoded host parse-fails rejected", from: "https://%65vil.com/x", serviceURL: "https://app.example.com",
+			allowed: allowedFn("admin.example.com"), want: false},
+		{name: "backslash userinfo trick parse-fails rejected", from: "https://evil.com\\@admin.example.com/x",
+			serviceURL: "https://app.example.com", allowed: allowedFn("admin.example.com"), want: false},
+		{name: "scheme without // (opaque) rejected", from: "https:evil.com/x", serviceURL: "https://app.example.com",
+			allowed: allowedFn("admin.example.com"), want: false},
+		{name: "triple-slash empties host rejected", from: "https:///evil.com/x", serviceURL: "https://app.example.com",
+			allowed: allowedFn("admin.example.com"), want: false},
 	}
 
 	for _, tt := range tests {
