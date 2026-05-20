@@ -432,6 +432,42 @@ func TestLogoutNoProviders(t *testing.T) {
 	assert.Equal(t, "{\"error\":\"providers not defined\"}\n", string(b))
 }
 
+// TestHandlers_SecurityHeaders proves the mandatory CSP + nosniff wrapper is applied
+// to every response returned by Service.Handlers(), regardless of route or status.
+// go-pkgz/auth has no customisable HTML rendering, so this CSP is unconditionally safe.
+func TestHandlers_SecurityHeaders(t *testing.T) {
+	svc := NewService(Opts{Logger: logger.Std})
+	authRoute, avatarRoute := svc.Handlers()
+
+	mux := http.NewServeMux()
+	mux.Handle("/auth/", authRoute)
+	mux.Handle("/avatar/", avatarRoute)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	// avatar handler verified separately in avatar_test.go; here we just need to
+	// confirm the wrapper applies across the auth route group.
+	probes := []string{
+		"/auth/list",      // 200 JSON
+		"/auth/logout",    // 400 JSON (no providers configured)
+		"/auth/user",      // 401 JSON (no jwt)
+		"/auth/status",    // 200 JSON
+		"/auth/bad/login", // 400 JSON
+	}
+	for _, path := range probes {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + path)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			csp := resp.Header.Get("Content-Security-Policy")
+			assert.Contains(t, csp, "default-src 'none'", "missing strict CSP on %s (status=%d)", path, resp.StatusCode)
+			assert.Contains(t, csp, "sandbox", "missing sandbox directive on %s", path)
+			assert.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"),
+				"missing nosniff on %s", path)
+		})
+	}
+}
+
 func TestBadRequests(t *testing.T) {
 	_, teardown := prepService(t)
 	defer teardown()

@@ -237,7 +237,30 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 		p.Handler(w, r)
 	}
 
-	return http.HandlerFunc(ah), http.HandlerFunc(s.avatarProxy.Handler)
+	return withSecurityHeaders(http.HandlerFunc(ah)), withSecurityHeaders(http.HandlerFunc(s.avatarProxy.Handler))
+}
+
+// withSecurityHeaders wraps an auth response handler to apply strict CSP and nosniff
+// on every response. The go-pkgz/auth package response surface is JSON-only for auth
+// routes and images for the avatar route — no consumer-customisable HTML anywhere —
+// so this CSP is unconditionally safe and gives the auth origin defense-in-depth
+// against any future trust-boundary regression that might emit a renderable body.
+//
+//   - Content-Security-Policy: default-src 'none'; sandbox — blocks inline scripts
+//     and event handlers even if a body is ever served as HTML by mistake; the
+//     sandbox directive additionally isolates any rendered document from this origin.
+//   - X-Content-Type-Options: nosniff — prevents browsers from MIME-overriding the
+//     declared Content-Type to a more dangerous one.
+//
+// The avatar Handler additionally sets Content-Disposition: inline; filename="avatar"
+// inside itself, so direct callers (tests, custom mounts) still get the full header
+// set without going through this wrapper.
+func withSecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox; frame-ancestors 'none'")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Middleware returns auth middleware
