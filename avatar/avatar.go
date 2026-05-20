@@ -59,7 +59,7 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 			return "", fmt.Errorf("no picture for %s: %w", userID, e)
 		}
 		// put returns avatar base name, like 123456.image
-		avatarID, e := p.Store.Put(userID, p.resize(bytes.NewBuffer(b), p.ResizeLimit))
+		avatarID, e := p.Store.Put(userID, p.resize(b, p.ResizeLimit))
 		if e != nil {
 			return "", e
 		}
@@ -78,12 +78,6 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 		p.Logf("[DEBUG] failed to fetch avatar from the orig %s, %v", redactAvatarURL(u.Picture), err)
 		return genIdenticon(u.ID)
 	}
-
-	defer func() {
-		if e := body.Close(); e != nil {
-			p.Logf("[WARN] can't close response body, %s", e)
-		}
-	}()
 
 	resized := p.resize(body, p.ResizeLimit)
 	if resized == nil {
@@ -107,8 +101,18 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 // in the upstream URL (e.g. Telegram bot file API: /file/bot{TOKEN}/...) can fetch the
 // content themselves and avoid exposing the credential to Put's URL-fetching path —
 // where it would land in u.Picture, debug logs, and the user JSON returned to clients.
+//
+// Bytes are read into memory bounded by maxAvatarFetchSize so an unbounded caller
+// (e.g. a streaming HTTP body) cannot exhaust process memory.
 func (p *Proxy) PutContent(userID string, content io.Reader) (avatarURL string, err error) {
-	resized := p.resize(content, p.ResizeLimit)
+	body, err := io.ReadAll(io.LimitReader(content, maxAvatarFetchSize+1))
+	if err != nil {
+		return "", fmt.Errorf("failed to read avatar content for %s: %w", userID, err)
+	}
+	if int64(len(body)) > maxAvatarFetchSize {
+		return "", fmt.Errorf("avatar content for %s exceeds %d bytes", userID, maxAvatarFetchSize)
+	}
+	resized := p.resize(body, p.ResizeLimit)
 	if resized == nil {
 		return "", fmt.Errorf("avatar content for %s is not a valid image", userID)
 	}
@@ -132,11 +136,12 @@ func redactAvatarURL(raw string) string {
 	return "<unparseable>"
 }
 
-// load avatar from remote url and return body. Caller has to close the reader
-func (p *Proxy) load(url string, client *http.Client) (rc io.ReadCloser, err error) {
-	// load avatar from remote location
+// load fetches an avatar from a remote url and returns the body bytes, capped at
+// maxAvatarFetchSize. The bytes are passed straight to resize without an
+// intermediate Reader wrapper so we don't pay for buffering twice.
+func (p *Proxy) load(url string, client *http.Client) ([]byte, error) {
 	var resp *http.Response
-	err = retry(5, time.Second, func() error {
+	err := retry(5, time.Second, func() error {
 		var e error
 		resp, e = client.Get(url)
 		return e
@@ -144,23 +149,22 @@ func (p *Proxy) load(url string, client *http.Client) (rc io.ReadCloser, err err
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch avatar from the orig: %w", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		_ = resp.Body.Close() // caller won't close on error
 		return nil, fmt.Errorf("failed to get avatar from the orig, status %s", resp.Status)
 	}
 
 	// buffer the body up to the cap to fail fast on oversized inputs.
 	// Reading +1 byte beyond the cap distinguishes "exactly cap" from "too big".
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAvatarFetchSize+1))
-	_ = resp.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read avatar body: %w", err)
 	}
 	if int64(len(body)) > maxAvatarFetchSize {
 		return nil, fmt.Errorf("avatar body exceeds %d bytes", maxAvatarFetchSize)
 	}
-	return io.NopCloser(bytes.NewReader(body)), nil
+	return body, nil
 }
 
 // Handler returns token routes for given provider
@@ -251,22 +255,13 @@ func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
 // Validation uses image.DecodeConfig (cheap — declares dimensions, allocates nothing)
 // before any full image.Decode, so a 100 KB compressed image declaring 65535x65535 px
 // is rejected without ever materializing the raster.
-func (p *Proxy) resize(reader io.Reader, limit int) io.Reader {
-	if reader == nil {
-		p.Logf("[WARN] avatar resize(): reader is nil")
-		return nil
-	}
-
-	// read upstream bytes into a buffer up to the fetch cap. We keep the bytes verbatim
-	// for the no-resize path so animated GIFs etc. aren't truncated by image.Decode,
-	// which would only consume the first frame.
-	body, err := io.ReadAll(io.LimitReader(reader, maxAvatarFetchSize+1))
-	if err != nil {
-		p.Logf("[WARN] avatar resize(): can't read avatar body, %s", err)
-		return nil
-	}
-	if int64(len(body)) > maxAvatarFetchSize {
-		p.Logf("[WARN] avatar resize(): body exceeds %d bytes", maxAvatarFetchSize)
+//
+// Callers (load, PutContent, identicon generation) must ensure body is bounded by
+// maxAvatarFetchSize before calling; resize trusts the size invariant rather than
+// re-buffering. An empty body or a body over the cap is refused defensively.
+func (p *Proxy) resize(body []byte, limit int) io.Reader {
+	if len(body) == 0 || int64(len(body)) > maxAvatarFetchSize {
+		p.Logf("[WARN] avatar resize(): refusing body of size %d (cap %d)", len(body), maxAvatarFetchSize)
 		return nil
 	}
 

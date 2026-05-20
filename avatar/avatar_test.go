@@ -387,11 +387,11 @@ func TestAvatar_resize(t *testing.T) {
 	// non-image bytes (e.g. an attacker's HTML payload) must NEVER pass through, even
 	// with limit <= 0: returning the raw bytes would let storage be poisoned with
 	// arbitrary content that Handler() would later sniff and serve as text/html.
-	assert.Nil(t, p.resize(strings.NewReader("some picture bin data"), -1),
+	assert.Nil(t, p.resize([]byte("some picture bin data"), -1),
 		"non-image must be rejected regardless of limit (no pass-through)")
-	assert.Nil(t, p.resize(strings.NewReader("invalid image content"), 100),
+	assert.Nil(t, p.resize([]byte("invalid image content"), 100),
 		"decode failure must return nil (no pass-through)")
-	assert.Nil(t, p.resize(strings.NewReader("<html><script>alert(1)</script></html>"), 100),
+	assert.Nil(t, p.resize([]byte("<html><script>alert(1)</script></html>"), 100),
 		"HTML body must be rejected")
 
 	cases := []struct {
@@ -407,19 +407,19 @@ func TestAvatar_resize(t *testing.T) {
 		require.Nil(t, err, "can't open test file %s", c.file)
 
 		// no need for resize, avatar dimensions are smaller than resize limit.
-		resizedR = p.resize(bytes.NewReader(img), 800)
+		resizedR = p.resize(img, 800)
 		assert.NotNil(t, resizedR, "file %s", c.file)
 		checkC(t, resizedR, img)
 
 		// no-resize path with limit=0 must also preserve the original bytes verbatim —
 		// this matters for animated GIFs and other multi-frame formats where decoding
 		// via image.Decode would consume only the first frame and truncate the rest.
-		resizedR = p.resize(bytes.NewReader(img), 0)
+		resizedR = p.resize(img, 0)
 		assert.NotNil(t, resizedR, "limit=0 must return original bytes for %s", c.file)
 		checkC(t, resizedR, img)
 
 		// resizing to half of width. Check resizedR avatar format PNG.
-		resizedR = p.resize(bytes.NewReader(img), 400)
+		resizedR = p.resize(img, 400)
 		assert.NotNil(t, resizedR, "file %s", c.file)
 
 		imgRz, format, err := image.Decode(resizedR)
@@ -455,8 +455,8 @@ func TestAvatar_resizeRejectsDecompressionBomb(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			bomb := makeBombPNG(c.w, c.h)
 			require.Less(t, len(bomb), 100, "bomb must be small compressed — that is the threat model")
-			assert.Nil(t, p.resize(bytes.NewReader(bomb), 100), "limit>0: %s", c.reason)
-			assert.Nil(t, p.resize(bytes.NewReader(bomb), 0), "limit=0: %s", c.reason)
+			assert.Nil(t, p.resize(bomb, 100), "limit>0: %s", c.reason)
+			assert.Nil(t, p.resize(bomb, 0), "limit=0: %s", c.reason)
 		})
 	}
 }
