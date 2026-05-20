@@ -33,6 +33,13 @@ const sniffLen = 512
 // unbounded body that would exhaust process memory inside resize.
 const maxAvatarFetchSize = 10 << 20
 
+// maxAvatarPixels caps the declared pixel count of an avatar before any raster
+// decode is allowed. Without this, a tiny compressed "decompression bomb" image
+// declaring e.g. 65535x65535 px would force image.Decode to allocate gigabytes
+// of pixel memory and OOM the auth service on a single login attempt. 16 MP
+// covers any realistic avatar (~4096x4096) while keeping peak allocation bounded.
+const maxAvatarPixels = 16 * 1024 * 1024
+
 // Proxy provides http handler for avatars from avatar.Store
 // On user login token will call Put and it will retrieve and save picture locally.
 type Proxy struct {
@@ -78,7 +85,15 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 		}
 	}()
 
-	avatarID, err := p.Store.Put(u.ID, p.resize(body, p.ResizeLimit)) // put returns avatar base name, like 123456.image
+	resized := p.resize(body, p.ResizeLimit)
+	if resized == nil {
+		// non-image upstream — refuse to store attacker-controlled bytes under
+		// the user's avatar id and fall back to a generated identicon instead.
+		p.Logf("[WARN] upstream avatar from %s is not a valid image, using identicon", redactAvatarURL(u.Picture))
+		return genIdenticon(u.ID)
+	}
+
+	avatarID, err := p.Store.Put(u.ID, resized) // put returns avatar base name, like 123456.image
 	if err != nil {
 		return "", err
 	}
@@ -93,7 +108,11 @@ func (p *Proxy) Put(u token.User, client *http.Client) (avatarURL string, err er
 // content themselves and avoid exposing the credential to Put's URL-fetching path —
 // where it would land in u.Picture, debug logs, and the user JSON returned to clients.
 func (p *Proxy) PutContent(userID string, content io.Reader) (avatarURL string, err error) {
-	avatarID, err := p.Store.Put(userID, p.resize(content, p.ResizeLimit))
+	resized := p.resize(content, p.ResizeLimit)
+	if resized == nil {
+		return "", fmt.Errorf("avatar content for %s is not a valid image", userID)
+	}
+	avatarID, err := p.Store.Put(userID, resized)
 	if err != nil {
 		return "", err
 	}
@@ -146,27 +165,17 @@ func (p *Proxy) load(url string, client *http.Client) (rc io.ReadCloser, err err
 
 // Handler returns token routes for given provider
 func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
+	setAvatarDefenseHeaders(w)
+
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 	elems := strings.Split(r.URL.Path, "/")
 	avatarID := elems[len(elems)-1]
 	if !reValidAvatarID.MatchString(avatarID) {
 		rest.SendErrorJSON(w, r, p.L, http.StatusForbidden, fmt.Errorf("invalid avatar id from %s", r.URL.Path), "can't load avatar")
 		return
-	}
-
-	// enforce client-side caching
-	etag := `"` + p.Store.ID(avatarID) + `"`
-	w.Header().Set("Etag", etag)
-	w.Header().Set("Cache-Control", "max-age=604800") // 7 days
-	if match := r.Header.Get("If-None-Match"); match != "" {
-		etag = strings.TrimPrefix(etag, `"`)
-		etag = strings.TrimSuffix(etag, `"`)
-		if match == etag {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
 	}
 
 	avReader, size, err := p.Store.Get(avatarID)
@@ -188,11 +197,38 @@ func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "can't read avatar")
 		return
 	}
-	w.Header().Set("Content-Length", strconv.Itoa(size))
-	contentType := http.DetectContentType(buf)
-	if contentType == "application/octet-stream" {
+
+	// validate the bytes really are an image before declaring a content type. Even
+	// though Put() now refuses to store non-image content, this catches stores poisoned
+	// before the fix and any future regression — never trust the bytes at the store
+	// boundary alone, validate again at serve time. An empty body (e.g. NoOp store)
+	// is treated as a benign no-content case: nothing to render, no XSS surface.
+	var contentType string
+	if n > 0 {
+		var ctErr error
+		contentType, ctErr = safeImgContentType(buf[:n])
+		if ctErr != nil {
+			p.Logf("[WARN] rejecting non-image avatar %s: %v", avatarID, ctErr)
+			rest.SendErrorJSON(w, r, p.L, http.StatusUnsupportedMediaType, ctErr, "invalid avatar content")
+			return
+		}
+	} else {
 		contentType = "image/*"
 	}
+
+	// caching headers only after validation so error responses aren't cached
+	etag := `"` + p.Store.ID(avatarID) + `"`
+	w.Header().Set("Etag", etag)
+	w.Header().Set("Cache-Control", "max-age=604800") // 7 days
+	if match := r.Header.Get("If-None-Match"); match != "" {
+		trimmed := strings.TrimPrefix(strings.TrimSuffix(etag, `"`), `"`)
+		if match == trimmed {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Length", strconv.Itoa(size))
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
 	if _, err = w.Write(buf[:n]); err != nil {
@@ -205,33 +241,66 @@ func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// resize an image of supported format (PNG, JPG, GIF) to the size of "limit" px of the biggest side
-// (width or height) preserving aspect ratio.
-// Returns original reader if resizing is not needed or failed.
+// resize validates that the input is a real image and, if needed, re-encodes it to
+// fit within "limit" px on the larger side preserving aspect ratio. Returns nil for
+// non-image content or for declared dimensions exceeding maxAvatarPixels so attacker
+// payloads (HTML/SVG/decompression bombs) never reach the store. With limit <= 0 or
+// when the image already fits, the original bytes are returned verbatim so animated
+// GIFs and other multi-frame formats round-trip without being flattened to one frame.
+//
+// Validation uses image.DecodeConfig (cheap — declares dimensions, allocates nothing)
+// before any full image.Decode, so a 100 KB compressed image declaring 65535x65535 px
+// is rejected without ever materializing the raster.
 func (p *Proxy) resize(reader io.Reader, limit int) io.Reader {
 	if reader == nil {
 		p.Logf("[WARN] avatar resize(): reader is nil")
 		return nil
 	}
-	if limit <= 0 {
-		p.Logf("[DEBUG] avatar resize(): limit should be greater than 0")
-		return reader
-	}
 
-	var teeBuf bytes.Buffer
-	tee := io.TeeReader(reader, &teeBuf)
-	src, _, err := image.Decode(tee)
+	// read upstream bytes into a buffer up to the fetch cap. We keep the bytes verbatim
+	// for the no-resize path so animated GIFs etc. aren't truncated by image.Decode,
+	// which would only consume the first frame.
+	body, err := io.ReadAll(io.LimitReader(reader, maxAvatarFetchSize+1))
 	if err != nil {
-		p.Logf("[WARN] avatar resize(): can't decode avatar image, %s", err)
-		return &teeBuf
+		p.Logf("[WARN] avatar resize(): can't read avatar body, %s", err)
+		return nil
+	}
+	if int64(len(body)) > maxAvatarFetchSize {
+		p.Logf("[WARN] avatar resize(): body exceeds %d bytes", maxAvatarFetchSize)
+		return nil
 	}
 
-	bounds := src.Bounds()
-	w, h := bounds.Dx(), bounds.Dy()
-	if w <= limit && h <= limit || w <= 0 || h <= 0 {
-		p.Logf("[DEBUG] resizing image is smaller that the limit or has 0 size")
-		return &teeBuf
+	// validate format and dimensions without allocating pixel memory.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(body))
+	if err != nil {
+		// non-image input must never reach the store: refuse and let the caller
+		// fall back to an identicon. Returning the raw bytes here previously let
+		// an attacker who controlled u.Picture poison the store with HTML/SVG that
+		// the Handler would later serve back with text/html content type.
+		p.Logf("[WARN] avatar resize(): can't decode avatar image, %s", err)
+		return nil
 	}
+	// multiply in int64 — on 32-bit builds (GOARCH=386, 32-bit arm) the int
+	// product of two 16-bit-or-larger dimensions can overflow and wrap below
+	// maxAvatarPixels, bypassing the cap. GIF's 16-bit logical screen and
+	// JPEG's 16-bit SOF dimensions both hit this if multiplied as int32.
+	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > int64(maxAvatarPixels) {
+		p.Logf("[WARN] avatar resize(): declared dimensions %dx%d exceed safe limit", cfg.Width, cfg.Height)
+		return nil
+	}
+
+	if limit <= 0 || (cfg.Width <= limit && cfg.Height <= limit) {
+		p.Logf("[DEBUG] avatar resize(): no resize needed (dim %dx%d, limit %d)", cfg.Width, cfg.Height, limit)
+		return bytes.NewReader(body)
+	}
+
+	// dimensions are bounded — full decode is now safe to allocate.
+	src, _, err := image.Decode(bytes.NewReader(body))
+	if err != nil {
+		p.Logf("[WARN] avatar resize(): decode after dim-check failed, %s", err)
+		return nil
+	}
+	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	newW, newH := w*limit/h, limit
 	if w > h {
 		newW, newH = limit, h*limit/w
@@ -243,9 +312,37 @@ func (p *Proxy) resize(reader io.Reader, limit int) io.Reader {
 	var out bytes.Buffer
 	if err = png.Encode(&out, m); err != nil {
 		p.Logf("[WARN] avatar resize(): can't encode resized avatar to PNG, %s", err)
-		return &teeBuf
+		return bytes.NewReader(body) // fall back to the validated original
 	}
 	return &out
+}
+
+// safeImgContentType returns the sniffed content type if the bytes look like a safe
+// image format (rasterised: PNG, JPEG, GIF, WebP, BMP, ICO). Returns an error for any
+// non-image content or for image/svg+xml, which can execute scripts when navigated to
+// top-level and must never be served from the avatar origin.
+func safeImgContentType(img []byte) (string, error) {
+	ct := http.DetectContentType(img)
+	base := ct
+	if idx := strings.Index(base, ";"); idx >= 0 {
+		base = strings.TrimSpace(base[:idx])
+	}
+	if !strings.HasPrefix(base, "image/") || base == "image/svg+xml" {
+		return "", fmt.Errorf("non-image content type %q", ct)
+	}
+	return base, nil
+}
+
+// setAvatarDefenseHeaders applies layered defense headers on every avatar response
+// (success, 304, or error). Each header survives content-type validation regressions,
+// browser sniffing, and top-level navigation:
+//   - Content-Security-Policy: strict, with sandbox — blocks inline scripts/handlers
+//   - X-Content-Type-Options: nosniff — prevents MIME-overriding the declared type
+//   - Content-Disposition: inline; filename="avatar" — frames the response as a file
+func setAvatarDefenseHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox; frame-ancestors 'none'")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", `inline; filename="avatar"`)
 }
 
 // GenerateAvatar for give user with identicon

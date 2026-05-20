@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,6 +26,12 @@ import (
 var botInfoFunc = func(ctx context.Context) (*botInfo, error) {
 	return &botInfo{Username: "my_auth_bot"}, nil
 }
+
+// tinyPNG is the smallest valid PNG (1x1 transparent). Tests that exercise the
+// avatar.Proxy.PutContent path need bytes that pass image.Decode; raw "png-bytes"
+// would be rejected by Proxy.resize after the content-type-spoof XSS fix.
+var tinyPNG, _ = base64.StdEncoding.DecodeString(
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 
 func TestTgLoginHandlerErrors(t *testing.T) {
 	tg := TelegramHandler{Telegram: NewTelegramAPI("test", http.DefaultClient)}
@@ -138,12 +145,8 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 		BotInfoFunc: botInfoFunc,
 	}
 
-	// stand up a tiny server that serves the avatar bytes — the
-	// saveTelegramAvatar helper does an HTTP GET on whatever URL Avatar
-	// returns; using a real, reachable URL keeps the bot-token redaction
-	// logic exercised end-to-end.
 	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("png-bytes"))
+		_, _ = w.Write(tinyPNG)
 	}))
 	defer avatarSrv.Close()
 	m.AvatarFunc = func(ctx context.Context, userID int) (string, error) {
@@ -252,8 +255,6 @@ func TestSaveTelegramAvatar_TransportErrorDoesNotLeakBotToken(t *testing.T) {
 		AvatarSaver: &mockAvatarSaver{},
 		L:           captureLog,
 	}
-	// unreachable host -- forces http.Client.Do to return a *url.Error whose
-	// default stringification embeds the full URL (including bot token).
 	got := th.saveTelegramAvatar(context.Background(), "user1",
 		"https://api.telegram.invalid/file/bot"+botToken+"/photo.jpg")
 	assert.Equal(t, "", got)
@@ -355,53 +356,33 @@ func TestSaveTelegramAvatar_BotTokenNeverLogged(t *testing.T) {
 	})
 }
 
+type legacyAvatarSaver struct{}
+
+func (legacyAvatarSaver) Put(authtoken.User, *http.Client) (string, error) { return "", nil }
+
 // failingAvatarSaver implements both Put and PutContent but its PutContent
 // returns an error -- exercises the saver-side failure branch in
 // saveTelegramAvatar without going through a real avatar.Proxy.
 type failingAvatarSaver struct{}
 
-func (failingAvatarSaver) Put(authtoken.User, *http.Client) (string, error)    { return "", nil }
-func (failingAvatarSaver) PutContent(string, io.Reader) (string, error)        { return "", fmt.Errorf("disk full") }
+func (failingAvatarSaver) Put(authtoken.User, *http.Client) (string, error) { return "", nil }
+func (failingAvatarSaver) PutContent(string, io.Reader) (string, error)     { return "", fmt.Errorf("disk full") }
 
-type legacyAvatarSaver struct{}
-
-func (legacyAvatarSaver) Put(authtoken.User, *http.Client) (string, error) { return "", nil }
-
-// TestSaveTelegramAvatar_TypedNilAvatarSaverDoesNotPanic guards against the
-// case where Opts.AvatarStore is unset. auth.go skips initializing
-// res.avatarProxy then, so AvatarSaver ends up as a typed-nil *avatar.Proxy
-// (non-nil interface wrapping a nil pointer). The avatarContentSaver type
-// assertion would still succeed because interface satisfaction is structural,
-// and PutContent on a nil receiver would panic on the first p.Store deref.
-// The guard returns "" with a warn log instead.
 func TestSaveTelegramAvatar_TypedNilAvatarSaverDoesNotPanic(t *testing.T) {
 	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("png-bytes"))
+		_, _ = w.Write(tinyPNG)
 	}))
 	defer avatarSrv.Close()
 
 	var nilProxy *avatar.Proxy
 	th := &TelegramHandler{AvatarSaver: nilProxy, L: logger.NoOp}
-	// reachable URL so that without the typed-nil guard the function would
-	// proceed past the fetch into PutContent on a nil receiver and panic
-	// inside avatar.Proxy at p.Store deref.
 	got := th.saveTelegramAvatar(context.Background(), "user1", avatarSrv.URL+"/file/botSECRET/photo.jpg")
 	assert.Equal(t, "", got, "typed-nil AvatarSaver must short-circuit before fetch + PutContent")
 }
 
-// TestTelegramLoginHandler_DoesNotOverwriteSavedAvatar guards against the
-// double-pipeline regression: after saveTelegramAvatar stores the bytes and
-// sets Picture to a local proxy URL, LoginHandler used to call setAvatar
-// which re-fetches Picture. In split-DNS / unreachable-internal-Opts.URL
-// deployments the fetch fails and Proxy.Put silently overwrites the just-
-// stored Telegram avatar with an identicon at the same store path. This
-// test wires a real avatar.Proxy with an unreachable Opts.URL and asserts
-// the second-pass fetch does not happen (Picture survives intact).
 func TestTelegramLoginHandler_DoesNotOverwriteSavedAvatar(t *testing.T) {
 	dir := t.TempDir()
 	store := avatar.NewLocalFS(dir)
-	// unreachable URL so any Proxy.Put re-fetch would fail and trigger
-	// identicon fallback at the same store path
 	proxy := &avatar.Proxy{
 		Store:     store,
 		URL:       "http://127.0.0.1:1",
@@ -410,7 +391,7 @@ func TestTelegramLoginHandler_DoesNotOverwriteSavedAvatar(t *testing.T) {
 	}
 
 	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("png-bytes"))
+		_, _ = w.Write(tinyPNG)
 	}))
 	defer avatarSrv.Close()
 
@@ -460,11 +441,6 @@ func TestTelegramLoginHandler_DoesNotOverwriteSavedAvatar(t *testing.T) {
 // a TelegramAPI mock that hands back a URL containing a bot-token-like marker,
 // then asserts (a) the marker never lands in authRequest.user.Picture and
 // (b) the marker never appears in any captured log line.
-//
-// Reverting the saveTelegramAvatar redirection (i.e. assigning avatarURL
-// directly to user.Picture) makes assertion (a) fail. Reverting the avatar
-// proxy log redaction makes assertion (b) fail when the avatar pipeline
-// actually fetches the URL. Either way the test will scream loudly.
 func TestTelegramProcessUpdates_BotTokenNeverInUserPicture(t *testing.T) {
 	const botToken = "secret-bot-token-marker"
 	var logBuf strings.Builder
