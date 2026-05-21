@@ -70,7 +70,10 @@ func NewStore(uri string) (Store, error) {
 	return nil, fmt.Errorf("can't parse store url %s", uri)
 }
 
-// Migrate avatars between stores
+// Migrate copies avatars from src to dst, returning the number of ids enumerated
+// from src and the first List error if any. Per-avatar Get/Put/Close failures are
+// logged with [WARN] and skipped — they do not abort the migration or surface in
+// the returned error, so the returned count is "ids attempted", not "ids stored".
 func Migrate(dst, src Store) (int, error) {
 	ids, err := src.List()
 	if err != nil {

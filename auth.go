@@ -58,7 +58,7 @@ type Opts struct {
 	XSRFHeaderKey     string        // default "X-XSRF-TOKEN"
 	XSRFIgnoreMethods []string      // disable XSRF protection for the specified request methods (ex. []string{"GET", "POST")}, default empty
 	JWTQuery          string        // default "token"
-	SendJWTHeader     bool          // if enabled send JWT as a header instead of cookie
+	SendJWTHeader     bool          // if enabled, also send JWT as a response header (in addition to the cookie)
 	SameSiteCookie    http.SameSite // limit cross-origin requests with SameSite cookie attribute
 
 	Issuer string // optional value for iss claim, usually the application name, default "go-pkgz/auth"
@@ -81,7 +81,7 @@ type Opts struct {
 	UseGravatar       bool         // for email based auth (verified provider) use gravatar service
 
 	AdminPasswd      string                   // if presented, allows basic auth with user admin and given password
-	BasicAuthChecker middleware.BasicAuthFunc // user custom checker for basic auth, if one defined then "AdminPasswd" will ignored
+	BasicAuthChecker middleware.BasicAuthFunc // custom checker for basic auth; when set, AdminPasswd is bypassed entirely
 	AudienceReader   token.Audience           // list of allowed aud values, default (empty) allows any
 	AudSecrets       bool                     // allow multiple secrets (secret per aud)
 	Logger           logger.L                 // logger interface, default is no logging at all
@@ -503,7 +503,7 @@ func (s *Service) AddCustomHandler(p provider.Provider) {
 
 // DevAuth makes dev oauth2 server, for testing and development only!
 func (s *Service) DevAuth() (*provider.DevAuthServer, error) {
-	p, err := s.Provider("dev") // peak dev provider
+	p, err := s.Provider("dev") // peek dev provider
 	if err != nil {
 		return nil, fmt.Errorf("dev provider not registered: %w", err)
 	}
@@ -531,7 +531,7 @@ func (s *Service) TokenService() *token.Service {
 	return s.jwtService
 }
 
-// AvatarProxy returns stored in service
+// AvatarProxy returns the avatar.Proxy configured on the service, or nil if no AvatarStore was set.
 func (s *Service) AvatarProxy() *avatar.Proxy {
 	return s.avatarProxy
 }
