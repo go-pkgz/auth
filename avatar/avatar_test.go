@@ -2,7 +2,10 @@ package avatar
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"image"
 	"io"
 	"log"
@@ -21,12 +24,28 @@ import (
 	"github.com/go-pkgz/auth/token"
 )
 
+// tinyWebP is the smallest valid WebP (VP8 lossy 1x1). Used to regression-test
+// that Proxy.resize accepts WebP, which Go's stdlib image package does not register
+// by default — only the side-effect import of golang.org/x/image/webp in avatar.go
+// makes this work.
+var tinyWebP = mustDecodeBase64("UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vshDgA=")
+
+func mustDecodeBase64(s string) []byte {
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		panic("test fixture: invalid base64: " + err.Error())
+	}
+	return b
+}
+
 func TestAvatar_Put(t *testing.T) {
+	pngBytes, err := os.ReadFile("testdata/circles.png")
+	require.NoError(t, err)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/pic.png" {
-			w.Header().Set("Content-Type", "image/*")
-			fmt.Fprint(w, "some picture bin data")
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngBytes)
 			return
 		}
 		http.Error(w, "not found", http.StatusNotFound)
@@ -47,7 +66,7 @@ func TestAvatar_Put(t *testing.T) {
 	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", res)
 	fi, err := os.Stat("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 	assert.NoError(t, err)
-	assert.Equal(t, int64(21), fi.Size())
+	assert.Equal(t, int64(len(pngBytes)), fi.Size())
 
 	u.ID = "user2"
 	res, err = p.Put(u, client)
@@ -55,18 +74,83 @@ func TestAvatar_Put(t *testing.T) {
 	assert.Equal(t, "http://localhost:8080/avatar/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image", res)
 	fi, err = os.Stat("/tmp/avatars.test/84/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image")
 	assert.NoError(t, err)
-	assert.Equal(t, int64(21), fi.Size())
+	assert.Equal(t, int64(len(pngBytes)), fi.Size())
+}
+
+// TestAvatar_PutRejectsNonImage proves that an attacker controlling u.Picture cannot
+// poison the avatar store with HTML/SVG/text — Put falls back to an identicon and the
+// stored bytes are guaranteed to be a real PNG, not the attacker payload.
+func TestAvatar_PutRejectsNonImage(t *testing.T) {
+	htmlPayload := []byte("<html><script>alert(document.domain)</script></html>")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png") // lying upstream
+		_, _ = w.Write(htmlPayload)
+	}))
+	defer ts.Close()
+
+	dir := t.TempDir()
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS(dir), L: logger.Std}
+
+	u := token.User{ID: "user1", Name: "user1 name", Picture: ts.URL + "/evil.png"}
+	res, err := p.Put(u, &http.Client{Timeout: time.Second})
+	require.NoError(t, err)
+	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", res)
+
+	stored, err := os.ReadFile(dir + "/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
+	require.NoError(t, err)
+	assert.NotEqual(t, htmlPayload, stored, "attacker payload must not be stored")
+	assert.NotContains(t, string(stored), "<script>", "attacker payload must not be reachable from the store")
+	assert.True(t, bytes.HasPrefix(stored, []byte{0x89, 'P', 'N', 'G'}), "fallback content must be a real PNG (identicon)")
 }
 
 func TestAvatar_PutContent(t *testing.T) {
+	pngBytes, err := os.ReadFile("testdata/circles.png")
+	require.NoError(t, err)
+
 	defer func() { _ = os.RemoveAll("/tmp/avatars.put-content.test/") }()
 	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS("/tmp/avatars.put-content.test"), L: logger.Std}
-	got, err := p.PutContent("user1", strings.NewReader("png-bytes"))
+	got, err := p.PutContent("user1", bytes.NewReader(pngBytes))
 	require.NoError(t, err)
 	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", got)
 	fi, err := os.Stat("/tmp/avatars.put-content.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 	require.NoError(t, err)
 	assert.Greater(t, fi.Size(), int64(0))
+
+	// non-image bytes are rejected — never stored
+	_, err = p.PutContent("attacker", strings.NewReader("<html><script>alert(1)</script></html>"))
+	require.Error(t, err, "non-image content must be rejected at PutContent")
+	assert.Contains(t, err.Error(), "not a valid image")
+}
+
+// TestAvatar_HandlerRejectsPoisonedStore proves that even if the store contains
+// attacker-controlled non-image bytes (e.g. poisoned before the fix), Handler refuses
+// to serve them and returns 415 with strict defense headers instead.
+func TestAvatar_HandlerRejectsPoisonedStore(t *testing.T) {
+	dir := t.TempDir()
+	store := NewLocalFS(dir)
+
+	// directly seed the store with an HTML payload at user1's avatar id
+	htmlPayload := []byte("<html><body><script>alert(document.domain)</script></body></html>")
+	_, err := store.Put("user1", bytes.NewReader(htmlPayload))
+	require.NoError(t, err)
+
+	p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: store, L: logger.Std}
+
+	req := httptest.NewRequest("GET", "/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
+	rr := httptest.NewRecorder()
+	p.Handler(rr, req)
+
+	assert.Equal(t, http.StatusUnsupportedMediaType, rr.Code, "poisoned store bytes must be rejected at serve time")
+	assert.False(t, strings.HasPrefix(rr.Header().Get("Content-Type"), "text/html"),
+		"reject response must not be text/html (got %q)", rr.Header().Get("Content-Type"))
+	assert.NotContains(t, rr.Body.String(), "<script>", "attacker payload must never appear in response body")
+	// defense headers on the rejection path too
+	assert.Equal(t, "nosniff", rr.Header().Get("X-Content-Type-Options"))
+	assert.Contains(t, rr.Header().Get("Content-Disposition"), "inline")
+	csp := rr.Header().Get("Content-Security-Policy")
+	assert.Contains(t, csp, "default-src 'none'")
+	assert.Contains(t, csp, "sandbox")
 }
 
 func TestAvatar_RedactAvatarURL(t *testing.T) {
@@ -132,8 +216,6 @@ func TestAvatar_PutFailed(t *testing.T) {
 }
 
 func TestAvatar_PutCapsBodySize(t *testing.T) {
-	// upstream that streams indefinitely past the cap; without
-	// the maxAvatarFetchSize check resize would consume all bytes.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/*")
 		w.WriteHeader(http.StatusOK)
@@ -157,13 +239,15 @@ func TestAvatar_PutCapsBodySize(t *testing.T) {
 }
 
 func TestAvatar_Routes(t *testing.T) {
+	pngBytes, err := os.ReadFile("testdata/circles.png")
+	require.NoError(t, err)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/pic.png" {
-			w.Header().Set("Content-Type", "image/jpg")
+			w.Header().Set("Content-Type", "image/jpg") // intentionally wrong upstream CT — proxy must ignore it
 			w.Header().Set("Custom-Header", "xyz")
-			_, err := fmt.Fprint(w, "some picture bin data")
-			require.NoError(t, err)
+			_, wrErr := w.Write(pngBytes)
+			require.NoError(t, wrErr)
 			return
 		}
 		http.Error(w, "not found", http.StatusNotFound)
@@ -176,7 +260,7 @@ func TestAvatar_Routes(t *testing.T) {
 	client := &http.Client{Timeout: time.Second}
 
 	u := token.User{ID: "user1", Name: "user1 name", Picture: ts.URL + "/pic.png"}
-	_, err := p.Put(u, client)
+	_, err = p.Put(u, client)
 	assert.NoError(t, err)
 
 	{
@@ -199,7 +283,7 @@ func TestAvatar_Routes(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, rr.Code)
 	}
 
-	{ // status 200
+	{ // status 200 — real PNG bytes round-trip and are served as image/png (upstream lied with image/jpg)
 		req, e := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
 		require.NoError(t, e)
 		rr := httptest.NewRecorder()
@@ -207,31 +291,50 @@ func TestAvatar_Routes(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Equal(t, []string{"image/*"}, rr.Header()["Content-Type"])
-		assert.Equal(t, []string{"21"}, rr.Header()["Content-Length"])
+		assert.Equal(t, "image/png", rr.Header().Get("Content-Type"), "must sniff actual bytes, not trust upstream image/jpg")
+		assert.Equal(t, strconv.Itoa(len(pngBytes)), rr.Header().Get("Content-Length"))
 		assert.Equal(t, []string(nil), rr.Header()["Custom-Header"], "strip all custom headers")
 		assert.NotNil(t, rr.Header()["Etag"])
+		// defense headers must be present on every response
+		assert.Equal(t, "nosniff", rr.Header().Get("X-Content-Type-Options"))
+		assert.Contains(t, rr.Header().Get("Content-Disposition"), "inline")
+		csp := rr.Header().Get("Content-Security-Policy")
+		assert.Contains(t, csp, "default-src 'none'")
+		assert.Contains(t, csp, "sandbox")
 
 		bb := bytes.Buffer{}
 		sz, e := io.Copy(&bb, rr.Body)
 		assert.NoError(t, e)
-		assert.Equal(t, int64(21), sz)
-		assert.Equal(t, "some picture bin data", bb.String())
+		assert.Equal(t, int64(len(pngBytes)), sz)
+		assert.Equal(t, pngBytes, bb.Bytes())
 	}
 
 	{
-		// status 304
+		// status 304 — client sends the same quoted ETag back, per RFC 7232
 		req, e := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
 		require.NoError(t, e)
 		id := p.Store.ID("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
-		req.Header.Add("If-None-Match", p.Store.ID(id)) // hash of `some_random_name.image` since the file doesn't exist
+		req.Header.Set("If-None-Match", `"`+id+`"`)
 
 		rr := httptest.NewRecorder()
 		handler := http.Handler(http.HandlerFunc(p.Handler))
 		handler.ServeHTTP(rr, req)
 
-		assert.Equal(t, http.StatusNotModified, rr.Code)
+		assert.Equal(t, http.StatusNotModified, rr.Code, "quoted If-None-Match matching the response ETag must 304")
 		assert.Equal(t, []string{`"` + id + `"`}, rr.Header()["Etag"])
+	}
+
+	{
+		// status 304 — weak validator form W/"..." also matches
+		req, e := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
+		require.NoError(t, e)
+		id := p.Store.ID("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
+		req.Header.Set("If-None-Match", `W/"`+id+`"`)
+
+		rr := httptest.NewRecorder()
+		handler := http.Handler(http.HandlerFunc(p.Handler))
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusNotModified, rr.Code, "weak If-None-Match must also 304")
 	}
 }
 
@@ -309,15 +412,15 @@ func TestAvatar_resize(t *testing.T) {
 	resizedR := p.resize(nil, 100)
 	assert.Nil(t, resizedR)
 
-	// negative limit error.
-	resizedR = p.resize(strings.NewReader("some picture bin data"), -1)
-	require.NotNil(t, resizedR)
-	checkC(t, resizedR, []byte("some picture bin data"))
-
-	// decode error.
-	resizedR = p.resize(strings.NewReader("invalid image content"), 100)
-	assert.NotNil(t, resizedR)
-	checkC(t, resizedR, []byte("invalid image content"))
+	// non-image bytes (e.g. an attacker's HTML payload) must NEVER pass through, even
+	// with limit <= 0: returning the raw bytes would let storage be poisoned with
+	// arbitrary content that Handler() would later sniff and serve as text/html.
+	assert.Nil(t, p.resize([]byte("some picture bin data"), -1),
+		"non-image must be rejected regardless of limit (no pass-through)")
+	assert.Nil(t, p.resize([]byte("invalid image content"), 100),
+		"decode failure must return nil (no pass-through)")
+	assert.Nil(t, p.resize([]byte("<html><script>alert(1)</script></html>"), 100),
+		"HTML body must be rejected")
 
 	cases := []struct {
 		file   string
@@ -332,12 +435,19 @@ func TestAvatar_resize(t *testing.T) {
 		require.Nil(t, err, "can't open test file %s", c.file)
 
 		// no need for resize, avatar dimensions are smaller than resize limit.
-		resizedR = p.resize(bytes.NewReader(img), 800)
+		resizedR = p.resize(img, 800)
 		assert.NotNil(t, resizedR, "file %s", c.file)
 		checkC(t, resizedR, img)
 
+		// no-resize path with limit=0 must also preserve the original bytes verbatim —
+		// this matters for animated GIFs and other multi-frame formats where decoding
+		// via image.Decode would consume only the first frame and truncate the rest.
+		resizedR = p.resize(img, 0)
+		assert.NotNil(t, resizedR, "limit=0 must return original bytes for %s", c.file)
+		checkC(t, resizedR, img)
+
 		// resizing to half of width. Check resizedR avatar format PNG.
-		resizedR = p.resize(bytes.NewReader(img), 400)
+		resizedR = p.resize(img, 400)
 		assert.NotNil(t, resizedR, "file %s", c.file)
 
 		imgRz, format, err := image.Decode(resizedR)
@@ -346,6 +456,107 @@ func TestAvatar_resize(t *testing.T) {
 		bounds := imgRz.Bounds()
 		assert.Equal(t, c.wr, bounds.Dx(), "file %s", c.file)
 		assert.Equal(t, c.hr, bounds.Dy(), "file %s", c.file)
+	}
+}
+
+// TestAvatar_resizeRejectsDecompressionBomb proves a tiny PNG that declares huge
+// dimensions in its IHDR chunk is rejected via DecodeConfig (cheap, no allocation)
+// before image.Decode is called. Without this check, image.Decode would allocate
+// width*height*4 bytes of pixel memory and OOM the auth service on each login that
+// fetches an attacker-controlled u.Picture.
+//
+// The product-overflow case (65535×65535 wraps int32) is also exercised: the guard
+// must compute the product in int64 so 32-bit builds (GOARCH=386, 32-bit arm) cannot
+// be tricked into letting the bomb through by integer wraparound.
+func TestAvatar_resizeRejectsDecompressionBomb(t *testing.T) {
+	cases := []struct {
+		name   string
+		w, h   uint32
+		reason string
+	}{
+		{name: "huge square", w: 65535, h: 65535, reason: "well over maxAvatarPixels; also overflows int32 product"},
+		{name: "non-square overflow", w: 70000, h: 70000, reason: "still overflows int32 product on 32-bit builds"},
+		{name: "thin huge area", w: 1 << 24, h: 1 << 24, reason: "product fits int64 but exceeds maxAvatarPixels by orders of magnitude"},
+	}
+	p := Proxy{L: logger.Std}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			bomb := makeBombPNG(c.w, c.h)
+			require.Less(t, len(bomb), 100, "bomb must be small compressed — that is the threat model")
+			assert.Nil(t, p.resize(bomb, 100), "limit>0: %s", c.reason)
+			assert.Nil(t, p.resize(bomb, 0), "limit=0: %s", c.reason)
+		})
+	}
+}
+
+// makeBombPNG constructs a PNG header with an IHDR chunk declaring the given
+// width/height but no IDAT body. image.DecodeConfig returns those dimensions
+// without allocating pixel memory; image.Decode on the same bytes would either
+// fail or attempt to allocate w*h*4 bytes.
+func makeBombPNG(width, height uint32) []byte {
+	var buf bytes.Buffer
+	buf.Write([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:4], width)
+	binary.BigEndian.PutUint32(ihdr[4:8], height)
+	ihdr[8] = 8  // bit depth
+	ihdr[9] = 2  // RGB color type
+	ihdr[10] = 0 // compression
+	ihdr[11] = 0 // filter
+	ihdr[12] = 0 // interlace
+
+	_ = binary.Write(&buf, binary.BigEndian, uint32(13)) // chunk length
+	buf.WriteString("IHDR")
+	buf.Write(ihdr)
+
+	crcInput := append([]byte("IHDR"), ihdr...)
+	_ = binary.Write(&buf, binary.BigEndian, crc32.ChecksumIEEE(crcInput))
+	return buf.Bytes()
+}
+
+// TestAvatar_resizeAcceptsWebP regression-checks Discord-style WebP avatars. Go's
+// stdlib image package only registers PNG/JPEG/GIF decoders; without the side-effect
+// import of golang.org/x/image/webp in avatar.go, image.DecodeConfig would fail on
+// WebP and Discord users would silently get an identicon instead of their real avatar.
+func TestAvatar_resizeAcceptsWebP(t *testing.T) {
+	p := Proxy{L: logger.Std}
+	got := p.resize(tinyWebP, 0)
+	require.NotNil(t, got, "WebP avatar must be accepted by resize when limit=0")
+	out, err := io.ReadAll(got)
+	require.NoError(t, err)
+	assert.Equal(t, tinyWebP, out, "no-resize path must return WebP bytes verbatim")
+
+	// safeImgContentType must also agree
+	ct, err := safeImgContentType(tinyWebP)
+	require.NoError(t, err)
+	assert.Equal(t, "image/webp", ct)
+}
+
+// TestEtagMatches covers the If-None-Match parsing per RFC 7232 — quoted, weak,
+// comma-separated, and wildcard forms. The handler previously compared against
+// an unquoted etag while browsers send the quoted form, so 304 short-circuits
+// never fired.
+func TestEtagMatches(t *testing.T) {
+	const etag = `"abc123"`
+	tbl := []struct {
+		header string
+		want   bool
+	}{
+		{etag, true},                   // exact match — what browsers send
+		{`W/"abc123"`, true},            // weak validator
+		{`"other", "abc123"`, true},     // comma-separated, second matches
+		{` "abc123" `, true},            // leading/trailing whitespace
+		{`*`, true},                     // wildcard matches anything
+		{`"abc"`, false},                // different etag
+		{`"abc123x"`, false},            // substring shouldn't match
+		{``, false},                     // empty
+		{`abc123`, false},               // unquoted — invalid per RFC, must not match
+	}
+	for _, tt := range tbl {
+		t.Run(tt.header, func(t *testing.T) {
+			assert.Equal(t, tt.want, etagMatches(tt.header, etag))
+		})
 	}
 }
 

@@ -214,7 +214,7 @@ func TestInMemoryVerifStore(t *testing.T) {
 		successes := int32(0)
 		errs := int32(0)
 		wg.Add(goroutines)
-		for i := 0; i < goroutines; i++ {
+		for range goroutines {
 			go func() {
 				defer wg.Done()
 				used, err := s.MarkUsed("hot-key", time.Hour)
@@ -239,7 +239,7 @@ func TestInMemoryVerifStore(t *testing.T) {
 		s := NewInMemoryVerifStore().(*inMemoryVerifStore)
 		// 3 inserts with nanosecond TTL — quickly expire, no sweep yet
 		// (insertCount=3 < 4)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			used, err := s.MarkUsed(fmt.Sprintf("expired-%d", i), time.Nanosecond)
 			require.NoError(t, err)
 			require.False(t, used)

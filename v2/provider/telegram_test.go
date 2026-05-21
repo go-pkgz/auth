@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,20 @@ import (
 // same across all tests
 var botInfoFunc = func(ctx context.Context) (*botInfo, error) {
 	return &botInfo{Username: "my_auth_bot"}, nil
+}
+
+// tinyPNG is the smallest valid PNG (1x1 transparent). Tests that exercise the
+// avatar.Proxy.PutContent path need bytes that pass image.Decode; raw "png-bytes"
+// would be rejected by Proxy.resize after the content-type-spoof XSS fix.
+var tinyPNG = mustDecodeBase64(
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+
+func mustDecodeBase64(s string) []byte {
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		panic("test fixture: invalid base64: " + err.Error())
+	}
+	return b
 }
 
 func TestTgLoginHandlerErrors(t *testing.T) {
@@ -139,7 +154,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	}
 
 	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("png-bytes"))
+		_, _ = w.Write(tinyPNG)
 	}))
 	defer avatarSrv.Close()
 	m.AvatarFunc = func(ctx context.Context, userID int) (string, error) {
@@ -359,11 +374,13 @@ func (legacyAvatarSaver) Put(authtoken.User, *http.Client) (string, error) { ret
 type failingAvatarSaver struct{}
 
 func (failingAvatarSaver) Put(authtoken.User, *http.Client) (string, error) { return "", nil }
-func (failingAvatarSaver) PutContent(string, io.Reader) (string, error)     { return "", fmt.Errorf("disk full") }
+func (failingAvatarSaver) PutContent(string, io.Reader) (string, error) {
+	return "", fmt.Errorf("disk full")
+}
 
 func TestSaveTelegramAvatar_TypedNilAvatarSaverDoesNotPanic(t *testing.T) {
 	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("png-bytes"))
+		_, _ = w.Write(tinyPNG)
 	}))
 	defer avatarSrv.Close()
 
@@ -384,7 +401,7 @@ func TestTelegramLoginHandler_DoesNotOverwriteSavedAvatar(t *testing.T) {
 	}
 
 	avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("png-bytes"))
+		_, _ = w.Write(tinyPNG)
 	}))
 	defer avatarSrv.Close()
 
@@ -407,7 +424,7 @@ func TestTelegramLoginHandler_DoesNotOverwriteSavedAvatar(t *testing.T) {
 	}
 
 	updates := &telegramUpdate{}
-	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(getUpdatesResp, tok)), updates))
+	require.NoError(t, json.Unmarshal(fmt.Appendf(nil, getUpdatesResp, tok), updates))
 	th.processUpdates(context.Background(), updates)
 
 	got := th.requests.data[tok]
