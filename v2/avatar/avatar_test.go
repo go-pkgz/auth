@@ -2,6 +2,7 @@ package avatar
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -22,6 +23,20 @@ import (
 	"github.com/go-pkgz/auth/v2/logger"
 	"github.com/go-pkgz/auth/v2/token"
 )
+
+// tinyWebP is the smallest valid WebP (VP8 lossy 1x1). Used to regression-test
+// that Proxy.resize accepts WebP, which Go's stdlib image package does not register
+// by default — only the side-effect import of golang.org/x/image/webp in avatar.go
+// makes this work.
+var tinyWebP = mustDecodeBase64("UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vshDgA=")
+
+func mustDecodeBase64(s string) []byte {
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		panic("test fixture: invalid base64: " + err.Error())
+	}
+	return b
+}
 
 func TestAvatar_Put(t *testing.T) {
 	pngBytes, err := os.ReadFile("testdata/circles.png")
@@ -295,18 +310,31 @@ func TestAvatar_Routes(t *testing.T) {
 	}
 
 	{
-		// status 304
+		// status 304 — client sends the same quoted ETag back, per RFC 7232
 		req, e := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
 		require.NoError(t, e)
 		id := p.Store.ID("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
-		req.Header.Add("If-None-Match", p.Store.ID(id)) // hash of `some_random_name.image` since the file doesn't exist
+		req.Header.Set("If-None-Match", `"`+id+`"`)
 
 		rr := httptest.NewRecorder()
 		handler := http.Handler(http.HandlerFunc(p.Handler))
 		handler.ServeHTTP(rr, req)
 
-		assert.Equal(t, http.StatusNotModified, rr.Code)
+		assert.Equal(t, http.StatusNotModified, rr.Code, "quoted If-None-Match matching the response ETag must 304")
 		assert.Equal(t, []string{`"` + id + `"`}, rr.Header()["Etag"])
+	}
+
+	{
+		// status 304 — weak validator form W/"..." also matches
+		req, e := http.NewRequest("GET", "/b3daa77b4c04a9551b8781d03191fe098f325e67.image", http.NoBody)
+		require.NoError(t, e)
+		id := p.Store.ID("b3daa77b4c04a9551b8781d03191fe098f325e67.image")
+		req.Header.Set("If-None-Match", `W/"`+id+`"`)
+
+		rr := httptest.NewRecorder()
+		handler := http.Handler(http.HandlerFunc(p.Handler))
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusNotModified, rr.Code, "weak If-None-Match must also 304")
 	}
 }
 
@@ -485,6 +513,51 @@ func makeBombPNG(width, height uint32) []byte {
 	crcInput := append([]byte("IHDR"), ihdr...)
 	_ = binary.Write(&buf, binary.BigEndian, crc32.ChecksumIEEE(crcInput))
 	return buf.Bytes()
+}
+
+// TestAvatar_resizeAcceptsWebP regression-checks Discord-style WebP avatars. Go's
+// stdlib image package only registers PNG/JPEG/GIF decoders; without the side-effect
+// import of golang.org/x/image/webp in avatar.go, image.DecodeConfig would fail on
+// WebP and Discord users would silently get an identicon instead of their real avatar.
+func TestAvatar_resizeAcceptsWebP(t *testing.T) {
+	p := Proxy{L: logger.Std}
+	got := p.resize(tinyWebP, 0)
+	require.NotNil(t, got, "WebP avatar must be accepted by resize when limit=0")
+	out, err := io.ReadAll(got)
+	require.NoError(t, err)
+	assert.Equal(t, tinyWebP, out, "no-resize path must return WebP bytes verbatim")
+
+	// safeImgContentType must also agree
+	ct, err := safeImgContentType(tinyWebP)
+	require.NoError(t, err)
+	assert.Equal(t, "image/webp", ct)
+}
+
+// TestEtagMatches covers the If-None-Match parsing per RFC 7232 — quoted, weak,
+// comma-separated, and wildcard forms. The handler previously compared against
+// an unquoted etag while browsers send the quoted form, so 304 short-circuits
+// never fired.
+func TestEtagMatches(t *testing.T) {
+	const etag = `"abc123"`
+	tbl := []struct {
+		header string
+		want   bool
+	}{
+		{etag, true},                   // exact match — what browsers send
+		{`W/"abc123"`, true},            // weak validator
+		{`"other", "abc123"`, true},     // comma-separated, second matches
+		{` "abc123" `, true},            // leading/trailing whitespace
+		{`*`, true},                     // wildcard matches anything
+		{`"abc"`, false},                // different etag
+		{`"abc123x"`, false},            // substring shouldn't match
+		{``, false},                     // empty
+		{`abc123`, false},               // unquoted — invalid per RFC, must not match
+	}
+	for _, tt := range tbl {
+		t.Run(tt.header, func(t *testing.T) {
+			assert.Equal(t, tt.want, etagMatches(tt.header, etag))
+		})
+	}
 }
 
 func TestAvatar_GetGravatarURL(t *testing.T) {

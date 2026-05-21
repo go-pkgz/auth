@@ -241,10 +241,11 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 }
 
 // withSecurityHeaders wraps an auth response handler to apply strict CSP and nosniff
-// on every response. The go-pkgz/auth package response surface is JSON-only for auth
-// routes and images for the avatar route — no consumer-customisable HTML anywhere —
-// so this CSP is unconditionally safe and gives the auth origin defense-in-depth
-// against any future trust-boundary regression that might emit a renderable body.
+// on every response. The go-pkgz/auth package's own response surface is JSON-only
+// for auth routes and images for the avatar route — no built-in HTML rendering
+// anywhere — so this CSP is unconditionally safe and gives the auth origin
+// defense-in-depth against any future trust-boundary regression that might emit a
+// renderable body.
 //
 //   - Content-Security-Policy: default-src 'none'; sandbox — blocks inline scripts
 //     and event handlers even if a body is ever served as HTML by mistake; the
@@ -255,6 +256,14 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 // The avatar Handler additionally sets Content-Disposition: inline; filename="avatar"
 // inside itself, so direct callers (tests, custom mounts) still get the full header
 // set without going through this wrapper.
+//
+// CONSUMER NOTE: custom providers added via Service.AddCustomHandler / AddProvider
+// are also wrapped. If a custom provider renders HTML (login forms, JS-based flows,
+// the dev_provider's login page, etc.), the strict CSP will block inline scripts and
+// event handlers on those pages. Such providers should either (a) override the CSP
+// for their own response by calling w.Header().Set("Content-Security-Policy", ...)
+// before writing — Set replaces the wrapper's value — or (b) move any required
+// scripts/styles to external files served from 'self'.
 func withSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox; frame-ancestors 'none'")

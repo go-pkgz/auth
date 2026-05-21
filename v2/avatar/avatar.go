@@ -19,6 +19,7 @@ import (
 	"github.com/go-pkgz/rest"
 	"github.com/rrivera/identicon"
 	"golang.org/x/image/draw"
+	_ "golang.org/x/image/webp" // register WebP decoder so Discord-style .webp avatars validate
 
 	"github.com/go-pkgz/auth/v2/logger"
 	"github.com/go-pkgz/auth/v2/token"
@@ -194,9 +195,14 @@ func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	// io.ReadFull keeps reading until the buffer is full or EOF, so a Store
+	// implementation that returns a buffered reader with a small first-Read size
+	// won't cause DetectContentType to misclassify a real image. Short bodies
+	// (avatars under sniffLen) return ErrUnexpectedEOF — that's expected, we sniff
+	// what we got.
 	buf := make([]byte, sniffLen)
-	n, err := avReader.Read(buf)
-	if err != nil && err != io.EOF {
+	n, err := io.ReadFull(avReader, buf)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		p.Logf("[WARN] can't read from avatar reader for %s, %s", avatarID, err)
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "can't read avatar")
 		return
@@ -224,12 +230,9 @@ func (p *Proxy) Handler(w http.ResponseWriter, r *http.Request) {
 	etag := `"` + p.Store.ID(avatarID) + `"`
 	w.Header().Set("Etag", etag)
 	w.Header().Set("Cache-Control", "max-age=604800") // 7 days
-	if match := r.Header.Get("If-None-Match"); match != "" {
-		trimmed := strings.TrimPrefix(strings.TrimSuffix(etag, `"`), `"`)
-		if match == trimmed {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
+	if match := r.Header.Get("If-None-Match"); match != "" && etagMatches(match, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
 	}
 
 	w.Header().Set("Content-Length", strconv.Itoa(size))
@@ -313,19 +316,44 @@ func (p *Proxy) resize(body []byte, limit int) io.Reader {
 }
 
 // safeImgContentType returns the sniffed content type if the bytes look like a safe
-// image format (rasterised: PNG, JPEG, GIF, WebP, BMP, ICO). Returns an error for any
-// non-image content or for image/svg+xml, which can execute scripts when navigated to
-// top-level and must never be served from the avatar origin.
+// raster image format. The set is an explicit allowlist (PNG, JPEG, GIF, WebP, BMP,
+// ICO) — no HasPrefix("image/") catch-all — so future scriptable image/* MIME types
+// added by http.DetectContentType cannot silently pass. Returns an error otherwise.
+// image/svg+xml is excluded because SVG can execute scripts when navigated to top
+// level; image/* coverage of icon files uses both spellings http.DetectContentType
+// is known to return.
 func safeImgContentType(img []byte) (string, error) {
 	ct := http.DetectContentType(img)
 	base := ct
 	if idx := strings.Index(base, ";"); idx >= 0 {
 		base = strings.TrimSpace(base[:idx])
 	}
-	if !strings.HasPrefix(base, "image/") || base == "image/svg+xml" {
-		return "", fmt.Errorf("non-image content type %q", ct)
+	switch base {
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp",
+		"image/x-icon", "image/vnd.microsoft.icon":
+		return base, nil
 	}
-	return base, nil
+	return "", fmt.Errorf("non-image content type %q", ct)
+}
+
+// etagMatches reports whether the If-None-Match header value matches the response
+// ETag per RFC 7232: the header is a comma-separated list of opaque-tags (each in
+// double quotes), optionally weak-prefixed with W/. The wildcard "*" matches anything.
+// We deliberately ignore weak/strong distinction because avatar responses are static
+// per id — both forms identify the same resource.
+func etagMatches(header, etag string) bool {
+	header = strings.TrimSpace(header)
+	if header == "*" {
+		return true
+	}
+	for tag := range strings.SplitSeq(header, ",") {
+		tag = strings.TrimSpace(tag)
+		tag = strings.TrimPrefix(tag, "W/")
+		if tag == etag {
+			return true
+		}
+	}
+	return false
 }
 
 // setAvatarDefenseHeaders applies layered defense headers on every avatar response
