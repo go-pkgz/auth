@@ -63,7 +63,7 @@ type Provider interface {
 	LogoutHandler(w http.ResponseWriter, r *http.Request)
 }
 
-// Handler returns auth routes for given provider
+// Handler dispatches login, callback, and logout requests to the underlying provider.
 func (p Service) Handler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
