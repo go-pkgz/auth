@@ -202,8 +202,6 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to unmarshal user info")
 		return
 	}
-	p.Logf("[DEBUG] got raw user info %+v", jData)
-
 	u := p.mapUser(jData, data)
 	if oauthClaims.NoAva {
 		u.Picture = "" // reset picture on no avatar request
@@ -242,8 +240,6 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		p.Logf("[DEBUG] pass bearer token %s, %s", p.Name(), tok.TokenType)
 		p.bearerTokenHook(p.Name(), u, *tok)
 	}
-
-	p.Logf("[DEBUG] user info %+v", u)
 
 	// redirect to back url if presented in login query params
 	if oauthClaims.Handshake != nil && oauthClaims.Handshake.From != "" {

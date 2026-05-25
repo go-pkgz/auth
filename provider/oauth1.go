@@ -127,8 +127,6 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, h.L, http.StatusInternalServerError, err, "failed to unmarshal user info")
 		return
 	}
-	h.Logf("[DEBUG] got raw user info %+v", jData)
-
 	u := h.mapUser(jData, data)
 	u, err = setAvatar(h.AvatarSaver, u, &http.Client{Timeout: 5 * time.Second})
 	if err != nil {
@@ -158,8 +156,6 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, h.L, http.StatusInternalServerError, err, "failed to set token")
 		return
 	}
-
-	h.Logf("[DEBUG] user info %+v", u)
 
 	// redirect to back url if presented in login query params
 	if oauthClaims.Handshake != nil && oauthClaims.Handshake.From != "" {
