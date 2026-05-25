@@ -85,6 +85,39 @@ func TestLocalBindAddr_DefaultIsNotAllInterfaces(t *testing.T) {
 	assert.False(t, strings.HasPrefix(addr, ":"), "default bind must include a hostname, not the bare-port shorthand")
 }
 
+func TestLogSummaries(t *testing.T) {
+	assert.Equal(t, "keys=[email id name picture]", userDataLogSummary(UserData{
+		"id":      "123",
+		"name":    "Jane User",
+		"email":   "secret@example.com",
+		"picture": "https://example.com/pic.png",
+	}))
+
+	summary := userLogSummary(token.User{
+		ID:      "provider_user123",
+		Name:    "Jane User",
+		Picture: "https://example.com/pic.png?token=secret",
+		Email:   "secret@example.com",
+		Attributes: map[string]any{
+			"tier":  "gold",
+			"admin": true,
+		},
+		Role:     "admin",
+		Audience: "site1",
+	})
+
+	assert.Contains(t, summary, `id="provider_user123"`)
+	assert.Contains(t, summary, `name="Jane User"`)
+	assert.Contains(t, summary, "picture=true")
+	assert.Contains(t, summary, "email=true")
+	assert.Contains(t, summary, "attrs=[admin tier]")
+	assert.Contains(t, summary, "role=true")
+	assert.Contains(t, summary, "audience=true")
+	assert.NotContains(t, summary, "secret@example.com")
+	assert.NotContains(t, summary, "gold")
+	assert.NotContains(t, summary, "https://example.com")
+}
+
 func TestSetAvatar(t *testing.T) {
 	client := &http.Client{Timeout: time.Second}
 	u, err := setAvatar(nil, token.User{Picture: "http://example.com/pic1.png"}, client)

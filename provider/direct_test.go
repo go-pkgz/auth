@@ -209,6 +209,34 @@ func TestDirect_LoginHandlerFailed(t *testing.T) {
 	}
 }
 
+func TestDirect_LoginHandlerRedactsQueryPasswordInLogs(t *testing.T) {
+	logBuf := strings.Builder{}
+	d := DirectHandler{
+		ProviderName: "test",
+		CredChecker:  &mockCredsChecker{ok: false},
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer: "iss-test",
+		L: logger.Func(func(format string, args ...any) {
+			fmt.Fprintf(&logBuf, format, args...)
+		}),
+	}
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?user=myuser&passwd=secret-password&aud=xyz123", http.NoBody)
+	require.NoError(t, err)
+
+	d.LoginHandler(rr, req)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+	assert.Equal(t, "secret-password", req.URL.Query().Get("passwd"), "original request must not be mutated")
+	assert.NotContains(t, logBuf.String(), "secret-password")
+	assert.Contains(t, logBuf.String(), "passwd=<redacted>")
+}
+
 func TestDirect_Logout(t *testing.T) {
 	d := DirectHandler{
 		ProviderName: "test",

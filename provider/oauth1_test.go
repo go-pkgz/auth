@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -217,6 +218,38 @@ func TestOauth1LoginFromRejectsExternalHost(t *testing.T) {
 	assert.NotContains(t, string(body), "evil.example.com")
 }
 
+func TestOauth1LoginDoesNotLogUserProfile(t *testing.T) {
+	var logMu sync.Mutex
+	logBuf := strings.Builder{}
+	captureLog := func(p *Params) {
+		p.L = logger.Func(func(format string, args ...any) {
+			logMu.Lock()
+			defer logMu.Unlock()
+			fmt.Fprintf(&logBuf, format, args...)
+		})
+	}
+	teardown := prepOauth1Test(t, 8993, 8994, captureLog)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: timeout * time.Second}
+
+	resp, err := client.Get("http://localhost:8993/login?site=remark")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	logged := func() string {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return logBuf.String()
+	}()
+	assert.Contains(t, logged, "got raw user info keys=[email id name picture]")
+	assert.Contains(t, logged, `user info id="mock_myuser1" name="blah" picture=true`)
+	assert.NotContains(t, logged, "oauth-sensitive@example.com")
+}
+
 func prepOauth1Test(t *testing.T, loginPort, authPort int, paramOpts ...func(*Params)) func() { //nolint
 
 	provider := Oauth1Handler{
@@ -305,6 +338,7 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int, paramOpts ...func(*Pa
 				res := fmt.Sprintf(`{
 					"id": "%s",
 					"name":"blah",
+					"email":"oauth-sensitive@example.com",
 					"picture":"http://exmple.com/pic1.png"
 					}`, useIDs[count])
 				count++

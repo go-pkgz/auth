@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -327,6 +328,38 @@ func TestOauth2LoginFromAllowsAllowlistedHost(t *testing.T) {
 	assert.Contains(t, lastRedirect, "trusted.example.com")
 }
 
+func TestOauth2LoginDoesNotLogUserProfile(t *testing.T) {
+	var logMu sync.Mutex
+	logBuf := strings.Builder{}
+	captureLog := func(p *Params) {
+		p.L = logger.Func(func(format string, args ...any) {
+			logMu.Lock()
+			defer logMu.Unlock()
+			fmt.Fprintf(&logBuf, format, args...)
+		})
+	}
+	teardown := prepOauth2Test(t, 8991, 8992, nil, captureLog)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	resp, err := client.Get("http://localhost:8991/login?site=remark")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	logged := func() string {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return logBuf.String()
+	}()
+	assert.Contains(t, logged, "got raw user info keys=[email id name picture]")
+	assert.Contains(t, logged, `user info id="mock_myuser1" name="blah" picture=true`)
+	assert.NotContains(t, logged, "oauth-sensitive@example.com")
+}
+
 func TestMakeRedirURL(t *testing.T) {
 	cases := []struct{ rootURL, route, out string }{
 		{"localhost:8080/", "/my/auth/path/google", "localhost:8080/my/auth/path/callback"},
@@ -423,6 +456,7 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHoo
 				res := fmt.Sprintf(`{
 					"id": "%s",
 					"name":"blah",
+					"email":"oauth-sensitive@example.com",
 					"picture":"http://exmple.com/pic1.png"
 					}`, useIDs[count])
 				count++
