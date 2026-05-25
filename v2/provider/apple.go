@@ -402,6 +402,8 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ah.Logf("[DEBUG] user info %s", userLogSummary(u))
+
 	// redirect to back url if presented in login query params
 	if oauthClaims.Handshake != nil && oauthClaims.Handshake.From != "" {
 		if !isAllowedRedirect(oauthClaims.Handshake.From, ah.URL, ah.AllowedRedirectHosts) {

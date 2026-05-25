@@ -233,8 +233,9 @@ func TestOauth1LoginDoesNotLogUserProfile(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	logged := logBuf.String()
+	assert.Contains(t, logged, "got raw user info keys=[email id name picture]")
+	assert.Contains(t, logged, `user info id="mock_myuser1" name="blah" picture=true`)
 	assert.NotContains(t, logged, "oauth-sensitive@example.com")
-	assert.NotContains(t, logged, "mock_myuser1")
 }
 
 func prepOauth1Test(t *testing.T, loginPort, authPort int, paramOpts ...func(*Params)) func() { //nolint
