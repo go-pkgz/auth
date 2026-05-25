@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -319,9 +320,12 @@ func TestOauth2LoginFromAllowsAllowlistedHost(t *testing.T) {
 }
 
 func TestOauth2LoginDoesNotLogUserProfile(t *testing.T) {
+	var logMu sync.Mutex
 	logBuf := strings.Builder{}
 	captureLog := func(p *Params) {
 		p.L = logger.Func(func(format string, args ...any) {
+			logMu.Lock()
+			defer logMu.Unlock()
 			fmt.Fprintf(&logBuf, format, args...)
 		})
 	}
@@ -337,7 +341,11 @@ func TestOauth2LoginDoesNotLogUserProfile(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	logged := logBuf.String()
+	logged := func() string {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return logBuf.String()
+	}()
 	assert.Contains(t, logged, "got raw user info keys=[email id name picture]")
 	assert.Contains(t, logged, `user info id="mock_myuser1" name="blah" picture=true`)
 	assert.NotContains(t, logged, "oauth-sensitive@example.com")
