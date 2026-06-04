@@ -679,7 +679,7 @@ options := auth.Opts{
 ```
 ### Logging
 
-By default, this library doesn't print anything to stdout/stderr, however user can pass a logger implementing `logger.L` interface with a single method `Logf(format string, args ...interface{})`. Functional adapter for this interface included as `logger.Func`. There are two predefined implementations in the `logger` package - `NoOp` (prints nothing, default) and `Std` wrapping `log.Printf` from stdlib.
+By default, this library doesn't print anything to stdout/stderr, however user can pass a logger implementing `logger.L` interface with a single method `Logf(format string, args ...any)`. Functional adapter for this interface included as `logger.Func`. There are two predefined implementations in the `logger` package - `NoOp` (prints nothing, default) and `Std` wrapping `log.Printf` from stdlib.
 
 ## Register oauth2 providers
 
