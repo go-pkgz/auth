@@ -206,8 +206,8 @@ func main() {
 
 	// setup auth routes
 	authRoutes, avaRoutes := service.Handlers()
-	router.Handle("/auth/", http.StripPrefix("/auth", authRoutes))    // add auth handlers
-	router.Handle("/avatar/", http.StripPrefix("/avatar", avaRoutes)) // add avatar handler
+	router.Handle("/auth/", authRoutes)  // add auth handlers
+	router.Handle("/avatar/", avaRoutes) // add avatar handler
 
 	httpServer := &http.Server{
 		Addr:              ":8080",
