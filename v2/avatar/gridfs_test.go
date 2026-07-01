@@ -49,12 +49,12 @@ func TestGridFS_Remove(t *testing.T) {
 	}
 	p := prepGFStore(t)
 	defer p.Close()
-	assert.Error(t, p.Remove("no-such-thing.image"))
+	assert.ErrorIs(t, p.Remove("no-such-thing.image"), ErrNotFound)
 	avatar, err := p.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
 	assert.Equal(t, "b3daa77b4c04a9551b8781d03191fe098f325e67.image", avatar)
 	assert.NoError(t, p.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "remove real one")
-	assert.Error(t, p.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "already removed")
+	assert.ErrorIs(t, p.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), ErrNotFound, "already removed")
 }
 
 func TestGridFS_List(t *testing.T) {
