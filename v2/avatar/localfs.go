@@ -85,7 +85,9 @@ func (fs *LocalFS) Remove(avatar string) error {
 	avFile := path.Join(location, avatar)
 	if err := os.Remove(avFile); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("avatar %s not found: %w", avatar, ErrNotFound)
+			// keep the underlying os.ErrNotExist in the chain alongside ErrNotFound so callers that
+			// already matched errors.Is(err, os.ErrNotExist) on this store keep working
+			return fmt.Errorf("avatar %s not found: %w: %w", avatar, ErrNotFound, err)
 		}
 		return err
 	}

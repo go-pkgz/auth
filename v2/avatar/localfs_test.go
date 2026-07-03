@@ -125,7 +125,9 @@ func TestAvatarStoreFS_Remove(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll("/tmp/avatars.test")
 
-	assert.ErrorIs(t, p.Remove("no-such-avatar"), ErrNotFound, "remove non-existing avatar")
+	rmErr := p.Remove("no-such-avatar")
+	assert.ErrorIs(t, rmErr, ErrNotFound, "remove non-existing avatar")
+	assert.ErrorIs(t, rmErr, os.ErrNotExist, "localfs keeps the underlying os.ErrNotExist in the chain")
 	err = os.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666) //nolint
 	require.NoError(t, err)
 
