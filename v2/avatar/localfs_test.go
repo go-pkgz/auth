@@ -125,7 +125,9 @@ func TestAvatarStoreFS_Remove(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll("/tmp/avatars.test")
 
-	assert.Error(t, p.Remove("no-such-avatar"), "remove non-existing avatar")
+	rmErr := p.Remove("no-such-avatar")
+	assert.ErrorIs(t, rmErr, ErrNotFound, "remove non-existing avatar")
+	assert.ErrorIs(t, rmErr, os.ErrNotExist, "localfs keeps the underlying os.ErrNotExist in the chain")
 	err = os.WriteFile("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", []byte("something"), 0666) //nolint
 	require.NoError(t, err)
 
@@ -133,6 +135,23 @@ func TestAvatarStoreFS_Remove(t *testing.T) {
 	_, err = os.Stat("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 	assert.Error(t, err, "removed for real")
 	t.Log(err)
+}
+
+func TestAvatarStoreFS_RemoveError(t *testing.T) {
+	const store = "/tmp/avatars.test.err"
+	p := NewLocalFS(store)
+	defer os.RemoveAll(store)
+
+	// put a non-empty directory where Remove expects a file, so os.Remove fails with a real error
+	// (not "not exist"); that error must be returned as-is, not masked as ErrNotFound
+	const avatarID = "b3daa77b4c04a9551b8781d03191fe098f325e67.image" // hashes to partition 30
+	avFile := store + "/30/" + avatarID
+	require.NoError(t, os.MkdirAll(avFile, 0o700))
+	require.NoError(t, os.WriteFile(avFile+"/child", []byte("x"), 0o600))
+
+	err := p.Remove(avatarID)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNotFound, "a genuine removal error must not be reported as ErrNotFound")
 }
 
 func TestAvatarStoreFS_List(t *testing.T) {

@@ -103,7 +103,7 @@ func (b *BoltDB) Remove(avatarID string) (err error) {
 	return b.db.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket([]byte(avatarsBktName))
 		if bkt.Get([]byte(avatarID)) == nil {
-			return fmt.Errorf("avatar key not found, %s", avatarID)
+			return fmt.Errorf("avatar %s not found: %w", avatarID, ErrNotFound)
 		}
 		if err = tx.Bucket([]byte(avatarsBktName)).Delete([]byte(avatarID)); err != nil {
 			return fmt.Errorf("can't delete avatar object %s: %w", avatarID, err)

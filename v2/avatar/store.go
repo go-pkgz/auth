@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1" //nolint gosec
 	"encoding/hex"
+	"errors"
 	"fmt"
 	_ "image/gif"  // initializing packages for supporting GIF
 	_ "image/jpeg" // initializing packages for supporting JPEG.
@@ -26,6 +27,10 @@ import (
 const imgSfx = ".image"
 
 var reValidAvatarID = regexp.MustCompile(`^[a-fA-F0-9]{40}\.image$`)
+
+// ErrNotFound is returned by Store.Remove when the requested avatar does not exist,
+// so callers can tell a missing avatar from a real failure with errors.Is.
+var ErrNotFound = errors.New("avatar not found")
 
 // Store defines interface to store and load avatars
 type Store interface {

@@ -47,13 +47,13 @@ func TestBoltDB_Remove(t *testing.T) {
 	b, teardown := prepBoltStore(t)
 	defer teardown()
 
-	assert.Error(t, b.Remove("no-such-thing.image"))
+	assert.ErrorIs(t, b.Remove("no-such-thing.image"), ErrNotFound)
 
 	avatar, err := b.Put("user1", strings.NewReader("some picture bin data"))
 	require.Nil(t, err)
 	assert.Equal(t, "b3daa77b4c04a9551b8781d03191fe098f325e67.image", avatar)
 	assert.NoError(t, b.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "remove real one")
-	assert.Error(t, b.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), "already removed")
+	assert.ErrorIs(t, b.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), ErrNotFound, "already removed")
 }
 
 func TestBoltDB_List(t *testing.T) {
