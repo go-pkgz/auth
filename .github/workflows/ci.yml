@@ -2,8 +2,8 @@ name: build
 
 on:
   push:
-    branches:
-    tags:
+    branches: ["**"]
+    tags: ["**"]
     paths-ignore:
       - ".github/workflows/ci-v2.yml"
       - "v2/**"
