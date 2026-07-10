@@ -2,8 +2,8 @@ name: build-v2
 
 on:
   push:
-    branches:
-    tags:
+    branches: ["**"]
+    tags: ["**"]
     paths:
       - ".github/workflows/ci-v2.yml"
       - "v2/**"
@@ -59,7 +59,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
-          args: --config ../.golangci.yml
+          args: --config=../.golangci.yml
           working-directory: v2
 
       - name: submit coverage
