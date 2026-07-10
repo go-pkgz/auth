@@ -30,7 +30,7 @@ jobs:
       - name: set up go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: "1.26"
         id: go
 
       - name: launch mongodb
@@ -47,9 +47,9 @@ jobs:
           ENABLE_MONGO_TESTS: "true"
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.6.2
+          version: v2.12.2
 
       - name: submit coverage
         run: |
