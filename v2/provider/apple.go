@@ -288,7 +288,7 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ah.Logf("[DEBUG] login url %s, claims=%+v", loginURL, claims)
 
-	http.Redirect(w, r, loginURL, http.StatusFound)
+	http.Redirect(w, r, loginURL, http.StatusFound) //nolint:gosec // redirect goes to the fixed apple auth endpoint, request path only affects redirect_uri query param
 }
 
 // AuthHandler fills user info and redirects to "from" url. This is callback url redirected locally by browser

@@ -2,8 +2,8 @@ name: build
 
 on:
   push:
-    branches:
-    tags:
+    branches: ["**"]
+    tags: ["**"]
     paths-ignore:
       - ".github/workflows/ci-v2.yml"
       - "v2/**"
@@ -25,12 +25,12 @@ jobs:
           sudo systemctl disable mono-xsp4.service || true
 
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: set up go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: "1.26"
         id: go
 
       - name: launch mongodb
@@ -40,20 +40,20 @@ jobs:
 
       - name: build and test
         run: |
-          go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...
+          go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile="$GITHUB_WORKSPACE/profile.cov" ./...
           go build -race
         env:
           TZ: "America/Chicago"
           ENABLE_MONGO_TESTS: "true"
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.6.2
+          version: v2.12.2
 
       - name: submit coverage
         run: |
           go install github.com/mattn/goveralls@latest
-          goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+          goveralls -service="github" -coverprofile="$GITHUB_WORKSPACE/profile.cov"
         env:
           COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}

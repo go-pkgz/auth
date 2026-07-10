@@ -171,7 +171,7 @@ func NewTwitter(p Params) Oauth1Handler {
 func NewBattlenet(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
 		name: "battlenet",
-		endpoint: oauth2.Endpoint{
+		endpoint: oauth2.Endpoint{ //nolint:gosec // G101 false positive, oauth endpoint urls are not credentials
 			AuthURL:   "https://eu.battle.net/oauth/authorize",
 			TokenURL:  "https://eu.battle.net/oauth/token",
 			AuthStyle: oauth2.AuthStyleInParams,
@@ -241,7 +241,7 @@ func NewPatreon(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
 		name: "patreon",
 		// see https://docs.patreon.com/?shell#oauth
-		endpoint: oauth2.Endpoint{
+		endpoint: oauth2.Endpoint{ //nolint:gosec // G101 false positive, oauth endpoint urls are not credentials
 			AuthURL:   "https://www.patreon.com/oauth2/authorize",
 			TokenURL:  "https://api.patreon.com/oauth2/token",
 			AuthStyle: oauth2.AuthStyleInParams,
@@ -276,7 +276,7 @@ func NewDiscord(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
 		name: "discord",
 		// see https://discord.com/developers/docs/topics/oauth2
-		endpoint: oauth2.Endpoint{
+		endpoint: oauth2.Endpoint{ //nolint:gosec // G101 false positive, oauth endpoint urls are not credentials
 			AuthURL:  "https://discord.com/oauth2/authorize",
 			TokenURL: "https://discord.com/api/oauth2/token",
 		},

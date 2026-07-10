@@ -543,15 +543,15 @@ func TestEtagMatches(t *testing.T) {
 		header string
 		want   bool
 	}{
-		{etag, true},                   // exact match — what browsers send
-		{`W/"abc123"`, true},            // weak validator
-		{`"other", "abc123"`, true},     // comma-separated, second matches
-		{` "abc123" `, true},            // leading/trailing whitespace
-		{`*`, true},                     // wildcard matches anything
-		{`"abc"`, false},                // different etag
-		{`"abc123x"`, false},            // substring shouldn't match
-		{``, false},                     // empty
-		{`abc123`, false},               // unquoted — invalid per RFC, must not match
+		{etag, true},                // exact match — what browsers send
+		{`W/"abc123"`, true},        // weak validator
+		{`"other", "abc123"`, true}, // comma-separated, second matches
+		{` "abc123" `, true},        // leading/trailing whitespace
+		{`*`, true},                 // wildcard matches anything
+		{`"abc"`, false},            // different etag
+		{`"abc123x"`, false},        // substring shouldn't match
+		{``, false},                 // empty
+		{`abc123`, false},           // unquoted — invalid per RFC, must not match
 	}
 	for _, tt := range tbl {
 		t.Run(tt.header, func(t *testing.T) {
