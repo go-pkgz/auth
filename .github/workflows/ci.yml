@@ -25,7 +25,7 @@ jobs:
           sudo systemctl disable mono-xsp4.service || true
 
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: set up go
         uses: actions/setup-go@v6
@@ -40,7 +40,7 @@ jobs:
 
       - name: build and test
         run: |
-          go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...
+          go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile="$GITHUB_WORKSPACE/profile.cov" ./...
           go build -race
         env:
           TZ: "America/Chicago"
@@ -54,6 +54,6 @@ jobs:
       - name: submit coverage
         run: |
           go install github.com/mattn/goveralls@latest
-          goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+          goveralls -service="github" -coverprofile="$GITHUB_WORKSPACE/profile.cov"
         env:
           COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
