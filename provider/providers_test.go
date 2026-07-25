@@ -58,12 +58,12 @@ func TestProviders_NewGithub(t *testing.T) {
 	})
 
 	t.Run("with extra scopes", func(t *testing.T) {
-		r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+		withAttrs := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
 			UserAttributes: map[string]string{"email": "email"}})
-		assert.Equal(t, "github", r.Name())
+		assert.Equal(t, "github", withAttrs.Name())
 		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://demo.remark42.com/blah.png",
 			"email": "test@email.com"}
-		user := r.mapUser(udata, nil)
+		user := withAttrs.mapUser(udata, nil)
 		assert.Equal(t, token.User{Name: "test user", ID: "github_e80b2d2608711cbb3312db7c4727a46fbad9601a",
 			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]any{"email": "test@email.com"}}, user, "got %+v", user)
 	})
