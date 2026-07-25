@@ -749,7 +749,7 @@ To do so, register the provider with `AddGithubProviderWithNumericID`:
 service.AddGithubProviderWithNumericID("<Client ID>", "<Client Secret>")
 ```
 
-To combine it with `UserAttributes`, set `GithubNumericID` when building `provider.Params` directly (filling `URL`, `JwtService: service.TokenService()` and `AvatarSaver: service.AvatarProxy()`) and register the result with `service.AddCustomHandler(provider.NewGithub(p))`.
+To combine it with `UserAttributes`, set `GithubNumericID` when building `provider.Params` directly and register the result with `service.AddCustomHandler(provider.NewGithub(p))`. That handler is registered as-is, so every field the service would normally supply has to be filled in by hand: `URL`, `JwtService: service.TokenService()`, `AvatarSaver: service.AvatarProxy()`, `L`, and `AllowedRedirectHosts` set to the same value passed in `Opts`. Leaving `AllowedRedirectHosts` nil turns off redirect host validation for that provider, so a service that sets it in `Opts` must repeat it here.
 
 The numeric derivation is best-effort: if the `/user` response carries no usable numeric id, the provider keeps the login-derived id and logs a warning rather than failing the login.
 
