@@ -117,6 +117,34 @@ func TestService_AddMicrosoftProvider(t *testing.T) {
 	})
 }
 
+func TestService_AddGithubProviderWithNumericID(t *testing.T) {
+	options := Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:          "http://127.0.0.1:8089",
+		Logger:       logger.Std,
+	}
+
+	t.Run("numeric id enabled", func(t *testing.T) {
+		svc := NewService(options)
+		svc.AddGithubProviderWithNumericID("cid", "csecret")
+		p, err := svc.Provider("github")
+		assert.NoError(t, err)
+		op := p.Provider.(provider.Oauth2Handler)
+		assert.Equal(t, "github", op.Name())
+		assert.True(t, op.GithubNumericID)
+	})
+
+	t.Run("default registration keeps login-based id", func(t *testing.T) {
+		svc := NewService(options)
+		svc.AddProvider("github", "cid", "csecret")
+		p, err := svc.Provider("github")
+		assert.NoError(t, err)
+		op := p.Provider.(provider.Oauth2Handler)
+		assert.Equal(t, "github", op.Name())
+		assert.False(t, op.GithubNumericID)
+	})
+}
+
 func TestService_AddVerifProvider_UsesCustomConfirmationStore(t *testing.T) {
 	custom := &countingVerifStore{}
 	svc := NewService(Opts{

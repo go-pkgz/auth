@@ -58,14 +58,64 @@ func TestProviders_NewGithub(t *testing.T) {
 	})
 
 	t.Run("with extra scopes", func(t *testing.T) {
-		r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+		withAttrs := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
 			UserAttributes: map[string]string{"email": "email"}})
-		assert.Equal(t, "github", r.Name())
+		assert.Equal(t, "github", withAttrs.Name())
 		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://demo.remark42.com/blah.png",
 			"email": "test@email.com"}
-		user := r.mapUser(udata, nil)
+		user := withAttrs.mapUser(udata, nil)
 		assert.Equal(t, token.User{Name: "test user", ID: "github_e80b2d2608711cbb3312db7c4727a46fbad9601a",
 			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]any{"email": "test@email.com"}}, user, "got %+v", user)
+	})
+
+	t.Run("numeric id ignored by default", func(t *testing.T) {
+		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://demo.remark42.com/blah.png"}
+		user := r.mapUser(udata, []byte(`{"id": 1345027, "login": "lll"}`))
+		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", user.ID, "login-based id kept")
+	})
+}
+
+func TestProviders_NewGithubNumericID(t *testing.T) {
+	r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs", GithubNumericID: true})
+	assert.Equal(t, "github", r.Name())
+
+	t.Run("id from numeric account id", func(t *testing.T) {
+		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://demo.remark42.com/blah.png"}
+		user := r.mapUser(udata, []byte(`{"id": 1345027, "login": "lll"}`))
+		assert.Equal(t, token.User{Name: "test user", ID: "github_d4dc5da9a1e6bbd5d77920e4ea2ca91707e59083",
+			Picture: "http://demo.remark42.com/blah.png", IP: ""}, user, "got %+v", user)
+	})
+
+	t.Run("recycled login maps to different users", func(t *testing.T) {
+		udata := UserData{"login": "lll", "name": "test user"}
+		victim := r.mapUser(udata, []byte(`{"id": 1345027, "login": "lll"}`))
+		attacker := r.mapUser(udata, []byte(`{"id": 219851832, "login": "lll"}`))
+		assert.Equal(t, "github_d4dc5da9a1e6bbd5d77920e4ea2ca91707e59083", victim.ID)
+		assert.Equal(t, "github_d7f2f255cff0e923394424ee9038da06a4a12e89", attacker.ID)
+		assert.NotEqual(t, victim.ID, attacker.ID, "same login with different accounts must not collide")
+	})
+
+	t.Run("renamed account keeps the same id", func(t *testing.T) {
+		before := r.mapUser(UserData{"login": "lll"}, []byte(`{"id": 1345027, "login": "lll"}`))
+		after := r.mapUser(UserData{"login": "renamed"}, []byte(`{"id": 1345027, "login": "renamed"}`))
+		assert.Equal(t, before.ID, after.ID, "rename must not change the id")
+	})
+
+	t.Run("all-digit login does not collide with a numeric id", func(t *testing.T) {
+		// github allows all-digit logins, so login "27385" and account id 27385 are different real users
+		def := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+		byLogin := def.mapUser(UserData{"login": "27385"}, []byte(`{"id": 11210579, "login": "27385"}`))
+		byNumeric := r.mapUser(UserData{"login": "1234"}, []byte(`{"id": 27385, "login": "1234"}`))
+		assert.Equal(t, "github_f862a2565f61de2e7ebf5afed09fbe2e05bc9e8d", byLogin.ID)
+		assert.Equal(t, "github_5b067825dfd5af0c41d1c1f6f16aad3ff3397473", byNumeric.ID)
+		assert.NotEqual(t, byLogin.ID, byNumeric.ID, "login and numeric id spaces must not overlap")
+	})
+
+	t.Run("falls back to login without a usable numeric id", func(t *testing.T) {
+		udata := UserData{"login": "lll", "name": "test user"}
+		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, nil).ID, "nil body")
+		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, []byte(`{"login": "lll"}`)).ID, "no id field")
+		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, []byte(`{"id": 0}`)).ID, "zero id")
 	})
 }
 
