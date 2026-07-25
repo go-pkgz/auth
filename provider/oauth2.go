@@ -198,6 +198,13 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	// an error body carries no identity fields, mapping it would hash empty values into a shared id
+	if uinfo.StatusCode < http.StatusOK || uinfo.StatusCode >= http.StatusMultipleChoices {
+		rest.SendErrorJSON(w, r, p.L, http.StatusServiceUnavailable,
+			fmt.Errorf("status %s", uinfo.Status), "failed to get user info")
+		return
+	}
+
 	data, err := io.ReadAll(uinfo.Body)
 	if err != nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to read user info")
