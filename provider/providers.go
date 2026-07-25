@@ -10,6 +10,7 @@ import (
 
 	"github.com/dghubble/oauth1"
 	"github.com/dghubble/oauth1/twitter"
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/facebook"
@@ -49,6 +50,9 @@ func NewGoogle(p Params) Oauth2Handler {
 
 // NewGithub makes github oauth2 provider
 func NewGithub(p Params) Oauth2Handler {
+	if p.L == nil {
+		p.L = logger.NoOp // mapUser below captures p, initOauth2Handler defaults its own copy only
+	}
 	return initOauth2Handler(p, Oauth2Handler{
 		name:     "github",
 		endpoint: github.Endpoint,
@@ -62,12 +66,15 @@ func NewGithub(p Params) Oauth2Handler {
 			}
 			if p.GithubNumericID {
 				// data.Value is not usable here, json numbers decode to float64 and format as "1.345027e+06".
-				// on a missing or unparsable id keep the login-based value, it is still unique per account
+				// the "gid:" prefix keeps numeric ids out of the login hash space, logins may be all-digit
 				var uinfoJSON struct {
 					ID int64 `json:"id"`
 				}
 				if err := json.Unmarshal(bdata, &uinfoJSON); err == nil && uinfoJSON.ID != 0 {
-					userInfo.ID = "github_" + token.HashID(sha1.New(), strconv.FormatInt(uinfoJSON.ID, 10))
+					userInfo.ID = "github_" + token.HashID(sha1.New(), "gid:"+strconv.FormatInt(uinfoJSON.ID, 10))
+				} else {
+					// keep the login-based value, matching the default derivation and its recycling caveat
+					p.Logf("[WARN] github numeric id not available, keeping login-based id")
 				}
 			}
 			// github may have no user name, use login in this case

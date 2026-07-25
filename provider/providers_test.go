@@ -82,7 +82,7 @@ func TestProviders_NewGithubNumericID(t *testing.T) {
 	t.Run("id from numeric account id", func(t *testing.T) {
 		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://demo.remark42.com/blah.png"}
 		user := r.mapUser(udata, []byte(`{"id": 1345027, "login": "lll"}`))
-		assert.Equal(t, token.User{Name: "test user", ID: "github_8fe01ac1fd7d3d54465163865d19dea8d7476704",
+		assert.Equal(t, token.User{Name: "test user", ID: "github_d4dc5da9a1e6bbd5d77920e4ea2ca91707e59083",
 			Picture: "http://demo.remark42.com/blah.png", IP: ""}, user, "got %+v", user)
 	})
 
@@ -90,8 +90,8 @@ func TestProviders_NewGithubNumericID(t *testing.T) {
 		udata := UserData{"login": "lll", "name": "test user"}
 		victim := r.mapUser(udata, []byte(`{"id": 1345027, "login": "lll"}`))
 		attacker := r.mapUser(udata, []byte(`{"id": 219851832, "login": "lll"}`))
-		assert.Equal(t, "github_8fe01ac1fd7d3d54465163865d19dea8d7476704", victim.ID)
-		assert.Equal(t, "github_84b819bbdad1aa54c7158a7dce83edf87cadc23e", attacker.ID)
+		assert.Equal(t, "github_d4dc5da9a1e6bbd5d77920e4ea2ca91707e59083", victim.ID)
+		assert.Equal(t, "github_d7f2f255cff0e923394424ee9038da06a4a12e89", attacker.ID)
 		assert.NotEqual(t, victim.ID, attacker.ID, "same login with different accounts must not collide")
 	})
 
@@ -101,7 +101,17 @@ func TestProviders_NewGithubNumericID(t *testing.T) {
 		assert.Equal(t, before.ID, after.ID, "rename must not change the id")
 	})
 
-	t.Run("falls back to login without numeric id", func(t *testing.T) {
+	t.Run("all-digit login does not collide with a numeric id", func(t *testing.T) {
+		// github allows all-digit logins, so login "27385" and account id 27385 are different real users
+		def := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+		byLogin := def.mapUser(UserData{"login": "27385"}, []byte(`{"id": 11210579, "login": "27385"}`))
+		byNumeric := r.mapUser(UserData{"login": "1234"}, []byte(`{"id": 27385, "login": "1234"}`))
+		assert.Equal(t, "github_f862a2565f61de2e7ebf5afed09fbe2e05bc9e8d", byLogin.ID)
+		assert.Equal(t, "github_5b067825dfd5af0c41d1c1f6f16aad3ff3397473", byNumeric.ID)
+		assert.NotEqual(t, byLogin.ID, byNumeric.ID, "login and numeric id spaces must not overlap")
+	})
+
+	t.Run("falls back to login without a usable numeric id", func(t *testing.T) {
 		udata := UserData{"login": "lll", "name": "test user"}
 		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, nil).ID, "nil body")
 		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, []byte(`{"login": "lll"}`)).ID, "no id field")

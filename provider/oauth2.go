@@ -59,6 +59,7 @@ type Params struct {
 	// instead of the login. Logins are released on rename or account removal and can be claimed by
 	// someone else, so an id derived from login may be inherited by the next holder of the name.
 	// Enabling this changes the id of every existing github user, see README for the migration note.
+	// Best-effort: if the response carries no usable numeric id the login-derived id is kept.
 	GithubNumericID bool
 }
 
