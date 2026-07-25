@@ -67,6 +67,46 @@ func TestProviders_NewGithub(t *testing.T) {
 		assert.Equal(t, token.User{Name: "test user", ID: "github_e80b2d2608711cbb3312db7c4727a46fbad9601a",
 			Picture: "http://demo.remark42.com/blah.png", IP: "", Attributes: map[string]any{"email": "test@email.com"}}, user, "got %+v", user)
 	})
+
+	t.Run("numeric id ignored by default", func(t *testing.T) {
+		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://demo.remark42.com/blah.png"}
+		user := r.mapUser(udata, []byte(`{"id": 1345027, "login": "lll"}`))
+		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", user.ID, "login-based id kept")
+	})
+}
+
+func TestProviders_NewGithubNumericID(t *testing.T) {
+	r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs", GithubNumericID: true})
+	assert.Equal(t, "github", r.Name())
+
+	t.Run("id from numeric account id", func(t *testing.T) {
+		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://demo.remark42.com/blah.png"}
+		user := r.mapUser(udata, []byte(`{"id": 1345027, "login": "lll"}`))
+		assert.Equal(t, token.User{Name: "test user", ID: "github_8fe01ac1fd7d3d54465163865d19dea8d7476704",
+			Picture: "http://demo.remark42.com/blah.png", IP: ""}, user, "got %+v", user)
+	})
+
+	t.Run("recycled login maps to different users", func(t *testing.T) {
+		udata := UserData{"login": "lll", "name": "test user"}
+		victim := r.mapUser(udata, []byte(`{"id": 1345027, "login": "lll"}`))
+		attacker := r.mapUser(udata, []byte(`{"id": 219851832, "login": "lll"}`))
+		assert.Equal(t, "github_8fe01ac1fd7d3d54465163865d19dea8d7476704", victim.ID)
+		assert.Equal(t, "github_84b819bbdad1aa54c7158a7dce83edf87cadc23e", attacker.ID)
+		assert.NotEqual(t, victim.ID, attacker.ID, "same login with different accounts must not collide")
+	})
+
+	t.Run("renamed account keeps the same id", func(t *testing.T) {
+		before := r.mapUser(UserData{"login": "lll"}, []byte(`{"id": 1345027, "login": "lll"}`))
+		after := r.mapUser(UserData{"login": "renamed"}, []byte(`{"id": 1345027, "login": "renamed"}`))
+		assert.Equal(t, before.ID, after.ID, "rename must not change the id")
+	})
+
+	t.Run("falls back to login without numeric id", func(t *testing.T) {
+		udata := UserData{"login": "lll", "name": "test user"}
+		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, nil).ID, "nil body")
+		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, []byte(`{"login": "lll"}`)).ID, "no id field")
+		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, []byte(`{"id": 0}`)).ID, "zero id")
+	})
 }
 
 func TestProviders_NewFacebook(t *testing.T) {

@@ -739,6 +739,18 @@ The tenant value can be a tenant ID (GUID), domain name, or one of the well-know
 1.  Under **"Authorization callback URL"** enter the correct url constructed as domain + `/auth/github/callback`. ie `https://example.mysite.com/auth/github/callback`
 1.  Take note of the **Client ID** and **Client Secret**
 
+##### Username-as-identity caveat
+
+By default the GitHub provider derives the local user id from the account login, as `github_<sha1(login)>`. GitHub releases a username as soon as the account is renamed or deleted, and anyone can claim it afterwards. An application that keys its own records on the returned id will treat the next holder of a released username as the original user. This is the same property described in the [email-as-identity caveat](#email-as-identity-caveat) above, with one difference: GitHub returns an immutable numeric account id in the same response, so the provider can key on that instead.
+
+To do so, register the provider with `AddGithubProviderWithNumericID`, or set `GithubNumericID` when building `provider.Params` directly:
+
+```go
+service.AddGithubProviderWithNumericID(os.Getenv("AEXMPL_GITHUB_CID"), os.Getenv("AEXMPL_GITHUB_CSEC"))
+```
+
+This is off by default because it changes the id of every existing GitHub user. On a running deployment the switch is not transparent: comments, roles, blocks and any other records stored under the old id stop matching, and the old ids cannot be translated offline, because a login cannot be recovered from its hash. Turn it on for a new deployment, or migrate the stored ids yourself first. The recommendation in the email-as-identity caveat applies here too, and avoids the problem entirely: map the provider id to an internal immutable id of your own at first login, and key application records on that.
+
 #### Facebook Auth Provider
 
 1.  From https://developers.facebook.com select **"My Apps"** / **"Add a new App"**

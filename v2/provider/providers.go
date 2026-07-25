@@ -5,6 +5,7 @@ import (
 	"crypto/sha1" //nolint
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/dghubble/oauth1"
@@ -53,11 +54,21 @@ func NewGithub(p Params) Oauth2Handler {
 		endpoint: github.Endpoint,
 		scopes:   []string{},
 		infoURL:  "https://api.github.com/user",
-		mapUser: func(data UserData, _ []byte) token.User {
+		mapUser: func(data UserData, bdata []byte) token.User {
 			userInfo := token.User{
 				ID:      "github_" + token.HashID(sha1.New(), data.Value("login")),
 				Name:    data.Value("name"),
 				Picture: data.Value("avatar_url"),
+			}
+			if p.GithubNumericID {
+				// data.Value is not usable here, json numbers decode to float64 and format as "1.345027e+06".
+				// on a missing or unparsable id keep the login-based value, it is still unique per account
+				var uinfoJSON struct {
+					ID int64 `json:"id"`
+				}
+				if err := json.Unmarshal(bdata, &uinfoJSON); err == nil && uinfoJSON.ID != 0 {
+					userInfo.ID = "github_" + token.HashID(sha1.New(), strconv.FormatInt(uinfoJSON.ID, 10))
+				}
 			}
 			// github may have no user name, use login in this case
 			if userInfo.Name == "" {

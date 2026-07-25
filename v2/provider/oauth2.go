@@ -54,6 +54,12 @@ type Params struct {
 	Host string // relevant for providers supporting host customization, for example dev oauth2
 
 	MicrosoftTenant string // tenant for microsoft provider, default "common"
+
+	// GithubNumericID makes github provider derive the user id from the immutable numeric account id
+	// instead of the login. Logins are released on rename or account removal and can be claimed by
+	// someone else, so an id derived from login may be inherited by the next holder of the name.
+	// Enabling this changes the id of every existing github user, see README for the migration note.
+	GithubNumericID bool
 }
 
 // UserData is type for user information returned from oauth2 providers /info API method
