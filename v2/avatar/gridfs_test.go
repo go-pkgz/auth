@@ -11,7 +11,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -57,6 +59,72 @@ func TestGridFS_Remove(t *testing.T) {
 	assert.ErrorIs(t, p.Remove("b3daa77b4c04a9551b8781d03191fe098f325e67.image"), ErrNotFound, "already removed")
 }
 
+// TestGridFS_PutKeepsSingleRevision proves repeated Put calls for the same user leave one
+// stored file, that reads and ids come from the newest bytes, and that Remove takes the
+// whole file with it.
+func TestGridFS_PutKeepsSingleRevision(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
+	p := prepGFStore(t)
+	defer p.Close()
+
+	avatar, err := p.Put("user1", strings.NewReader("first picture"))
+	require.NoError(t, err)
+	firstID := p.ID(avatar)
+
+	repeated, err := p.Put("user1", strings.NewReader("second picture bin data"))
+	require.NoError(t, err)
+	require.Equal(t, avatar, repeated)
+
+	l, err := p.List()
+	require.NoError(t, err)
+	assert.Equal(t, []string{avatar}, l, "old revision dropped")
+
+	rd, size, err := p.Get(avatar)
+	require.NoError(t, err)
+	defer rd.Close()
+	data, err := io.ReadAll(rd)
+	require.NoError(t, err)
+	assert.Equal(t, "second picture bin data", string(data))
+	assert.Equal(t, len("second picture bin data"), size)
+	assert.NotEqual(t, firstID, p.ID(avatar), "id follows the newest bytes")
+
+	require.NoError(t, p.Remove(avatar))
+	_, _, err = p.Get(avatar)
+	assert.Error(t, err, "nothing left to read")
+}
+
+// TestGridFS_RemoveAllRevisions covers avatars stored before revision cleanup: several
+// gridfs files share the name, and removing the avatar has to take all of them.
+func TestGridFS_RemoveAllRevisions(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
+	p := prepGFStore(t)
+	defer p.Close()
+
+	avatar, err := p.Put("user1", strings.NewReader("current picture"))
+	require.NoError(t, err)
+
+	bucket, err := gridfs.NewBucket(p.db, &options.BucketOptions{Name: &p.bucketName})
+	require.NoError(t, err)
+	_, err = bucket.UploadFromStream(avatar, strings.NewReader("stale revision"),
+		&options.UploadOptions{Metadata: bson.M{"hash": "stale"}})
+	require.NoError(t, err)
+
+	ids, err := p.revisionIDs(bucket, avatar)
+	require.NoError(t, err)
+	require.Len(t, ids, 2, "two revisions to start with")
+
+	require.NoError(t, p.Remove(avatar))
+	ids, err = p.revisionIDs(bucket, avatar)
+	require.NoError(t, err)
+	assert.Empty(t, ids, "every revision removed")
+	_, _, err = p.Get(avatar)
+	assert.Error(t, err)
+}
+
 func TestGridFS_List(t *testing.T) {
 	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
 		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
@@ -84,6 +152,27 @@ func TestGridFS_List(t *testing.T) {
 	data, err := io.ReadAll(r)
 	assert.NoError(t, err)
 	assert.Equal(t, "some picture bin data 3", string(data))
+}
+
+// TestGridFS_ClosedStore covers the error paths of a store whose client is gone: the
+// lookups have to report the failure instead of pretending the avatar is missing.
+func TestGridFS_ClosedStore(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
+	p := prepGFStore(t)
+	avatar, err := p.Put("user1", strings.NewReader("some picture bin data"))
+	require.NoError(t, err)
+	require.NoError(t, p.Close())
+
+	_, err = p.Put("user1", strings.NewReader("some picture bin data"))
+	assert.Error(t, err)
+	assert.Error(t, p.Remove(avatar))
+	_, _, err = p.Get(avatar)
+	assert.Error(t, err)
+	_, err = p.List()
+	assert.Error(t, err)
+	assert.Equal(t, encodeID(avatar), p.ID(avatar), "fallback id when the lookup fails")
 }
 
 func TestGridFS_DoubleClose(t *testing.T) {

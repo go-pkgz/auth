@@ -43,8 +43,49 @@ func (gf *GridFS) Put(userID string, reader io.Reader) (avatar string, err error
 	}
 
 	avaHash := hash(buf.Bytes(), id)
-	_, err = bucket.UploadFromStream(id+imgSfx, buf, &options.UploadOptions{Metadata: bson.M{"hash": avaHash}})
-	return id + imgSfx, err
+	fileID, err := bucket.UploadFromStream(id+imgSfx, buf, &options.UploadOptions{Metadata: bson.M{"hash": avaHash}})
+	if err != nil {
+		return "", err
+	}
+
+	// gridfs turns every upload with the same name into another revision, so drop what
+	// earlier Put calls left behind. Cleanup runs after the upload, keeping the previous
+	// avatar in place if the write failed, and is best-effort as the new avatar is stored
+	// either way.
+	ids, err := gf.revisionIDs(bucket, id+imgSfx)
+	if err == nil {
+		for _, oldID := range ids {
+			if oldID != fileID {
+				_ = bucket.Delete(oldID)
+			}
+		}
+	}
+
+	return id + imgSfx, nil
+}
+
+// revisionIDs returns ids of all gridfs files stored under the given name, newest first
+func (gf *GridFS) revisionIDs(bucket *gridfs.Bucket, fileName string) ([]primitive.ObjectID, error) {
+	sortNewestFirst := options.GridFSFind().SetSort(bson.D{{Key: "uploadDate", Value: -1}, {Key: "_id", Value: -1}})
+	cursor, err := bucket.Find(bson.M{"filename": fileName}, sortNewestFirst)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), gf.timeout)
+	defer cancel()
+
+	var ids []primitive.ObjectID
+	for cursor.Next(ctx) {
+		r := struct {
+			ID primitive.ObjectID `bson:"_id"`
+		}{}
+		if err = cursor.Decode(&r); err != nil {
+			return nil, err
+		}
+		ids = append(ids, r.ID)
+	}
+	return ids, cursor.Err()
 }
 
 // Get avatar reader for avatar id.image
@@ -78,7 +119,8 @@ func (gf *GridFS) ID(avatar string) (id string) {
 	if err != nil {
 		return encodeID(avatar)
 	}
-	cursor, err := bucket.Find(bson.M{"filename": avatar})
+	sortNewestFirst := options.GridFSFind().SetSort(bson.D{{Key: "uploadDate", Value: -1}, {Key: "_id", Value: -1}})
+	cursor, err := bucket.Find(bson.M{"filename": avatar}, sortNewestFirst)
 	if err != nil {
 		return encodeID(avatar)
 	}
@@ -100,23 +142,21 @@ func (gf *GridFS) Remove(avatar string) error {
 	if err != nil {
 		return err
 	}
-	cursor, err := bucket.Find(bson.M{"filename": avatar})
+	ids, err := gf.revisionIDs(bucket, avatar)
 	if err != nil {
 		return err
 	}
-
-	r := struct {
-		ID primitive.ObjectID `bson:"_id"`
-	}{}
-	ctx, cancel := context.WithTimeout(context.Background(), gf.timeout)
-	defer cancel()
-	if found := cursor.Next(ctx); found {
-		if err := cursor.Decode(&r); err != nil {
-			return err
-		}
-		return bucket.Delete(r.ID)
+	if len(ids) == 0 {
+		return fmt.Errorf("avatar %s not found: %w", avatar, ErrNotFound)
 	}
-	return fmt.Errorf("avatar %s not found: %w", avatar, ErrNotFound)
+
+	// every revision has to go, deleting the newest one alone leaves the avatar readable
+	for _, id := range ids {
+		if e := bucket.Delete(id); e != nil {
+			err = e
+		}
+	}
+	return err
 }
 
 // List all avatars (ids) on gfs
