@@ -237,6 +237,10 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 		p.Handler(w, r)
 	}
 
+	if s.avatarProxy == nil { // no avatar store configured, avatar route has nothing to serve
+		return withSecurityHeaders(http.HandlerFunc(ah)), withSecurityHeaders(http.NotFoundHandler())
+	}
+
 	return withSecurityHeaders(http.HandlerFunc(ah)), withSecurityHeaders(http.HandlerFunc(s.avatarProxy.Handler))
 }
 
