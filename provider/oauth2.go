@@ -127,7 +127,7 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			State: state,
 			From:  r.URL.Query().Get("from"),
 		},
-		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
+		SessionOnly: sessionOnlyFromRequest(r),
 		StandardClaims: jwt.StandardClaims{
 			Id:        cid,
 			Audience:  aud,

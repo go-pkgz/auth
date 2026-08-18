@@ -102,6 +102,31 @@ func TestVerifyHandler_LoginSendConfirmEscapesBadInput(t *testing.T) {
 	assert.Equal(t, "test", e.Name())
 }
 
+// TestVerifyHandler_LoginSendConfirmAudParam proves the documented aud parameter names
+// the site, as site did before it.
+func TestVerifyHandler_LoginSendConfirmAudParam(t *testing.T) {
+	emailer := mockSender{}
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:   "iss-test",
+		L:        logger.Std,
+		Sender:   SenderFunc(emailer.Send),
+		Template: "{{.User}} {{.Address}} {{.Site}} token:{{.Token}}",
+	}
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?address=blah@user.com&user=test123&aud=remark42", http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, emailer.text, "test123 blah@user.com remark42 token:")
+}
+
 func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	e := VerifyHandler{
 		ProviderName: "test",

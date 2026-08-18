@@ -261,6 +261,8 @@ The API for this provider supports both GET and POST requests:
 
 _note: password parameter doesn't have to be naked/real password and can be any kind of password hash prepared by caller._
 
+_note: `session=1` makes the auth cookie session-only, i.e. dropped when the browser closes. `sess` is accepted as an alias for backward compatibility._
+
 ### Verified authentication
 
 Another non-oauth2 provider allowing user-confirmed authentication, for example by email or slack or telegram. This is
@@ -291,8 +293,8 @@ used as `Sender`.
 
 The API for this provider:
 
- - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. When host validation is enabled via `Opts.AllowedRedirectHosts`, the `from` URL is subject to the same allowlist check described in "Allowed redirect hosts"; otherwise any non-empty value is honoured.
- - `GET /auth/<name>/login?token=<conf.token>&sess=[1|0]` - authorize with confirmation token
+ - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. `site` is accepted as an alias for `aud`. When host validation is enabled via `Opts.AllowedRedirectHosts`, the `from` URL is subject to the same allowlist check described in "Allowed redirect hosts"; otherwise any non-empty value is honoured.
+ - `GET /auth/<name>/login?token=<conf.token>&session=[1|0]` - authorize with confirmation token, `sess` is accepted as an alias for `session`
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
 

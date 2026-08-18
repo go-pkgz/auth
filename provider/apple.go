@@ -261,7 +261,7 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			State: state,
 			From:  r.URL.Query().Get("from"),
 		},
-		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
+		SessionOnly: sessionOnlyFromRequest(r),
 		StandardClaims: jwt.StandardClaims{
 			Id:        cid,
 			Audience:  r.URL.Query().Get("site"),
@@ -385,7 +385,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 			Id:       cid,
 			Audience: oauthClaims.Audience,
 		},
-		SessionOnly: false,
+		SessionOnly: oauthClaims.SessionOnly,
 		AuthProvider: &token.AuthProvider{
 			Name: ah.name,
 		},

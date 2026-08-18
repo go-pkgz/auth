@@ -123,6 +123,52 @@ func TestDirect_LoginHandlerCustomUserID(t *testing.T) {
 	assert.Equal(t, `{"name":"myuser","id":"test_18c4eec1ecbe23902609e999c4d3da997e7ac10f","picture":""}`+"\n", rr.Body.String())
 }
 
+// TestDirect_LoginHandlerSessionOnly proves the documented session parameter, and the
+// legacy sess spelling, both produce a session cookie instead of a persistent one.
+func TestDirect_LoginHandlerSessionOnly(t *testing.T) {
+	tbl := []struct {
+		name       string
+		query      string
+		wantMaxAge int
+	}{
+		{"persistent by default", "", 24 * 31 * 3600},
+		{"documented session param", "&session=1", 0},
+		{"legacy sess param", "&sess=1", 0},
+		{"session explicitly off", "&session=0", 24 * 31 * 3600},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			d := DirectHandler{
+				ProviderName: "test",
+				CredChecker:  &mockCredsChecker{ok: true},
+				TokenService: token.NewService(token.Opts{
+					SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+					TokenDuration:  time.Hour,
+					CookieDuration: time.Hour * 24 * 31,
+				}),
+				Issuer: "iss-test",
+				L:      logger.Std,
+			}
+
+			rr := httptest.NewRecorder()
+			req, err := http.NewRequest("GET", "/login?user=myuser&passwd=pppp&aud=xyz123"+tt.query, http.NoBody)
+			require.NoError(t, err)
+			http.HandlerFunc(d.LoginHandler).ServeHTTP(rr, req)
+			require.Equal(t, http.StatusOK, rr.Code)
+
+			var jwtCookie *http.Cookie
+			for _, c := range rr.Result().Cookies() {
+				if c.Name == "JWT" {
+					jwtCookie = c
+				}
+			}
+			require.NotNil(t, jwtCookie, "JWT cookie set")
+			assert.Equal(t, tt.wantMaxAge, jwtCookie.MaxAge)
+		})
+	}
+}
+
 func TestDirect_LoginHandlerFailed(t *testing.T) {
 	testCases := map[string]struct {
 		makeRequest func(t *testing.T) *http.Request

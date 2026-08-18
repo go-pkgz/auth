@@ -15,6 +15,31 @@ import (
 	"github.com/go-pkgz/auth/token"
 )
 
+func TestSessionOnlyFromRequest(t *testing.T) {
+	tbl := []struct {
+		name  string
+		query string
+		want  bool
+	}{
+		{"no params", "", false},
+		{"documented session=1", "?session=1", true},
+		{"documented session=0", "?session=0", false},
+		{"legacy sess=1", "?sess=1", true},
+		{"legacy sess=0", "?sess=0", false},
+		{"session wins over sess", "?session=1&sess=0", true},
+		{"sess used when session empty", "?session=&sess=1", true},
+		{"unrelated param", "?other=1", false},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("GET", "/login"+tt.query, http.NoBody)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, sessionOnlyFromRequest(req))
+		})
+	}
+}
+
 func TestHandler(t *testing.T) {
 
 	tbl := []struct {
