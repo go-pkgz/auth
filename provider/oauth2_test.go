@@ -251,7 +251,7 @@ func TestOauth2InvalidHandler(t *testing.T) {
 //     https://comments.example.com/auth/github/login?from=https://evil.example.com/phish
 //  2. Victim clicks the link, sees the real GitHub OAuth consent screen and approves.
 //  3. After the OAuth dance completes, the AuthHandler executed
-//     `http.Redirect(w, r, oauthClaims.Handshake.From, http.StatusTemporaryRedirect)`
+//     `http.Redirect(w, r, oauthClaims.Handshake.From, ...)`
 //     with no validation on `From` — so the browser was bounced straight to
 //     https://evil.example.com/phish, carrying a fresh session cookie and the
 //     trust the user had in the legitimate brand.
@@ -314,7 +314,7 @@ func TestOauth2LoginFromAllowsAllowlistedHost(t *testing.T) {
 	resp, err := client.Get("http://localhost:8985/login?site=remark&from=https://trusted.example.com/back")
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode, "must 307-redirect to trusted host")
+	assert.Equal(t, http.StatusSeeOther, resp.StatusCode, "must 303-redirect to trusted host")
 	assert.Equal(t, "https://trusted.example.com/back", resp.Header.Get("Location"))
 	assert.Contains(t, lastRedirect, "trusted.example.com")
 }

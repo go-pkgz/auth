@@ -859,3 +859,59 @@ ODIRe1AuTyHceAbewn8b462yEWKARdpd9AjQW5SIVPfdsz5B6GlYQ5LdYKtznTuy
 
 	return signKey, jwk
 }
+
+// TestAppleHandler_AuthHandlerFormPostRedirectsWithSeeOther covers the redirect
+// status of the callback leg for Apple's form_post response mode.
+//
+// Apple is the only supported provider whose callback arrives as POST: the
+// default response mode is form_post, and prepareLoginURL refuses anything else
+// once a scope is requested. The other providers get a GET callback, so the
+// status used for the "from" redirect was never observable for them.
+//
+// With a method-preserving status the browser repeats the POST onto the "from"
+// target. That target is a UI page, and a static file server answering GET only
+// replies 405, leaving the popup on an error page even though the session
+// cookie was already set. 303 makes the browser retrieve it with GET instead.
+func TestAppleHandler_AuthHandlerFormPostRedirectsWithSeeOther(t *testing.T) {
+	teardown := prepareAppleOauthTest(t, 8997, 8998, nil, testIDTokenOverride{})
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	from := "http://localhost:8997/web/iframe.html?selfClose"
+
+	// stop at the callback hop, the handshake cookie and state are replayed as a form post below
+	var callbackURL *url.URL
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if strings.HasPrefix(req.URL.Path, "/callback") {
+				callbackURL = req.URL
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get("http://localhost:8997/login?site=remark&from=" + url.QueryEscape(from))
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, callbackURL, "login must reach the callback hop")
+
+	form := url.Values{"state": {callbackURL.Query().Get("state")}, "code": {"code"}}
+	req, err := http.NewRequest(http.MethodPost, "http://localhost:8997/callback", strings.NewReader(form.Encode()))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	noFollow := &http.Client{Jar: jar, Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	postResp, err := noFollow.Do(req)
+	require.NoError(t, err)
+	defer postResp.Body.Close()
+
+	assert.Equal(t, http.StatusSeeOther, postResp.StatusCode,
+		"form_post callback must redirect with 303 so the browser retrieves the target with GET")
+	assert.Equal(t, from, postResp.Header.Get("Location"))
+	assert.NotEmpty(t, postResp.Cookies(), "session cookies must still be set on the redirect response")
+}

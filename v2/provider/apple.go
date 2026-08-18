@@ -291,8 +291,8 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, loginURL, http.StatusFound)
 }
 
-// AuthHandler fills user info and redirects to "from" url. This is callback url redirected locally by browser
-// GET /callback
+// AuthHandler fills user info and redirects to "from" url. This is callback url redirected locally by browser.
+// POST /callback with the default form_post response mode, GET /callback when response mode is overridden
 func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	// read response form data
@@ -411,7 +411,9 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 			rest.RenderJSON(w, &u)
 			return
 		}
-		http.Redirect(w, r, oauthClaims.Handshake.From, http.StatusTemporaryRedirect)
+		// see-other makes the browser retrieve the target with GET, so apple's form_post
+		// callback is not replayed as a POST onto the "from" page
+		http.Redirect(w, r, oauthClaims.Handshake.From, http.StatusSeeOther)
 		return
 	}
 	rest.RenderJSON(w, &u)
