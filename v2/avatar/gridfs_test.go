@@ -6,12 +6,14 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -156,6 +158,70 @@ func TestGridFS_List(t *testing.T) {
 
 // TestGridFS_ClosedStore covers the error paths of a store whose client is gone: the
 // lookups have to report the failure instead of pretending the avatar is missing.
+// TestGridFS_PutConcurrent proves overlapping Put calls for the same user leave the avatar
+// readable. Each call deletes only the revisions older than its own upload, so neither can
+// remove what the other just wrote.
+func TestGridFS_PutConcurrent(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
+	p := prepGFStore(t)
+	defer p.Close()
+
+	for i := 0; i < 5; i++ {
+		var wg sync.WaitGroup
+		for _, data := range []string{"first picture data", "second picture data"} {
+			wg.Add(1)
+			go func(data string) {
+				defer wg.Done()
+				_, e := p.Put("user1", strings.NewReader(data))
+				assert.NoError(t, e)
+			}(data)
+		}
+		wg.Wait()
+
+		avatar := encodeID("user1") + imgSfx
+		rd, size, err := p.Get(avatar)
+		require.NoError(t, err, "avatar readable after concurrent puts")
+		data, err := io.ReadAll(rd)
+		require.NoError(t, err)
+		require.NoError(t, rd.Close())
+		assert.Positive(t, size)
+		assert.Contains(t, []string{"first picture data", "second picture data"}, string(data))
+
+		require.NoError(t, p.Remove(avatar))
+	}
+}
+
+// TestGridFS_RemoveOlderRevisions checks the cleanup boundary directly: revisions uploaded
+// before the kept one go, the kept one and anything newer stay.
+func TestGridFS_RemoveOlderRevisions(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
+	p := prepGFStore(t)
+	defer p.Close()
+
+	bucket, err := gridfs.NewBucket(p.db, &options.BucketOptions{Name: &p.bucketName})
+	require.NoError(t, err)
+
+	name := "concurrent.image"
+	contents := []string{"oldest", "middle", "newest"}
+	ids := make([]primitive.ObjectID, 0, len(contents))
+	for _, data := range contents {
+		id, e := bucket.UploadFromStream(name, strings.NewReader(data),
+			&options.UploadOptions{Metadata: bson.M{"hash": data}})
+		require.NoError(t, e)
+		ids = append(ids, id)
+		time.Sleep(5 * time.Millisecond) // uploadDate has millisecond resolution
+	}
+
+	require.NoError(t, p.removeOlderRevisions(bucket, name, ids[1]))
+	left, err := p.revisionIDs(bucket, name)
+	require.NoError(t, err)
+	assert.Equal(t, []primitive.ObjectID{ids[2], ids[1]}, left, "only the revision older than the kept one removed")
+}
+
 func TestGridFS_ClosedStore(t *testing.T) {
 	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
 		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
