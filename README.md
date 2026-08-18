@@ -719,12 +719,15 @@ _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://githu
 #### Microsoft Auth Provider
 
 1. Register a new application [using the Azure portal](https://docs.microsoft.com/en-us/graph/auth-register-app-v2).
-2. Under **"Authentication/Platform configurations/Web"** enter the correct url constructed as domain + `/auth/microsoft/callback`. i.e. `https://example.mysite.com/auth/microsoft/callback`
-3. In "Overview" take note of the **Application (client) ID**
-4. Choose the new project from the top right project dropdown (only if another project is selected)
-5.  Select "Certificates & secrets" and click on "+ New Client Secret".
+2. Under **"Supported account types"** select **"Accounts in any organizational directory (Any Microsoft Entra directory - Multitenant) and personal Microsoft accounts"**
+3. Under **"Authentication/Platform configurations/Web"** enter the correct url constructed as domain + `/auth/microsoft/callback`. i.e. `https://example.mysite.com/auth/microsoft/callback`
+4. In "Overview" take note of the **Application (client) ID**
+5. Choose the new project from the top right project dropdown (only if another project is selected)
+6.  Select "Certificates & secrets" and click on "+ New Client Secret".
 
-By default, the Microsoft provider uses the `common` tenant endpoint, which works for multi-tenant applications. For single-tenant Entra ID (Azure AD) applications, use `AddMicrosoftProvider` to specify the tenant:
+By default, the Microsoft provider uses the `common` tenant endpoint, which requires an application accepting both work or school accounts and personal Microsoft accounts. That corresponds to `signInAudience: AzureADandPersonalMicrosoftAccount`, which can be checked and changed under "Manifest" for an application that already exists. An application restricted to a single account type is rejected at that endpoint, for instance with [`AADSTS50194`](https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes) when it is not registered as multi-tenant.
+
+For single-tenant Entra ID (Azure AD) applications, or for an application limited to personal Microsoft accounts (`consumers`), use `AddMicrosoftProvider` to specify the tenant:
 
 ```go
 service.AddMicrosoftProvider("<Client ID>", "<Client Secret>", "<Tenant ID>")
