@@ -496,6 +496,28 @@ func TestHandlers_SecurityHeaders(t *testing.T) {
 	}
 }
 
+// TestHandlers_NoAvatarStore proves the avatar route stays serviceable when no
+// AvatarStore is configured: the proxy is nil in that case, so the returned
+// handler must answer 404 instead of dereferencing it.
+func TestHandlers_NoAvatarStore(t *testing.T) {
+	svc := NewService(Opts{Logger: logger.Std})
+	require.Nil(t, svc.AvatarProxy())
+
+	_, avatarRoute := svc.Handlers()
+	require.NotNil(t, avatarRoute)
+
+	mux := http.NewServeMux()
+	mux.Handle("/avatar/", avatarRoute)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/avatar/some-user.image")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	assert.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
+}
+
 func TestBadRequests(t *testing.T) {
 	_, teardown := prepService(t)
 	defer teardown()
