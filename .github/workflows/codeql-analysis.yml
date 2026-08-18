@@ -48,7 +48,10 @@ jobs:
         # queries: ./path/to/local/query, your-org/your-repo/queries@main
 
     - name: Build the code
-      run: go build -o auth
+      if: matrix.language == 'go'
+      run: |
+        go build ./...
+        cd v2 && go build ./...
       env:
         TZ: "America/Chicago"
 
