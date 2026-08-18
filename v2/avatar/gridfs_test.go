@@ -154,6 +154,27 @@ func TestGridFS_List(t *testing.T) {
 	assert.Equal(t, "some picture bin data 3", string(data))
 }
 
+// TestGridFS_ClosedStore covers the error paths of a store whose client is gone: the
+// lookups have to report the failure instead of pretending the avatar is missing.
+func TestGridFS_ClosedStore(t *testing.T) {
+	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
+		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
+	}
+	p := prepGFStore(t)
+	avatar, err := p.Put("user1", strings.NewReader("some picture bin data"))
+	require.NoError(t, err)
+	require.NoError(t, p.Close())
+
+	_, err = p.Put("user1", strings.NewReader("some picture bin data"))
+	assert.Error(t, err)
+	assert.Error(t, p.Remove(avatar))
+	_, _, err = p.Get(avatar)
+	assert.Error(t, err)
+	_, err = p.List()
+	assert.Error(t, err)
+	assert.Equal(t, encodeID(avatar), p.ID(avatar), "fallback id when the lookup fails")
+}
+
 func TestGridFS_DoubleClose(t *testing.T) {
 	if _, ok := os.LookupEnv("ENABLE_MONGO_TESTS"); !ok {
 		t.Skip("ENABLE_MONGO_TESTS env variable is not set")
