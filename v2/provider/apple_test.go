@@ -12,10 +12,12 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -513,6 +515,61 @@ Ivx5tHkv
 		require.NoError(t, os.RemoveAll(dir))
 	}()
 	return filePath, cancelCtx
+}
+
+// TestAppleHandler_JWKCache proves Apple public keys are fetched once and then reused,
+// refreshed when the id_token names a kid the cached set doesn't hold, and kept in use
+// while Apple's key service is unavailable.
+func TestAppleHandler_JWKCache(t *testing.T) {
+	_, testJWK := createTestSignKeyPairs(t)
+
+	var fetches atomic.Int32
+	var failing atomic.Bool
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fetches.Add(1)
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, err := fmt.Fprintf(w, `{"keys":[%s]}`, testJWK)
+		assert.NoError(t, err)
+	}))
+	defer ts.Close()
+
+	ah, err := prepareAppleHandlerTest("", []string{})
+	require.NoError(t, err)
+	ah.conf.jwkURL = ts.URL
+	ctx := context.Background()
+
+	set, err := ah.jwkSet(ctx, "112233")
+	require.NoError(t, err)
+	_, err = set.get("112233")
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), fetches.Load(), "first call fetches the key set")
+
+	_, err = ah.jwkSet(ctx, "112233")
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), fetches.Load(), "known kid served from cache")
+
+	_, err = ah.jwkSet(ctx, "rotated-kid")
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), fetches.Load(), "unknown kid refreshes the key set")
+
+	// key service down, cached set still within appleJWKStaleTTL
+	failing.Store(true)
+	ah.jwkCache.fetchedAt = time.Now().Add(-appleJWKTTL - time.Minute)
+	set, err = ah.jwkSet(ctx, "112233")
+	require.NoError(t, err, "cached keys used while the key service is down")
+	_, err = set.get("112233")
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), fetches.Load())
+
+	// cached set too old to be trusted, the failure surfaces
+	ah.jwkCache.fetchedAt = time.Now().Add(-appleJWKStaleTTL - time.Minute)
+	_, err = ah.jwkSet(ctx, "112233")
+	require.Error(t, err)
+	assert.Equal(t, int32(4), fetches.Load())
 }
 
 func prepareAppleHandlerTest(responseMode string, scopes []string) (*AppleHandler, error) {
