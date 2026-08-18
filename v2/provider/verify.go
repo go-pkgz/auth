@@ -252,7 +252,7 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, address := elems[0], elems[1]
-	sessOnly := r.URL.Query().Get("sess") == "1"
+	sessOnly := sessionOnlyFromRequest(r)
 
 	u := token.User{
 		Name: user,
@@ -309,7 +309,11 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 // GET /login?site=site&user=name&address=someone@example.com
 func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) {
 
-	user, address, site := r.URL.Query().Get("user"), r.URL.Query().Get("address"), r.URL.Query().Get("site")
+	user, address := r.URL.Query().Get("user"), r.URL.Query().Get("address")
+	site := r.URL.Query().Get("site")
+	if site == "" { // documented as aud, kept reading site for backward compatibility
+		site = r.URL.Query().Get("aud")
+	}
 
 	if user == "" || address == "" {
 		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("wrong request"), "can't get user and address")
@@ -328,7 +332,7 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 			// honor from at all.
 			From: r.URL.Query().Get("from"),
 		},
-		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
+		SessionOnly: sessionOnlyFromRequest(r),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Audience:  []string{site},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * time.Minute)),

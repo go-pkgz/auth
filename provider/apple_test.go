@@ -377,6 +377,31 @@ func TestAppleHandler_LoginHandler(t *testing.T) {
 // TestAppleHandler_LoginHandler_RejectsWrongIssuer is the regression-style
 // integration test: drives the full LoginHandler exchange flow with a token
 // signed by the test JWK but carrying iss other than https://appleid.apple.com.
+// TestAppleHandler_LoginHandlerSessionOnly proves the session flag set on the login
+// request survives the callback, which used to hardcode a persistent cookie.
+func TestAppleHandler_LoginHandlerSessionOnly(t *testing.T) {
+	teardown := prepareAppleOauthTest(t, 8993, 8994, nil)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	resp, err := client.Get("http://localhost:8993/login?site=remark&session=1")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var jwtCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "JWT" {
+			jwtCookie = c
+		}
+	}
+	require.NotNil(t, jwtCookie, "JWT cookie set")
+	assert.Equal(t, 0, jwtCookie.MaxAge, "session-only cookie expected")
+}
+
 func TestAppleHandler_LoginHandler_RejectsWrongIssuer(t *testing.T) {
 	override := testIDTokenOverride{iss: "https://attacker.example.com"}
 	teardown := prepareAppleOauthTest(t, 8983, 8984, nil, override)

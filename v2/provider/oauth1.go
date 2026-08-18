@@ -55,7 +55,7 @@ func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			State: requestSecret,
 			From:  r.URL.Query().Get("from"),
 		},
-		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
+		SessionOnly: sessionOnlyFromRequest(r),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        cid,
 			Audience:  []string{r.URL.Query().Get("site")},
