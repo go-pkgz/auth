@@ -610,6 +610,47 @@ func TestAppleHandler_JWKCache(t *testing.T) {
 	assert.Equal(t, int32(4), fetches.Load())
 }
 
+// TestAppleHandler_JWKKeyFunc covers the id_token verification paths: a token without a
+// kid header, a key service that is down with nothing cached, and a kid Apple doesn't
+// publish. A handler built without NewApple has no cache and fetches every time.
+func TestAppleHandler_JWKKeyFunc(t *testing.T) {
+	_, testJWK := createTestSignKeyPairs(t)
+
+	var failing atomic.Bool
+	var fetches atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fetches.Add(1)
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, err := fmt.Fprintf(w, `{"keys":[%s]}`, testJWK)
+		assert.NoError(t, err)
+	}))
+	defer ts.Close()
+
+	ah := AppleHandler{Params: Params{L: logger.Std}, conf: AppleConfig{jwkURL: ts.URL}}
+	keyFunc := ah.jwkKeyFunc(context.Background())
+
+	_, err := keyFunc(&jwt.Token{Header: map[string]any{}})
+	assert.Error(t, err, "kid header required")
+	assert.Equal(t, int32(0), fetches.Load(), "no fetch without a kid")
+
+	key, err := keyFunc(&jwt.Token{Header: map[string]any{"kid": "112233"}})
+	require.NoError(t, err)
+	assert.NotNil(t, key)
+
+	_, err = keyFunc(&jwt.Token{Header: map[string]any{"kid": "unpublished"}})
+	assert.Error(t, err, "kid not published by the key service")
+
+	failing.Store(true)
+	_, err = keyFunc(&jwt.Token{Header: map[string]any{"kid": "112233"}})
+	assert.Error(t, err, "no cache to fall back on")
+
+	assert.Equal(t, int32(3), fetches.Load(), "handler without cache fetches every time")
+}
+
 func prepareAppleHandlerTest(responseMode string, scopes []string) (*AppleHandler, error) {
 	p := Params{
 		URL:     "http://localhost",
