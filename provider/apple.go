@@ -92,8 +92,9 @@ type AppleHandler struct {
 	// infoURL  string not implemented at Apple side
 	endpoint oauth2.Endpoint
 
-	mapUser func(jwt.MapClaims) token.User // map info from InfoURL to User
-	conf    AppleConfig                    // main config for Apple auth provider
+	mapUser  func(jwt.MapClaims) token.User // map info from InfoURL to User
+	conf     AppleConfig                    // main config for Apple auth provider
+	jwkCache *appleJWKCache                 // shared cache of Apple public keys
 
 	PrivateKeyLoader PrivateKeyLoaderInterface // custom function interface for load private key
 
@@ -180,6 +181,8 @@ func NewApple(p Params, appleCfg AppleConfig, privateKeyLoader PrivateKeyLoaderI
 			AuthURL:  appleAuthURL,
 			TokenURL: appleTokenURL,
 		},
+
+		jwkCache: &appleJWKCache{},
 
 		mapUser: func(claims jwt.MapClaims) token.User {
 			var usr token.User
@@ -338,17 +341,10 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// trying to fetch Apple public key (JWK) for verify token signature, it need for verify IDToken received from Apple
-	keySet, err := fetchAppleJWK(r.Context(), ah.conf.jwkURL)
-	if err != nil {
-		ah.Logf("[ERROR] failed to fetch JWK from Apple key service: " + err.Error())
-		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("failed to fetch JWK from Apple key service: %s", resp.Error))
-		return
-	}
-
-	// get token claims for extract uid (and email or name if they exist in scope)
+	// get token claims for extract uid (and email or name if they exist in scope).
+	// the signature is verified with Apple public keys (JWK), served from the handler cache
 	tokenClaims := jwt.MapClaims{}
-	_, err = jwt.ParseWithClaims(resp.IDToken, tokenClaims, keySet.keyFunc)
+	_, err = jwt.ParseWithClaims(resp.IDToken, tokenClaims, ah.jwkKeyFunc(r.Context()))
 	if err != nil {
 		ah.Logf("[ERROR] failed to get claims: " + err.Error())
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("failed to token validation, key is invalid: %s", resp.Error))
@@ -455,17 +451,16 @@ func (ah *AppleHandler) exchange(ctx context.Context, code, redirectURI string, 
 		return err
 	}
 
-	// trying to decode (unmarshal json) data of response
-	err = json.NewDecoder(res.Body).Decode(result)
-	if err != nil {
-		return fmt.Errorf("unmarshalling data from apple service response failed: %w", err)
-	}
-
 	defer func() {
-		if err = res.Body.Close(); err != nil {
-			ah.Logf("[ERROR] close request body failed when get access token: %v", err)
+		if e := res.Body.Close(); e != nil {
+			ah.Logf("[ERROR] close request body failed when get access token: %v", e)
 		}
 	}()
+
+	// trying to decode (unmarshal json) data of response
+	if err = json.NewDecoder(res.Body).Decode(result); err != nil {
+		return fmt.Errorf("unmarshalling data from apple service response failed: %w", err)
+	}
 
 	// if above operation done successfully checking a response code and error descriptions, if one exist.
 	// apple service will response either 200 (OK) or 400 (any error).

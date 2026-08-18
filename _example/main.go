@@ -90,11 +90,12 @@ func main() {
 	service.AddProvider("discord", os.Getenv("AEXMPL_DISCORD_CID"), os.Getenv("AEXMPL_DISCORD_CSEC"))
 
 	// allow sign with apple id
+	// response mode is left at the default form_post, the only mode Apple accepts with a non-empty scope,
+	// see https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168
 	appleCfg := provider.AppleConfig{
-		ClientID:     os.Getenv("AEXMPL_APPLE_CID"),
-		TeamID:       os.Getenv("AEXMPL_APPLE_TID"),
-		KeyID:        os.Getenv("AEXMPL_APPLE_KEYID"), // private key identifier
-		ResponseMode: "query",                         // see https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168
+		ClientID: os.Getenv("AEXMPL_APPLE_CID"),
+		TeamID:   os.Getenv("AEXMPL_APPLE_TID"),
+		KeyID:    os.Getenv("AEXMPL_APPLE_KEYID"), // private key identifier
 	}
 
 	if err := service.AddAppleProvider(appleCfg, provider.LoadApplePrivateKeyFromFile(os.Getenv("AEXMPL_APPLE_PRIVKEY_PATH"))); err != nil {

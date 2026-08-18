@@ -12,10 +12,12 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -513,6 +515,160 @@ Ivx5tHkv
 		require.NoError(t, os.RemoveAll(dir))
 	}()
 	return filePath, cancelCtx
+}
+
+// TestAppleHandler_JWKCache proves Apple public keys are fetched once and then reused,
+// refreshed when the id_token names a kid the cached set doesn't hold, and kept in use
+// while Apple's key service is unavailable.
+func TestAppleHandler_JWKCache(t *testing.T) {
+	_, testJWK := createTestSignKeyPairs(t)
+
+	var fetches atomic.Int32
+	var failing atomic.Bool
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fetches.Add(1)
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, err := fmt.Fprintf(w, `{"keys":[%s]}`, testJWK)
+		assert.NoError(t, err)
+	}))
+	defer ts.Close()
+
+	ah, err := prepareAppleHandlerTest("", []string{})
+	require.NoError(t, err)
+	ah.conf.jwkURL = ts.URL
+	ctx := context.Background()
+
+	set, err := ah.jwkSet(ctx, "112233")
+	require.NoError(t, err)
+	_, err = set.get("112233")
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), fetches.Load(), "first call fetches the key set")
+
+	_, err = ah.jwkSet(ctx, "112233")
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), fetches.Load(), "known kid served from cache")
+
+	_, err = ah.jwkSet(ctx, "rotated-kid")
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), fetches.Load(), "unknown kid refreshes the key set")
+
+	// key service down, cached set still within appleJWKStaleTTL
+	failing.Store(true)
+	ah.jwkCache.fetchedAt = time.Now().Add(-appleJWKTTL - time.Minute)
+	set, err = ah.jwkSet(ctx, "112233")
+	require.NoError(t, err, "cached keys used while the key service is down")
+	_, err = set.get("112233")
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), fetches.Load())
+
+	// cached set too old to be trusted, the failure surfaces
+	ah.jwkCache.fetchedAt = time.Now().Add(-appleJWKStaleTTL - time.Minute)
+	_, err = ah.jwkSet(ctx, "112233")
+	require.Error(t, err)
+	assert.Equal(t, int32(4), fetches.Load())
+}
+
+// TestAppleHandler_JWKCacheSurvivesErrorBody proves an error response from the key service
+// does not replace a usable cache. Apple answers failures with a JSON object, which parses
+// into an empty key set, so caching it would reject every login until the entry expires.
+func TestAppleHandler_JWKCacheSurvivesErrorBody(t *testing.T) {
+	_, testJWK := createTestSignKeyPairs(t)
+
+	var body atomic.Value
+	body.Store(fmt.Sprintf(`{"keys":[%s]}`, testJWK))
+	var status atomic.Int32
+	status.Store(http.StatusOK)
+	var fetches atomic.Int32
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fetches.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(int(status.Load()))
+		_, err := w.Write([]byte(body.Load().(string)))
+		assert.NoError(t, err)
+	}))
+	defer ts.Close()
+
+	ah, err := prepareAppleHandlerTest("", []string{})
+	require.NoError(t, err)
+	ah.conf.jwkURL = ts.URL
+	ctx := context.Background()
+
+	set, err := ah.jwkSet(ctx, "112233")
+	require.NoError(t, err)
+	_, err = set.get("112233")
+	require.NoError(t, err)
+
+	// the key service starts answering with an error object, valid json carrying no keys
+	status.Store(http.StatusServiceUnavailable)
+	body.Store(`{"error":"unavailable"}`)
+	ah.jwkCache.fetchedAt = time.Now().Add(-appleJWKTTL - time.Minute)
+
+	set, err = ah.jwkSet(ctx, "112233")
+	require.NoError(t, err, "cached keys kept when the refresh fails")
+	_, err = set.get("112233")
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), fetches.Load())
+
+	_, err = fetchAppleJWK(ctx, ts.URL)
+	assert.Error(t, err, "non-2xx response rejected")
+
+	// a 200 response with no keys is equally unusable
+	status.Store(http.StatusOK)
+	body.Store(`{"keys":[]}`)
+	_, err = fetchAppleJWK(ctx, ts.URL)
+	assert.Error(t, err, "empty key set rejected")
+
+	ah.jwkCache.fetchedAt = time.Now().Add(-appleJWKTTL - time.Minute)
+	set, err = ah.jwkSet(ctx, "112233")
+	require.NoError(t, err, "cached keys kept when the key service returns no keys")
+	_, err = set.get("112233")
+	require.NoError(t, err)
+}
+
+// TestAppleHandler_JWKKeyFunc covers the id_token verification paths: a token without a
+// kid header, a key service that is down with nothing cached, and a kid Apple doesn't
+// publish. A handler built without NewApple has no cache and fetches every time.
+func TestAppleHandler_JWKKeyFunc(t *testing.T) {
+	_, testJWK := createTestSignKeyPairs(t)
+
+	var failing atomic.Bool
+	var fetches atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fetches.Add(1)
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, err := fmt.Fprintf(w, `{"keys":[%s]}`, testJWK)
+		assert.NoError(t, err)
+	}))
+	defer ts.Close()
+
+	ah := AppleHandler{Params: Params{L: logger.Std}, conf: AppleConfig{jwkURL: ts.URL}}
+	keyFunc := ah.jwkKeyFunc(context.Background())
+
+	_, err := keyFunc(&jwt.Token{Header: map[string]any{}})
+	assert.Error(t, err, "kid header required")
+	assert.Equal(t, int32(0), fetches.Load(), "no fetch without a kid")
+
+	key, err := keyFunc(&jwt.Token{Header: map[string]any{"kid": "112233"}})
+	require.NoError(t, err)
+	assert.NotNil(t, key)
+
+	_, err = keyFunc(&jwt.Token{Header: map[string]any{"kid": "unpublished"}})
+	assert.Error(t, err, "kid not published by the key service")
+
+	failing.Store(true)
+	_, err = keyFunc(&jwt.Token{Header: map[string]any{"kid": "112233"}})
+	assert.Error(t, err, "no cache to fall back on")
+
+	assert.Equal(t, int32(3), fetches.Load(), "handler without cache fetches every time")
 }
 
 func prepareAppleHandlerTest(responseMode string, scopes []string) (*AppleHandler, error) {
