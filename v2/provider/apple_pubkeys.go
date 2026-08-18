@@ -68,6 +68,11 @@ func fetchAppleJWK(ctx context.Context, keyURL string) (set appleKeySet, err err
 	}
 	defer func() { _ = res.Body.Close() }()
 
+	// an error body parses as a key set with no keys, caching it would break every login until it expires
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return set, fmt.Errorf("failed to fetch Apple public keys, status %s", res.Status)
+	}
+
 	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		return set, fmt.Errorf("failed read data after Apple public key fetched: %w", err)
@@ -76,6 +81,9 @@ func fetchAppleJWK(ctx context.Context, keyURL string) (set appleKeySet, err err
 	set, err = parseAppleJWK(data)
 	if err != nil {
 		return set, fmt.Errorf("get set of apple public key failed: %w", err)
+	}
+	if len(set.keys) == 0 {
+		return appleKeySet{}, fmt.Errorf("no keys in Apple public key response")
 	}
 
 	return set, nil
