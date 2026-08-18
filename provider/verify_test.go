@@ -181,7 +181,7 @@ func TestVerifyHandler_PublicFromFlow_RejectsExternalHost(t *testing.T) {
 	req2, err := http.NewRequest("GET", "/login?token="+tknStr, http.NoBody)
 	require.NoError(t, err)
 	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr2, req2)
-	assert.Equal(t, http.StatusOK, rr2.Code, "must return user JSON, not 307 to evil")
+	assert.Equal(t, http.StatusOK, rr2.Code, "must return user JSON, not redirect to evil")
 	assert.Equal(t, "", rr2.Header().Get("Location"))
 	assert.NotContains(t, rr2.Body.String(), "evil.example.com")
 }
@@ -218,7 +218,7 @@ func TestVerifyHandler_LoginAcceptConfirmFromRejectsExternalHost(t *testing.T) {
 	require.NoError(t, err)
 	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code, "must return user JSON, not 307 to evil")
+	assert.Equal(t, http.StatusOK, rr.Code, "must return user JSON, not redirect to evil")
 	assert.Equal(t, "", rr.Header().Get("Location"))
 	assert.Contains(t, rr.Body.String(), `"name":"test123"`)
 	assert.NotContains(t, rr.Body.String(), "evil.example.com")
@@ -257,7 +257,7 @@ func TestVerifyHandler_LoginAcceptConfirmFromAllowsAllowlistedHost(t *testing.T)
 	require.NoError(t, err)
 	http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusTemporaryRedirect, rr.Code, "must 307-redirect to trusted host")
+	assert.Equal(t, http.StatusSeeOther, rr.Code, "must 303-redirect to trusted host")
 	assert.Equal(t, "https://trusted.example.com/back", rr.Header().Get("Location"))
 }
 

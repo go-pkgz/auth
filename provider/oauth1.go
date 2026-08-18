@@ -175,7 +175,8 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 			rest.RenderJSON(w, &u)
 			return
 		}
-		http.Redirect(w, r, oauthClaims.Handshake.From, http.StatusTemporaryRedirect)
+		// see-other keeps the redirect a GET whatever method the callback arrived with
+		http.Redirect(w, r, oauthClaims.Handshake.From, http.StatusSeeOther)
 		return
 	}
 	rest.RenderJSON(w, &u)

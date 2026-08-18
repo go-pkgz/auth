@@ -297,7 +297,8 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			rest.RenderJSON(w, claims.User)
 			return
 		}
-		http.Redirect(w, r, confClaims.Handshake.From, http.StatusTemporaryRedirect)
+		// see-other keeps the redirect a GET whatever method the callback arrived with
+		http.Redirect(w, r, confClaims.Handshake.From, http.StatusSeeOther)
 		return
 	}
 	rest.RenderJSON(w, claims.User)
