@@ -14,9 +14,15 @@ on:
       - "v2/**"
       - "_example/**"
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write # goveralls posts the coverage status to the commit
 
     steps:
       - name: disable and stop mono-xsp4.service (wtf?)

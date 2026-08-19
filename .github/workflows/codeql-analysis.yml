@@ -20,10 +20,17 @@ on:
   schedule:
     - cron: '32 22 * * 3'
 
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload CodeQL results
+      actions: read
 
     strategy:
       fail-fast: false
