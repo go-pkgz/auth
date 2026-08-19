@@ -1,0 +1,10 @@
+./channel_binding.go
+./client.go
+./client_conv.go
+./common.go
+./doc.go
+./parse.go
+./pbkdf2_go124.go
+./scram.go
+./server.go
+./server_conv.go

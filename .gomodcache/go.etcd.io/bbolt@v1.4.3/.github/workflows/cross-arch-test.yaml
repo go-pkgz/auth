@@ -1,0 +1,36 @@
+---
+name: Cross-Platform Build Tests
+permissions: read-all
+on: [push, pull_request]
+
+jobs:
+  build-aix:
+    uses: ./.github/workflows/cross-arch-template.yaml
+    with:
+      os: aix
+      archs: "['ppc64']"
+  build-android:
+    uses: ./.github/workflows/cross-arch-template.yaml
+    with:
+      os: android
+      archs: "['arm64']"
+  build-linux:
+    uses: ./.github/workflows/cross-arch-template.yaml
+    with:
+      os: linux
+      archs: "['386','amd64','arm','arm64','loong64','mips','mips64','mips64le','mipsle','ppc64','ppc64le','riscv64','s390x']"
+  build-openbsd:
+    uses: ./.github/workflows/cross-arch-template.yaml
+    with:
+      os: openbsd
+      archs: "['386','amd64','arm','arm64','ppc64','riscv64']"
+  build-solaris:
+    uses: ./.github/workflows/cross-arch-template.yaml
+    with:
+      os: solaris
+      archs: "['amd64']"
+  build-windows:
+    uses: ./.github/workflows/cross-arch-template.yaml
+    with:
+      os: windows
+      archs: "['386','amd64','arm64']"

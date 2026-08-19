@@ -1,0 +1,65 @@
+version: "2"
+run:
+  timeout: 5m
+  tests: false
+  concurrency: 4
+linters:
+  default: none
+  enable:
+    - dupl
+    - gochecknoinits
+    - gocritic
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - modernize
+    - testifylint
+  settings:
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocritic:
+      disabled-checks:
+        - wrapperFunc
+        - hugeParam
+        - rangeValCopy
+        - singleCaseSwitch
+        - ifElseChain
+      enabled-tags:
+        - performance
+        - style
+        - experimental
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    lll:
+      line-length: 140
+    misspell:
+      locale: US
+
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - staticcheck
+        text: "at least one file in a package should have a package comment"
+      - linters:
+          - revive
+        text: "should have a package comment"
+      - linters:
+          - gosec
+          - dupl
+        path: _test\.go
+    paths:
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$

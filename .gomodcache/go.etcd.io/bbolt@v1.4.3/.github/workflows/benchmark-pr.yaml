@@ -1,0 +1,9 @@
+---
+name: Benchmarks on PRs (AMD64)
+permissions: read-all
+on: [pull_request]
+jobs:
+  amd64:
+    uses: ./.github/workflows/benchmark-template.yaml
+    with:
+      benchGitRef: ${{ github.event.pull_request.base.sha }}

@@ -1,0 +1,15 @@
+./auth.go
+./aws_conv.go
+./conversation.go
+./cred.go
+./default.go
+./doc.go
+./gssapi_not_enabled.go
+./mongodbaws.go
+./mongodbcr.go
+./oidc.go
+./plain.go
+./sasl.go
+./scram.go
+./util.go
+./x509.go

@@ -1,0 +1,34 @@
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+name: CI
+
+# Cancel in-progress runs for same workflow + branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+
+    # Minimal permissions
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+        go-version: [1.18.x, 1.25.x]
+        os: [ubuntu-latest]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Test
+      run: go test -race ./...

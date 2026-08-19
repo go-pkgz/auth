@@ -1,0 +1,6 @@
+./canvas.go
+./generator.go
+./hsl.go
+./identicon.go
+./image.go
+./svg.go

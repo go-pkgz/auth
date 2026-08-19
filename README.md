@@ -768,7 +768,9 @@ To authenticate against a self-hosted GitHub Enterprise Server instance instead 
 service.AddGithubEnterpriseProvider("<Client ID>", "<Client Secret>", "https://github.example.com")
 ```
 
-The provider is registered under the same `github` name, so login and callback routes are unchanged. If the base URL is not a usable `http`/`https` URL the provider falls back to public github.com. To combine it with `UserAttributes` or `GithubNumericID`, set `GithubEnterpriseURL` when building `provider.Params` directly and register the result with `service.AddCustomHandler(provider.NewGithub(p))`, filling in the service-supplied fields as described in the numeric-id note above.
+Register the OAuth App on the Enterprise instance itself, not on `https://github.com/settings/developers`. OAuth Apps are per-instance, so a client id created on public github.com is unknown to your GHES server and authorization will fail. The callback URL is the same `<domain>/auth/github/callback` as above.
+
+The provider is registered under the same `github` name, so login and callback routes are unchanged. If the base URL is not a usable `http`/`https` URL the provider falls back to public github.com. A scheme-less value such as `github.example.com` is treated as `https://github.example.com`. To combine it with `UserAttributes` or `GithubNumericID`, set `GithubEnterpriseURL` when building `provider.Params` directly and register the result with `service.AddCustomHandler(provider.NewGithub(p))`, filling in the service-supplied fields as described in the numeric-id note above.
 
 #### Facebook Auth Provider
 

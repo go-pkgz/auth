@@ -1,0 +1,6 @@
+./const.go
+./doc.go
+./generate.go
+./manage.go
+./model.go
+./store.go

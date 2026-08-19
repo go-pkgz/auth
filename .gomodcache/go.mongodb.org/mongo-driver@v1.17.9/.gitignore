@@ -1,0 +1,37 @@
+.vscode
+debug
+.idea
+*.iml
+*.ipr
+*.iws
+.idea
+*.sublime-project
+*.sublime-workspace
+driver-test-data.tar.gz
+perf
+**mongocryptd.pid
+*.test
+.DS_Store
+install
+main.so
+.cache
+install
+libmongocrypt
+venv
+test.suite
+
+# AWS SAM-generated files
+internal/test/faas/awslambda/.aws-sam
+internal/test/faas/awslambda/events/event.json
+
+# Ignore compiled binaries from the compilecheck
+internal/test/compilecheck/compilecheck
+internal/test/compilecheck/compilecheck.so
+
+# Ignore api report files
+api-report.md
+api-report.txt
+
+# Ignore secrets files
+secrets-expansion.yml
+secrets-export.sh

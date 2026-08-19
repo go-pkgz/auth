@@ -1,0 +1,33 @@
+name: build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: [1.15, 1.16]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          path: src/github.com/golang-jwt/jwt
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "${{ matrix.go }}"
+      - name: Build
+        run: |
+          go vet ./...
+          go test -v ./...
+          go build ./...
+        env:
+          GO111MODULE: auto
+          GOPATH: ${{ github.workspace }}

@@ -1,0 +1,8 @@
+./bidi.go
+./doc.go
+./error.go
+./map.go
+./profile.go
+./saslprep.go
+./set.go
+./tables.go

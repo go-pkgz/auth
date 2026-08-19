@@ -1,0 +1,33 @@
+name: goreleaser
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # for goreleaser/goreleaser-action to create a GitHub release
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      -
+        name: Set up Go
+        uses: actions/setup-go@def8c394e3ad351a79bc93815e4a585520fe993b # v5.2.0
+        with:
+          go-version: 1.26.x
+      -
+        name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
+        with:
+          version: 2.13.3
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CGO_ENABLED: 0

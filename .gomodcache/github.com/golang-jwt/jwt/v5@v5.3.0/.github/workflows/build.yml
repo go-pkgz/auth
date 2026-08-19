@@ -1,0 +1,53 @@
+name: build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.21", "1.22", "1.23", "1.24"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "${{ matrix.go }}"
+          check-latest: true
+      - name: Check Go code formatting
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            gofmt -s -l .
+            echo "Please format Go code by running: go fmt ./..."
+            exit 1
+          fi
+      - name: Build
+        run: |
+          go install github.com/mfridman/tparse@latest  
+          go vet ./...
+          go test -v -race -count=1 -json -cover ./... | tee output.json | tparse -follow -notests || true
+          tparse -format markdown -file output.json -all > $GITHUB_STEP_SUMMARY
+          go build ./...
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+      - name: Coverage
+        run: |
+          go test -v -covermode=count -coverprofile=coverage.cov ./...
+      - name: Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          file: coverage.cov
+          format: golang

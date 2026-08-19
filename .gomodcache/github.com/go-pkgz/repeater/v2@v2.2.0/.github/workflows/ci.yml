@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+    branches:
+    tags:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: set up go 1.23
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.23"
+        id: go
+
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: build and test
+        run: |
+          go get -v
+          go test -timeout=60s -race -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov_tmp
+          cat $GITHUB_WORKSPACE/profile.cov_tmp | grep -v "_mock.go" > $GITHUB_WORKSPACE/profile.cov
+          go build -race
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1.6
+
+      - name: install  goveralls
+        run: go install github.com/mattn/goveralls@latest
+
+      - name: submit coverage
+        run: $(go env GOPATH)/bin/goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+        env:
+          COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}

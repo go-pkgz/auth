@@ -1,0 +1,21 @@
+{
+    "label": "SHA-512 example",
+    "digest": "SHA-512",
+    "user": "user",
+    "pass": "pencil",
+    "authID": "",
+    "skipSASLprep": false,
+    "salt64": "W22ZaJ0SNY7soEsUEjb6gQ==",
+    "iters":  10000,
+    "clientNonce": "/uAp+YhRXyuq+1zS3YWsUsZHpxLfGkcQ",
+    "serverNonce": "4FHzBxBhPzykjGStpoxdfs4Nyp1mtC9B",
+    "valid": true,
+    "steps" : [
+        "n,,n=user,r=/uAp+YhRXyuq+1zS3YWsUsZHpxLfGkcQ",
+        "r=/uAp+YhRXyuq+1zS3YWsUsZHpxLfGkcQ4FHzBxBhPzykjGStpoxdfs4Nyp1mtC9B,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=10000",
+        "c=biws,r=/uAp+YhRXyuq+1zS3YWsUsZHpxLfGkcQ4FHzBxBhPzykjGStpoxdfs4Nyp1mtC9B,p=E2tqtuwJz5ShFuck1/KeqZKCmGZe/Lxjyr6fTZio21wZtlpgyeYLNxxQXrLuK/FfMSCanyDRmI1q5KL1Tj54nQ==",
+        "v=qKOkLNGdt0VrlVkoL3kXjhWmI4SjEfqw8ogXgikzbPOMh6gloo8Mrboq/q3cz0/7hIvcQ1N9VL4m7iiSTTyolQ==",
+        ""
+    ]
+}
+

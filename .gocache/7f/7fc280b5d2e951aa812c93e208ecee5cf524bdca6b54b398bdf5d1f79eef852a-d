@@ -1,0 +1,12 @@
+./apple.go
+./apple_pubkeys.go
+./custom_server.go
+./dev_provider.go
+./direct.go
+./oauth1.go
+./oauth2.go
+./providers.go
+./redirect.go
+./service.go
+./telegram.go
+./verify.go

@@ -1,0 +1,6 @@
+./avatar.go
+./bolt.go
+./gridfs.go
+./localfs.go
+./noop.go
+./store.go
