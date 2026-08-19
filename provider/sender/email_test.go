@@ -1,9 +1,12 @@
 package sender
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -101,4 +104,95 @@ func TestEmail_SendFailed(t *testing.T) {
 	e = NewEmailClient(p, logger.Std)
 	err = e.Send("to@example.com", "some text")
 	require.NotNil(t, err)
+}
+
+// fakeSMTP accepts one connection, speaks the minimum needed to reach DATA and
+// returns the greeting line the client sent.
+func fakeSMTP(t *testing.T) (addr string, greeting <-chan string) {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	got := make(chan string, 1)
+	go func() {
+		conn, e := ln.Accept()
+		if e != nil {
+			return
+		}
+		defer conn.Close()
+
+		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+		r := bufio.NewReader(conn)
+		w := bufio.NewWriter(conn)
+		writeLine := func(s string) {
+			_, _ = w.WriteString(s + "\r\n")
+			_ = w.Flush()
+		}
+
+		writeLine("220 fake ESMTP")
+		for {
+			line, e := r.ReadString('\n')
+			if e != nil {
+				return
+			}
+			cmd := strings.ToUpper(strings.TrimSpace(line))
+			switch {
+			case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
+				select {
+				case got <- strings.TrimSpace(line):
+				default:
+				}
+				writeLine("250-fake greets you")
+				writeLine("250 HELP")
+			case strings.HasPrefix(cmd, "QUIT"):
+				writeLine("221 bye")
+				return
+			case strings.HasPrefix(cmd, "DATA"):
+				writeLine("354 go ahead")
+			case cmd == ".":
+				writeLine("250 queued")
+			default:
+				writeLine("250 ok")
+			}
+		}
+	}()
+
+	return ln.Addr().String(), got
+}
+
+func TestEmail_HELOHost(t *testing.T) {
+	tbl := []struct {
+		name     string
+		heloHost string
+		want     string
+	}{
+		{"configured host is announced", "mail.example.com", "mail.example.com"},
+		{"unset keeps the previous localhost greeting", "", "localhost"},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			addr, greeting := fakeSMTP(t)
+			host, portStr, err := net.SplitHostPort(addr)
+			require.NoError(t, err)
+			port, err := strconv.Atoi(portStr)
+			require.NoError(t, err)
+
+			client := NewEmailClient(EmailParams{
+				Host: host, Port: port, From: "from@example.com",
+				Subject: "subj", HELOHost: tt.heloHost, TimeOut: 5 * time.Second,
+			}, logger.Std)
+
+			_ = client.Send("to@example.com", "body")
+
+			select {
+			case line := <-greeting:
+				assert.Equal(t, "EHLO "+tt.want, line)
+			case <-time.After(5 * time.Second):
+				t.Fatal("no greeting received")
+			}
+		})
+	}
 }

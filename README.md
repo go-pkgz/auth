@@ -342,6 +342,7 @@ For email notify provider, please use `github.com/go-pkgz/auth/provider/sender` 
 	sndr := sender.NewEmailClient(sender.EmailParams{
 		Host:               "email.hostname",
 		Port:               567,
+		HELOHost:           "mail.example.com", // optional, greeting hostname, defaults to localhost
 		SMTPUserName:       "username",
 		SMTPPassword:       "pass",
 		StartTLS:           true,

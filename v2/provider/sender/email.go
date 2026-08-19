@@ -21,6 +21,7 @@ type Email struct {
 type EmailParams struct {
 	Host        string // SMTP host
 	Port        int    // SMTP port
+	HELOHost    string // SMTP HELO/EHLO hostname, defaults to localhost when unset
 	From        string // from email field
 	Subject     string // email subject
 	ContentType string // content type
@@ -57,6 +58,10 @@ func NewEmailClient(emailParams EmailParams, l logger.L) *Email {
 
 	if emailParams.Port != 0 {
 		opts = append(opts, email.Port(emailParams.Port))
+	}
+
+	if emailParams.HELOHost != "" {
+		opts = append(opts, email.HELOHost(emailParams.HELOHost))
 	}
 
 	if emailParams.TimeOut != 0 {
