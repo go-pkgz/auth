@@ -52,16 +52,34 @@ func (gf *GridFS) Put(userID string, reader io.Reader) (avatar string, err error
 	// earlier Put calls left behind. Cleanup runs after the upload, keeping the previous
 	// avatar in place if the write failed, and is best-effort as the new avatar is stored
 	// either way.
-	ids, err := gf.revisionIDs(bucket, id+imgSfx)
-	if err == nil {
-		for _, oldID := range ids {
-			if oldID != fileID {
-				_ = bucket.Delete(oldID)
-			}
-		}
-	}
+	_ = gf.removeOlderRevisions(bucket, id+imgSfx, fileID)
 
 	return id + imgSfx, nil
+}
+
+// removeOlderRevisions deletes the revisions of fileName stored before keepID. Only older
+// revisions go, so two concurrent Put calls cannot delete each other's upload and leave the
+// avatar missing; the newer of the two survives.
+func (gf *GridFS) removeOlderRevisions(bucket *gridfs.Bucket, fileName string, keepID primitive.ObjectID) error {
+	ids, err := gf.revisionIDs(bucket, fileName)
+	if err != nil {
+		return err
+	}
+
+	older := false
+	for _, id := range ids { // newest first, everything past keepID was uploaded earlier
+		if id == keepID {
+			older = true
+			continue
+		}
+		if !older {
+			continue
+		}
+		if e := bucket.Delete(id); e != nil {
+			err = e
+		}
+	}
+	return err
 }
 
 // revisionIDs returns ids of all gridfs files stored under the given name, newest first
