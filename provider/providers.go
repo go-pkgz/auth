@@ -5,6 +5,7 @@ import (
 	"crypto/sha1" //nolint
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -48,16 +49,40 @@ func NewGoogle(p Params) Oauth2Handler {
 	})
 }
 
+// githubEnterpriseURLs derives the OAuth and user-info URLs for a GitHub Enterprise
+// Server instance from its base URL, e.g. "https://github.example.com". It returns
+// the oauth2 endpoint, the user-info URL, and false when base is not a usable
+// absolute http(s) URL, in which case the caller keeps the public github.com endpoints.
+func githubEnterpriseURLs(base string) (oauth2.Endpoint, string, bool) {
+	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(base), "/"))
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return oauth2.Endpoint{}, "", false
+	}
+	root := u.String()
+	return oauth2.Endpoint{
+		AuthURL:  root + "/login/oauth/authorize",
+		TokenURL: root + "/login/oauth/access_token",
+	}, root + "/api/v3/user", true
+}
+
 // NewGithub makes github oauth2 provider
 func NewGithub(p Params) Oauth2Handler {
 	if p.L == nil {
 		p.L = logger.NoOp // mapUser below captures p, initOauth2Handler defaults its own copy only
 	}
+	endpoint, infoURL := github.Endpoint, "https://api.github.com/user"
+	if p.GithubEnterpriseURL != "" {
+		if ep, iu, ok := githubEnterpriseURLs(p.GithubEnterpriseURL); ok {
+			endpoint, infoURL = ep, iu
+		} else {
+			p.Logf("[WARN] invalid github enterprise url %q, using public github.com", p.GithubEnterpriseURL)
+		}
+	}
 	return initOauth2Handler(p, Oauth2Handler{
 		name:     "github",
-		endpoint: github.Endpoint,
+		endpoint: endpoint,
 		scopes:   []string{},
-		infoURL:  "https://api.github.com/user",
+		infoURL:  infoURL,
 		mapUser: func(data UserData, bdata []byte) token.User {
 			userInfo := token.User{
 				ID:      "github_" + token.HashID(sha1.New(), data.Value("login")),
