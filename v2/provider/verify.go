@@ -2,6 +2,7 @@ package provider
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
@@ -166,12 +167,26 @@ type Sender interface {
 	Send(address, text string) error
 }
 
+// ContextSender is an optional extension of Sender. A Sender implementing it gets the request context,
+// so the delivery is bound to the request instead of running until the transport times out on its own.
+type ContextSender interface {
+	SendContext(ctx context.Context, address, text string) error
+}
+
 // SenderFunc type is an adapter to allow the use of ordinary functions as Sender.
 type SenderFunc func(address, text string) error
 
 // Send calls f(address,text) to implement Sender interface
 func (f SenderFunc) Send(address, text string) error {
 	return f(address, text)
+}
+
+// send delivers the message, passing ctx to senders which accept it
+func (e VerifyHandler) send(ctx context.Context, address, text string) error {
+	if s, ok := e.Sender.(ContextSender); ok {
+		return s.SendContext(ctx, address, text)
+	}
+	return e.Sender.Send(address, text)
 }
 
 // VerifTokenService defines interface accessing tokens
@@ -377,7 +392,7 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := e.Sender.Send(address, buf.String()); err != nil {
+	if err := e.send(r.Context(), address, buf.String()); err != nil {
 		rest.SendErrorJSON(w, r, e.L, http.StatusInternalServerError, err, "failed to send confirmation")
 		return
 	}

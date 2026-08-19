@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -26,6 +27,37 @@ var (
 	testConfirmedGravatar   = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJncmF2YTo6ZWVmcmV0c291bEBnbWFpbC5jb20ifX0.yQTtG7neX3YjLZ-SGeiiNmwNfJWA7nR50KAxDw834XE`
 	testConfirmedExpired    = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTU2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn19.bCFMAwCg1_l4yuEzFYzd0q9PstY-auHe2rwLqltffqo`
 )
+
+func TestVerifyHandler_LoginSendsWithRequestContext(t *testing.T) {
+	emailer := &mockContextSender{}
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:   "iss-test",
+		L:        logger.Std,
+		Sender:   emailer,
+		Template: "{{.User}} {{.Address}} {{.Site}} token:{{.Token}}",
+	}
+
+	handler := http.HandlerFunc(e.LoginHandler)
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?address=blah@user.com&user=test123&site=remark42", http.NoBody)
+	require.NoError(t, err)
+
+	type ctxKey struct{}
+	ctx := context.WithValue(req.Context(), ctxKey{}, "marker")
+	handler.ServeHTTP(rr, req.WithContext(ctx))
+
+	assert.Equal(t, 200, rr.Code)
+	assert.True(t, emailer.contextCalled, "sender implementing ContextSender is called with the context")
+	require.NotNil(t, emailer.ctx)
+	assert.Equal(t, "marker", emailer.ctx.Value(ctxKey{}), "the request context is the one passed to the sender")
+	assert.Equal(t, "blah@user.com", emailer.to)
+}
 
 func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 
@@ -659,6 +691,19 @@ type mockSender struct {
 
 	to   string
 	text string
+}
+
+// mockContextSender implements both Sender and ContextSender, recording which one was called
+type mockContextSender struct {
+	mockSender
+
+	ctx           context.Context //nolint:containedctx // recorded to assert the handler passes the request context
+	contextCalled bool
+}
+
+func (m *mockContextSender) SendContext(ctx context.Context, to, text string) error {
+	m.ctx, m.contextCalled = ctx, true
+	return m.Send(to, text)
 }
 
 func (m *mockSender) Send(to, text string) error {
