@@ -1,0 +1,12 @@
+./bson.go
+./decoder.go
+./doc.go
+./encoder.go
+./marshal.go
+./primitive_codecs.go
+./raw.go
+./raw_element.go
+./raw_value.go
+./registry.go
+./types.go
+./unmarshal.go

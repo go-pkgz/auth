@@ -1,0 +1,13 @@
+./copier.go
+./doc.go
+./extjson_parser.go
+./extjson_reader.go
+./extjson_tables.go
+./extjson_wrappers.go
+./extjson_writer.go
+./json_scanner.go
+./mode.go
+./reader.go
+./value_reader.go
+./value_writer.go
+./writer.go

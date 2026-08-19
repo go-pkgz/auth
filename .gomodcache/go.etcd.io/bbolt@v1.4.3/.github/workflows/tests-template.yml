@@ -1,0 +1,57 @@
+---
+name: Reusable unit test Workflow
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        required: false
+        type: string
+        default: ubuntu-latest
+      targets:
+        required: false
+        type: string
+        default: "['linux-unit-test-1-cpu','linux-unit-test-2-cpu','linux-unit-test-4-cpu']"
+permissions: read-all
+
+jobs:
+  test-linux:
+    # this is to prevent arm64 jobs from running at forked projects
+    if: ${{ github.repository == 'etcd-io/bbolt' || inputs.runs-on == 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.targets) }}
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - id: goversion
+        run: echo "goversion=$(cat .go-version)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+        with:
+          go-version: ${{ steps.goversion.outputs.goversion }}
+      - run: make fmt
+      - env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          case "${TARGET}" in
+            linux-unit-test-1-cpu)
+              CPU=1 make test
+              ;;
+            linux-unit-test-2-cpu)
+              CPU=2 make test
+              ;;
+            linux-unit-test-4-cpu)
+              CPU=4 make test
+              ;;
+            linux-unit-test-4-cpu-race)
+              CPU=4 ENABLE_RACE=true make test
+              ;;
+            *)
+              echo "Failed to find target"
+              exit 1
+              ;;
+          esac
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ec5d18412c0aeab7936cb16880d708ba2a64e1ae # v6.2.0
+        with:
+          version: v1.64.8

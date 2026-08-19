@@ -1,0 +1,10 @@
+./array.go
+./bson_arraybuilder.go
+./bson_documentbuilder.go
+./bsoncore.go
+./doc.go
+./document.go
+./document_sequence.go
+./element.go
+./tables.go
+./value.go

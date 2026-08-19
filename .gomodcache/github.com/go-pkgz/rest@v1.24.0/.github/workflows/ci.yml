@@ -1,0 +1,51 @@
+name: build
+
+on:
+  push:
+    branches:
+    tags:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.24", "stable"]
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: set up go ${{ matrix.go }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+        id: go
+
+      - name: build and test
+        run: |
+          go test -timeout=60s -race -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov_tmp ./...
+          cat $GITHUB_WORKSPACE/profile.cov_tmp | grep -v "_mock.go" > $GITHUB_WORKSPACE/profile.cov
+          go build -race ./...
+        env:
+          TZ: "America/Chicago"
+
+      - name: golangci-lint
+        if: matrix.go == 'stable'
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+
+      - name: install goveralls
+        if: matrix.go == 'stable'
+        continue-on-error: true
+        run: |
+          go install github.com/mattn/goveralls@latest
+
+      - name: submit coverage
+        if: matrix.go == 'stable'
+        continue-on-error: true
+        run: $(go env GOPATH)/bin/goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+        env:
+          COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}

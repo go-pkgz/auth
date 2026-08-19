@@ -1,0 +1,10 @@
+./batch_cursor.go
+./batches.go
+./compression.go
+./crypt.go
+./driver.go
+./errors.go
+./legacy.go
+./operation.go
+./operation_exhaust.go
+./serverapioptions.go

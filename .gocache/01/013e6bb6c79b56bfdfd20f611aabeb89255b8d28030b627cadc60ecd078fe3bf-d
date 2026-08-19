@@ -1,0 +1,4 @@
+./bucket.go
+./doc.go
+./download_stream.go
+./upload_stream.go

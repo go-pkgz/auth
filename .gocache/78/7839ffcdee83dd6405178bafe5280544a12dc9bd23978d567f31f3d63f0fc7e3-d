@@ -1,0 +1,6 @@
+./assume_role_provider.go
+./ec2_provider.go
+./ecs_provider.go
+./env_provider.go
+./imds_provider.go
+./static_provider.go

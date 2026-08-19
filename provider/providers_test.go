@@ -119,6 +119,57 @@ func TestProviders_NewGithubNumericID(t *testing.T) {
 	})
 }
 
+func TestProviders_NewGithubEnterprise(t *testing.T) {
+	t.Run("default is public github.com", func(t *testing.T) {
+		r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+		assert.Equal(t, "github", r.Name())
+		assert.Equal(t, "https://github.com/login/oauth/authorize", r.endpoint.AuthURL)
+		assert.Equal(t, "https://api.github.com/user", r.infoURL)
+	})
+
+	t.Run("enterprise base url", func(t *testing.T) {
+		r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+			GithubEnterpriseURL: "https://github.example.com"})
+		assert.Equal(t, "github", r.Name())
+		assert.Equal(t, "https://github.example.com/login/oauth/authorize", r.endpoint.AuthURL)
+		assert.Equal(t, "https://github.example.com/login/oauth/access_token", r.endpoint.TokenURL)
+		assert.Equal(t, "https://github.example.com/api/v3/user", r.infoURL)
+	})
+
+	t.Run("trailing slash trimmed", func(t *testing.T) {
+		r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+			GithubEnterpriseURL: "https://github.example.com/"})
+		assert.Equal(t, "https://github.example.com/api/v3/user", r.infoURL)
+	})
+
+	t.Run("scheme-less base url treated as https", func(t *testing.T) {
+		r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+			GithubEnterpriseURL: "github.example.com"})
+		assert.Equal(t, "https://github.example.com/login/oauth/authorize", r.endpoint.AuthURL)
+		assert.Equal(t, "https://github.example.com/login/oauth/access_token", r.endpoint.TokenURL)
+		assert.Equal(t, "https://github.example.com/api/v3/user", r.infoURL)
+	})
+
+	t.Run("enterprise provider still maps users", func(t *testing.T) {
+		r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+			GithubEnterpriseURL: "https://github.example.com"})
+		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://github.example.com/blah.png"}
+		user := r.mapUser(udata, nil)
+		assert.Equal(t, token.User{Name: "test user", ID: "github_e80b2d2608711cbb3312db7c4727a46fbad9601a",
+			Picture: "http://github.example.com/blah.png"}, user, "got %+v", user)
+	})
+
+	t.Run("invalid base url falls back to public github.com", func(t *testing.T) {
+		for _, base := range []string{"not a url", "ftp://github.example.com", "/only/path",
+			"https://github.example.com?x=1", "https://github.example.com#frag", "https://user:pw@github.example.com"} {
+			r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+				GithubEnterpriseURL: base})
+			assert.Equal(t, "https://github.com/login/oauth/authorize", r.endpoint.AuthURL, "base %q should fall back", base)
+			assert.Equal(t, "https://api.github.com/user", r.infoURL, "base %q should fall back", base)
+		}
+	})
+}
+
 func TestProviders_NewFacebook(t *testing.T) {
 	r := NewFacebook(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
 	assert.Equal(t, "facebook", r.Name())

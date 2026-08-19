@@ -1,0 +1,180 @@
+package stats_test
+
+import (
+	"reflect"
+	"testing"
+
+	"github.com/montanaflynn/stats"
+)
+
+func TestPercentile(t *testing.T) {
+	m, _ := stats.Percentile([]float64{43, 54, 56, 61, 62, 66}, 90)
+	if m != 64.0 {
+		t.Errorf("%.1f != %.1f", m, 64.0)
+	}
+	m, _ = stats.Percentile([]float64{43}, 90)
+	if m != 43.0 {
+		t.Errorf("%.1f != %.1f", m, 43.0)
+	}
+	m, _ = stats.Percentile([]float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 50)
+	if m != 5.5 {
+		t.Errorf("%.1f != %.1f", m, 5.5)
+	}
+	m, _ = stats.Percentile([]float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 99.9)
+	if !close(m, 9.991) {
+		t.Errorf("%v != %v", m, 9.991)
+	}
+	m, _ = stats.Percentile([]float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 100)
+	if m != 10.0 {
+		t.Errorf("%.1f != %.1f", m, 10.0)
+	}
+	_, err := stats.Percentile([]float64{}, 99.9)
+	if err != stats.EmptyInputErr {
+		t.Errorf("Empty slice didn't return expected error; got %v", err)
+	}
+	_, err = stats.Percentile([]float64{1, 2, 3, 4, 5}, 0)
+	if err != stats.BoundsErr {
+		t.Errorf("Zero percent didn't return expected error; got %v", err)
+	}
+	m, err = stats.Percentile([]float64{1, 2, 3, 4, 5}, 0.13)
+	if err != nil {
+		t.Errorf("Too low percent shouldn't return an error; got %v", err)
+	}
+	if !close(m, 1.0052) {
+		t.Errorf("%v != %v", m, 1.0052)
+	}
+	_, err = stats.Percentile([]float64{1, 2, 3, 4, 5}, 101)
+	if err != stats.BoundsErr {
+		t.Errorf("Too high percent didn't return expected error; got %v", err)
+	}
+}
+
+func TestPercentile_Issue88_ThreeValuesQ1(t *testing.T) {
+	input := []float64{193.71, 197.24, 216.39}
+
+	got, err := stats.Percentile(input, 25)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !close(got, 195.475) {
+		t.Fatalf("%v != %v", got, 195.475)
+	}
+
+	// Sanity check: issue report indicates 75th percentile was already correct.
+	got, err = stats.Percentile(input, 75)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !close(got, 206.815) {
+		t.Fatalf("%v != %v", got, 206.815)
+	}
+}
+
+func TestPercentile_Issue92(t *testing.T) {
+	data := []float64{20.737737800911837, 59.05787249563947, 16.547458636949685, 78.6771074284816}
+
+	m, _ := stats.Percentile(data, 50)
+	if !close(m, 39.89780514827565) {
+		t.Errorf("%v != %v", m, 39.89780514827565)
+	}
+
+	m, _ = stats.Percentile(data, 90)
+	if !close(m, 72.79133694862897) {
+		t.Errorf("%v != %v", m, 72.79133694862897)
+	}
+
+	m, _ = stats.Percentile(data, 95)
+	if !close(m, 75.7342221885553) {
+		t.Errorf("%v != %v", m, 75.7342221885553)
+	}
+}
+
+func TestPercentileSortSideEffects(t *testing.T) {
+	s := []float64{43, 54, 56, 44, 62, 66}
+	a := []float64{43, 54, 56, 44, 62, 66}
+	_, _ = stats.Percentile(s, 90)
+	if !reflect.DeepEqual(s, a) {
+		t.Errorf("%.1f != %.1f", s, a)
+	}
+}
+
+func BenchmarkPercentileSmallFloatSlice(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, _ = stats.Percentile(makeFloatSlice(5), 50)
+	}
+}
+
+func BenchmarkPercentileLargeFloatSlice(b *testing.B) {
+	lf := makeFloatSlice(100000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = stats.Percentile(lf, 50)
+	}
+}
+
+func TestPercentileNearestRank(t *testing.T) {
+	f1 := []float64{35, 20, 15, 40, 50}
+	f2 := []float64{20, 6, 7, 8, 8, 10, 13, 15, 16, 3}
+	f3 := makeFloatSlice(101)
+
+	for _, c := range []struct {
+		sample  []float64
+		percent float64
+		result  float64
+	}{
+		{f1, 30, 20},
+		{f1, 40, 20},
+		{f1, 50, 35},
+		{f1, 75, 40},
+		{f1, 95, 50},
+		{f1, 99, 50},
+		{f1, 99.9, 50},
+		{f1, 100, 50},
+		{f2, 25, 7},
+		{f2, 50, 8},
+		{f2, 75, 15},
+		{f2, 100, 20},
+		{f3, 1, 100},
+		{f3, 99, 9900},
+		{f3, 100, 10000},
+		{f3, 0, 0},
+	} {
+		got, err := stats.PercentileNearestRank(c.sample, c.percent)
+		if err != nil {
+			t.Errorf("Should not have returned an error")
+		}
+		if got != c.result {
+			t.Errorf("%v != %v", got, c.result)
+		}
+	}
+
+	_, err := stats.PercentileNearestRank([]float64{}, 50)
+	if err == nil {
+		t.Errorf("Should have returned an empty slice error")
+	}
+
+	_, err = stats.PercentileNearestRank([]float64{1, 2, 3, 4, 5}, -0.01)
+	if err == nil {
+		t.Errorf("Should have returned an percentage must be above 0 error")
+	}
+
+	_, err = stats.PercentileNearestRank([]float64{1, 2, 3, 4, 5}, 110)
+	if err == nil {
+		t.Errorf("Should have returned an percentage must not be above 100 error")
+	}
+
+}
+
+func BenchmarkPercentileNearestRankSmallFloatSlice(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, _ = stats.PercentileNearestRank(makeFloatSlice(5), 50)
+	}
+}
+
+func BenchmarkPercentileNearestRankLargeFloatSlice(b *testing.B) {
+	lf := makeFloatSlice(100000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = stats.PercentileNearestRank(lf, 50)
+	}
+}

@@ -1,0 +1,3 @@
+./knn.go
+./load.go
+./rtree.go

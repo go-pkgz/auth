@@ -1,0 +1,199 @@
+name: Go
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+permissions: read-all
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        go-version: [1.24.x, 1.25.x, 1.26.x]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      CGO_ENABLED: 0
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v6.3.0
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Checkout code
+      uses: actions/checkout@v6.0.2
+
+    - name: Vet
+      run: go vet ./...
+
+    - name: Test
+      run: go test ./...
+
+    - name: Test No-asm
+      run: go test -tags=noasm ./...
+
+    - name: Test No-unsafe
+      run: go test -tags=nounsafe ./...
+
+    - name: Test No-unsafe, noasm
+      run: go test -tags="nounsafe,noasm" ./...
+
+    - name: Test Race 1 CPU
+      env:
+        CGO_ENABLED: 1
+      run: go test -cpu=1 -short -race -tags=nounsafe -v ./...
+
+    - name: Test Race 4 CPU
+      env:
+        CGO_ENABLED: 1
+      run: go test -cpu=4 -short -race -tags=nounsafe -v ./...
+
+  generate:
+    strategy:
+      matrix:
+        pkg: [s2, zstd, huff0]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v6.3.0
+      with:
+        go-version: 1.26.x
+
+    - name: Checkout code
+      uses: actions/checkout@v6.0.2
+
+    - name: Generate
+      working-directory: ${{ matrix.pkg }}/_generate
+      run: go generate -v -x
+
+    - name: Git Status
+      run: |
+        git diff
+        test -z "$(git status --porcelain)"
+
+  build-special:
+    env:
+      CGO_ENABLED: 0
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v6.3.0
+      with:
+        go-version: 1.26.x
+
+    - name: Checkout code
+      uses: actions/checkout@v6.0.2
+
+    - name: fmt
+      run: diff <(gofmt -d .) <(printf "")
+
+    - name: Test 386
+      run: GOOS=linux GOARCH=386 go test -short ./...
+
+    - name: Build s2c
+      run: go build github.com/klauspost/compress/s2/cmd/s2c && go build github.com/klauspost/compress/s2/cmd/s2d&&./s2c -verify s2c &&./s2d s2c.s2&&rm ./s2c&&rm s2d&&rm s2c.s2
+
+    - name: goreleaser deprecation
+      run: curl -sfL https://goreleaser.com/static/run | VERSION=v2.13.3 bash -s -- check
+
+    - name: goreleaser snapshot
+      run: curl -sfL https://goreleaser.com/static/run | VERSION=v2.13.3 bash -s -- --snapshot --clean
+
+    - name: Test S2 GOAMD64 v3
+      env:
+        GOAMD64: v3
+      shell: bash {0}
+      run: go test . -test.run=None;if [ $? -eq 0 ]; then go test ./s2/...; else true; fi
+
+    - name: Test GOAMD64 v4
+      env:
+        GOAMD64: v4
+      shell: bash {0}
+      run: go test . -test.run=None;if [ $? -eq 0 ]; then go test ./s2/...; else true; fi
+
+  fuzz-s2:
+    env:
+      CGO_ENABLED: 0
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tags: [ 'nounsafe', '"noasm,nounsafe"' ]
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v6.3.0
+        with:
+          go-version: 1.26.x
+
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: S2/FuzzDictBlocks/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzDictBlocks -fuzztime=100000x -test.fuzzminimizetime=10ms ./s2/.
+
+      - name: S2/FuzzEncodingBlocks/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzEncodingBlocks -fuzztime=500000x -test.fuzzminimizetime=10ms ./s2/.
+
+      - name: S2/FuzzLZ4Block/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzLZ4Block -fuzztime=500000x -test.fuzzminimizetime=10ms ./s2/.
+
+
+  fuzz-zstd:
+    env:
+      CGO_ENABLED: 0
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tags: [ 'nounsafe', '"noasm,nounsafe"' ]
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v6.3.0
+        with:
+          go-version: 1.25.x
+
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: zstd/FuzzDecodeAll/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzDecodeAll -fuzztime=500000x -test.fuzzminimizetime=10ms ./zstd/.
+
+      - name: zstd/FuzzDecAllNoBMI2/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzDecAllNoBMI2 -fuzztime=500000x -test.fuzzminimizetime=10ms ./zstd/.
+
+      - name: zstd/FuzzDecoder/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzDecoder -fuzztime=500000x -test.fuzzminimizetime=10ms ./zstd/.
+
+      - name: zstd/FuzzNoBMI2Dec/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzNoBMI2Dec -fuzztime=500000x -test.fuzzminimizetime=10ms ./zstd/.
+
+      - name: zstd/FuzzEncoding/${{ matrix.tags }}
+        run: cd zstd&&go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzEncoding -fuzztime=250000x -test.fuzzminimizetime=10ms -fuzz-end=3&&cd ..
+
+  fuzz-other:
+    env:
+      CGO_ENABLED: 0
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tags: [ 'nounsafe', '"noasm,nounsafe"' ]
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v6.3.0
+        with:
+          go-version: 1.25.x
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: flate/FuzzEncoding/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzEncoding -fuzztime=100000x -test.fuzzminimizetime=10ms ./flate/.
+
+      - name: zip/FuzzReader/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzReader -fuzztime=500000x -test.fuzzminimizetime=10ms ./zip/.
+
+      - name: fse/FuzzCompress/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzCompress -fuzztime=1000000x -test.fuzzminimizetime=10ms ./fse/.
+
+      - name: fse/FuzzDecompress/${{ matrix.tags }}
+        run: go test -tags=${{ matrix.tags }} -run=none -fuzz=FuzzDecompress -fuzztime=1000000x -test.fuzzminimizetime=10ms ./fse/.
