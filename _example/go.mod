@@ -8,7 +8,7 @@ require (
 	github.com/go-oauth2/oauth2/v4 v4.5.4
 	github.com/go-pkgz/auth/v2 v2.0.0-00010101000000-000000000000
 	github.com/go-pkgz/lgr v0.12.3
-	github.com/go-pkgz/rest v1.21.0
+	github.com/go-pkgz/rest v1.24.0
 	github.com/go-pkgz/routegroup v1.6.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	golang.org/x/oauth2 v0.35.0
