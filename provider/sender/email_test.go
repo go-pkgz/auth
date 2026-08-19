@@ -1,6 +1,7 @@
 package sender
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestEmailSendContextCanceled(t *testing.T) {
+	// port 1 is not listening, a canceled context has to end the call before any connection attempt
+	client := NewEmailClient(EmailParams{Host: "127.0.0.1", Port: 1, From: "test@example.com",
+		Subject: "test email", TimeOut: time.Minute}, logger.Std)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	st := time.Now()
+	err := client.SendContext(ctx, "to@example.com", "test body")
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Less(t, time.Since(st), time.Second*5, "returned on the context instead of the connection timeout")
+}
 
 func TestEmailSend(t *testing.T) {
 	if _, ok := os.LookupEnv("SEND_EMAIL_TEST"); !ok {
