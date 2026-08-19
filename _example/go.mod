@@ -7,11 +7,11 @@ replace github.com/go-pkgz/auth/v2 => ../v2
 require (
 	github.com/go-oauth2/oauth2/v4 v4.5.4
 	github.com/go-pkgz/auth/v2 v2.0.0-00010101000000-000000000000
-	github.com/go-pkgz/lgr v0.12.3
+	github.com/go-pkgz/lgr v0.12.4
 	github.com/go-pkgz/rest v1.24.0
-	github.com/go-pkgz/routegroup v1.6.0
+	github.com/go-pkgz/routegroup v1.6.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	golang.org/x/oauth2 v0.35.0
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
@@ -20,12 +20,12 @@ require (
 	github.com/go-pkgz/repeater/v2 v2.2.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
-	github.com/montanaflynn/stats v0.9.0 // indirect
+	github.com/klauspost/compress v1.19.2 // indirect
+	github.com/montanaflynn/stats v0.12.4 // indirect
 	github.com/rrivera/identicon v0.0.0-20240116195454-d5ba35832c0d // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
 	github.com/tidwall/buntdb v1.3.2 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/grect v0.1.4 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -35,11 +35,11 @@ require (
 	github.com/xdg-go/scram v1.2.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
-	go.etcd.io/bbolt v1.4.3 // indirect
+	go.etcd.io/bbolt v1.5.0 // indirect
 	go.mongodb.org/mongo-driver v1.17.9 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/image v0.41.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/image v0.45.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
