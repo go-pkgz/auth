@@ -55,7 +55,8 @@ func NewGoogle(p Params) Oauth2Handler {
 // absolute http(s) URL, in which case the caller keeps the public github.com endpoints.
 func githubEnterpriseURLs(base string) (oauth2.Endpoint, string, bool) {
 	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(base), "/"))
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") ||
+		u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return oauth2.Endpoint{}, "", false
 	}
 	root := u.String()

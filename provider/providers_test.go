@@ -152,7 +152,8 @@ func TestProviders_NewGithubEnterprise(t *testing.T) {
 	})
 
 	t.Run("invalid base url falls back to public github.com", func(t *testing.T) {
-		for _, base := range []string{"not a url", "github.example.com", "ftp://github.example.com", "/only/path"} {
+		for _, base := range []string{"not a url", "github.example.com", "ftp://github.example.com", "/only/path",
+			"https://github.example.com?x=1", "https://github.example.com#frag", "https://user:pw@github.example.com"} {
 			r := NewGithub(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
 				GithubEnterpriseURL: base})
 			assert.Equal(t, "https://github.com/login/oauth/authorize", r.endpoint.AuthURL, "base %q should fall back", base)
