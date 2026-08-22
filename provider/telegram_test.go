@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -949,7 +950,8 @@ func TestTelegram_APIBaseURLRedirectsEveryCall(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tg := NewTelegramAPIWithBaseURL("secret-token", ts.Client(), ts.URL)
+	tg, err := NewTelegramAPIWithBaseURL("secret-token", ts.Client(), ts.URL)
+	require.NoError(t, err)
 
 	bot, err := tg.BotInfo(context.Background())
 	require.NoError(t, err)
@@ -969,14 +971,118 @@ func TestTelegram_APIBaseURLRedirectsEveryCall(t *testing.T) {
 
 func TestTelegram_APIBaseURLDefaultsToPublic(t *testing.T) {
 	// the existing constructor has to keep addressing Telegram, and an empty base must not
-	// produce requests to "/bot<token>/getMe" against nothing
-	for name, api := range map[string]TelegramAPI{
-		"default constructor": NewTelegramAPI("t", http.DefaultClient),
-		"empty base":          NewTelegramAPIWithBaseURL("t", http.DefaultClient, ""),
-		"trailing slash":      NewTelegramAPIWithBaseURL("t", http.DefaultClient, TelegramAPIBaseURL+"/"),
-	} {
-		t.Run(name, func(t *testing.T) {
+	// produce requests to "/bot<token>/getMe" against nothing. "/" is the case that made the
+	// order matter: trimmed first it is empty and falls back, checked first it is a valid base
+	for _, base := range []string{"", "/", TelegramAPIBaseURL + "/"} {
+		t.Run("base "+strconv.Quote(base), func(t *testing.T) {
+			api, err := NewTelegramAPIWithBaseURL("t", http.DefaultClient, base)
+			require.NoError(t, err)
 			assert.Equal(t, TelegramAPIBaseURL, api.(*tgAPI).baseURL)
 		})
 	}
+
+	t.Run("default constructor", func(t *testing.T) {
+		assert.Equal(t, TelegramAPIBaseURL, NewTelegramAPI("t", http.DefaultClient).(*tgAPI).baseURL)
+	})
+}
+
+func TestTelegram_APIBaseURLRejectsUnusableValues(t *testing.T) {
+	// every request carries the bot token in its path, so a base that resolves somewhere else
+	// ships the token there. TrimSuffix alone is not a guard
+	for name, base := range map[string]string{
+		"userinfo redirects the host": "https://api.telegram.org@evil.tld",
+		"no scheme":                   "api.telegram.org",
+		"wrong scheme":                "ftp://api.telegram.org",
+		"opaque":                      "https:api.telegram.org",
+		"no host":                     "https://",
+		"carries a query":             "https://api.telegram.org?a=b",
+		"carries a fragment":          "https://api.telegram.org#x",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewTelegramAPIWithBaseURL("t", http.DefaultClient, base)
+			assert.Error(t, err, "%s has to be refused", base)
+		})
+	}
+
+	t.Run("a path prefix is allowed", func(t *testing.T) {
+		api, err := NewTelegramAPIWithBaseURL("t", http.DefaultClient, "https://proxy.example.com/tg")
+		require.NoError(t, err)
+		assert.Equal(t, "https://proxy.example.com/tg", api.(*tgAPI).baseURL)
+	})
+
+	t.Run("nil client is refused", func(t *testing.T) {
+		_, err := NewTelegramAPIWithBaseURL("t", nil, TelegramAPIBaseURL)
+		assert.Error(t, err)
+	})
+}
+
+func TestTelegram_APIErrorDoesNotLeakTheToken(t *testing.T) {
+	// a proxy standing in for the API controls the error text and can echo the request URI into
+	// it, which carries the token. Redacting by URL shape would not catch what the upstream chose
+	// to send back, so the token itself is scrubbed
+	const token = "1234567:SECRET-TOK_EN-x"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(w, `{"description":"proxy failed while forwarding %s"}`, r.URL.RequestURI())
+	}))
+	defer ts.Close()
+
+	tg, err := NewTelegramAPIWithBaseURL(token, ts.Client(), ts.URL)
+	require.NoError(t, err)
+
+	_, err = tg.BotInfo(context.Background())
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), token, "the bot token reached the error text: %s", err)
+	assert.Contains(t, err.Error(), "<redacted>")
+}
+
+func TestTelegram_AvatarDownloadUsesTheSuppliedClient(t *testing.T) {
+	// the avatar path used to build its own http.Client, which drops the custom CA, client
+	// certificates, redirect policy and proxy settings that live on the one the caller passed.
+	// A TLS server proves it: only a client carrying the server's root can reach it, so if the
+	// download still built its own the fetch would fail and the avatar would be dropped
+	var served string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/getUserProfilePhotos"):
+			fmt.Fprint(w, `{"ok":true,"result":{"photos":[[{"file_id":"pic1"}]]}}`)
+		case strings.Contains(r.URL.Path, "/getFile"):
+			fmt.Fprint(w, `{"ok":true,"result":{"file_path":"photos/file_0.jpg"}}`)
+		default:
+			served = r.URL.Path
+			_, _ = w.Write([]byte("avatar-bytes"))
+		}
+	}))
+	defer ts.Close()
+
+	tg, err := NewTelegramAPIWithBaseURL("tok", ts.Client(), ts.URL)
+	require.NoError(t, err)
+
+	saver := &mockContentSaver{}
+	th := TelegramHandler{L: logger.NoOp, ProviderName: "telegram", Telegram: tg, AvatarSaver: saver}
+
+	avatarURL, err := tg.Avatar(context.Background(), 1)
+	require.NoError(t, err)
+
+	got := th.saveTelegramAvatar(context.Background(), "u1", avatarURL)
+
+	require.NotEmpty(t, got, "the avatar was dropped, so the download did not use the supplied client")
+	assert.Contains(t, served, "/file/bot", "the download did not go through the file path: %s", served)
+	assert.Equal(t, []byte("avatar-bytes"), saver.content, "the fetched bytes were not stored")
+}
+
+// mockContentSaver records what saveTelegramAvatar hands it
+type mockContentSaver struct {
+	content []byte
+}
+
+func (m *mockContentSaver) Put(_ authtoken.User, _ *http.Client) (string, error) { return "", nil }
+
+func (m *mockContentSaver) PutContent(userID string, content io.Reader) (string, error) {
+	b, err := io.ReadAll(content)
+	if err != nil {
+		return "", err
+	}
+	m.content = b
+	return "avatar/" + userID + ".image", nil
 }
