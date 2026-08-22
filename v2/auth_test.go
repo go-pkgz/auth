@@ -1,8 +1,12 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net"
 	"net/http"
@@ -332,7 +336,17 @@ func TestIntegrationAvatar(t *testing.T) {
 
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, 569, len(b))
+
+	// what the endpoint promises is a decodable image within the resize limit, not a byte count.
+	// the encoders are the standard library's, so their output moves with the Go release: this
+	// assertion read 569 bytes until Go 1.27 changed the compressor and produced 507 for the same
+	// picture, failing a test that nothing had touched
+	img, format, err := image.Decode(bytes.NewReader(b))
+	require.NoError(t, err, "the avatar endpoint has to serve a decodable image")
+	assert.Equal(t, "png", format)
+	// the dev provider serves a 300x300 identicon and prepService sets AvatarResizeLimit to 120,
+	// so the result is exactly 120x120. An upper bound would pass a 60x60 regression
+	assert.Equal(t, image.Rect(0, 0, 120, 120), img.Bounds())
 }
 
 func TestIntegrationList(t *testing.T) {
@@ -802,3 +816,20 @@ func (c customHandler) Name() string {
 func (c customHandler) LoginHandler(http.ResponseWriter, *http.Request)  {}
 func (c customHandler) AuthHandler(http.ResponseWriter, *http.Request)   {}
 func (c customHandler) LogoutHandler(http.ResponseWriter, *http.Request) {}
+
+func TestNewService_PassesCookieOptionsToTokenService(t *testing.T) {
+	// the token.Opts literal in NewService has silently dropped a field twice, bd39e5e3 for
+	// SameSite and 59656e46 for XSRFIgnoreMethods, both in diffs shaped like this one: a
+	// re-indent plus one added key. Nothing failed either time, because nothing asserted the
+	// plumbing rather than the behavior
+	svc := NewService(Opts{
+		PartitionedCookies: true,
+		SecureCookies:      true,
+		SameSiteCookie:     http.SameSiteNoneMode,
+	})
+
+	ts := svc.TokenService()
+	assert.True(t, ts.PartitionedCookies, "PartitionedCookies did not reach the token service")
+	assert.True(t, ts.SecureCookies, "SecureCookies did not reach the token service")
+	assert.Equal(t, http.SameSiteNoneMode, ts.SameSite, "SameSite did not reach the token service")
+}
