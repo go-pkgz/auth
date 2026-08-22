@@ -28,6 +28,9 @@ import (
 )
 
 // TelegramHandler implements login via telegram
+// TelegramAPIBaseURL is the public Telegram bot API, used unless a caller supplies its own
+const TelegramAPIBaseURL = "https://api.telegram.org"
+
 type TelegramHandler struct {
 	logger.L
 
@@ -360,8 +363,9 @@ func (th *TelegramHandler) LogoutHandler(w http.ResponseWriter, _ *http.Request)
 // tgAPI implements TelegramAPI
 type tgAPI struct {
 	logger.L
-	token  string
-	client *http.Client
+	token   string
+	client  *http.Client
+	baseURL string
 
 	// identifier of the first update to be requested.
 	// should be equal to LastSeenUpdateID + 1
@@ -371,9 +375,22 @@ type tgAPI struct {
 
 // NewTelegramAPI returns initialized TelegramAPI implementation
 func NewTelegramAPI(token string, client *http.Client) TelegramAPI {
+	return NewTelegramAPIWithBaseURL(token, client, TelegramAPIBaseURL)
+}
+
+// NewTelegramAPIWithBaseURL makes a Telegram API client talking to baseURL instead of the public
+// API. Intended for a proxy in front of Telegram and for tests that need to answer as Telegram;
+// the production path is otherwise identical, so it stays the code under test. An empty baseURL
+// falls back to the public API. Both the bot methods and the file downloads are derived from it,
+// as baseURL/bot<token>/<method> and baseURL/file/bot<token>/<path>.
+func NewTelegramAPIWithBaseURL(token string, client *http.Client, baseURL string) TelegramAPI {
+	if baseURL == "" {
+		baseURL = TelegramAPIBaseURL
+	}
 	return &tgAPI{
-		client: client,
-		token:  token,
+		client:  client,
+		token:   token,
+		baseURL: strings.TrimSuffix(baseURL, "/"),
 	}
 }
 
@@ -443,7 +460,7 @@ func (tg *tgAPI) Avatar(ctx context.Context, id int) (string, error) {
 		return "", err
 	}
 
-	avatarURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", tg.token, fileMetadata.Result.Path)
+	avatarURL := fmt.Sprintf("%s/file/bot%s/%s", tg.baseURL, tg.token, fileMetadata.Result.Path)
 
 	return avatarURL, nil
 }
@@ -472,7 +489,7 @@ func (tg *tgAPI) BotInfo(ctx context.Context) (*botInfo, error) {
 
 func (tg *tgAPI) request(ctx context.Context, method string, data any) error {
 	return repeater.NewFixed(3, time.Millisecond*50).Do(ctx, func() error {
-		url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tg.token, method)
+		url := fmt.Sprintf("%s/bot%s/%s", tg.baseURL, tg.token, method)
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 		if err != nil {

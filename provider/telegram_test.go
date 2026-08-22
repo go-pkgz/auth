@@ -929,3 +929,54 @@ func prepareTgAPI(t *testing.T, h http.HandlerFunc) (tg *tgAPI, cleanup func()) 
 
 	return NewTelegramAPI("xxxsupersecretxxx", client).(*tgAPI), srv.Close
 }
+
+func TestTelegram_APIBaseURLRedirectsEveryCall(t *testing.T) {
+	// the reason this exists: without it nothing can answer as Telegram, so the whole provider,
+	// its polling and its avatar path are only reachable against the live API
+	var paths []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getMe"):
+			fmt.Fprint(w, `{"ok":true,"result":{"id":1,"is_bot":true,"username":"testbot"}}`)
+		case strings.HasSuffix(r.URL.Path, "/getFile"):
+			fmt.Fprint(w, `{"ok":true,"result":{"file_path":"photos/file_0.jpg"}}`)
+		case strings.HasSuffix(r.URL.Path, "/getUserProfilePhotos"):
+			fmt.Fprint(w, `{"ok":true,"result":{"photos":[[{"file_id":"pic1"}]]}}`)
+		default:
+			fmt.Fprint(w, `{"ok":true,"result":[]}`)
+		}
+	}))
+	defer ts.Close()
+
+	tg := NewTelegramAPIWithBaseURL("secret-token", ts.Client(), ts.URL)
+
+	bot, err := tg.BotInfo(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "testbot", bot.Username)
+
+	avatarURL, err := tg.Avatar(context.Background(), 1)
+	require.NoError(t, err)
+	// the file path is derived from the same base, so a fake serves downloads too
+	assert.True(t, strings.HasPrefix(avatarURL, ts.URL+"/file/bot"), "avatar URL ignored the base: %s", avatarURL)
+	assert.Contains(t, avatarURL, "photos/file_0.jpg")
+
+	require.NotEmpty(t, paths, "no call reached the substitute API")
+	for _, p := range paths {
+		assert.Contains(t, p, "/botsecret-token/", "call did not carry the bot token path: %s", p)
+	}
+}
+
+func TestTelegram_APIBaseURLDefaultsToPublic(t *testing.T) {
+	// the existing constructor has to keep addressing Telegram, and an empty base must not
+	// produce requests to "/bot<token>/getMe" against nothing
+	for name, api := range map[string]TelegramAPI{
+		"default constructor": NewTelegramAPI("t", http.DefaultClient),
+		"empty base":          NewTelegramAPIWithBaseURL("t", http.DefaultClient, ""),
+		"trailing slash":      NewTelegramAPIWithBaseURL("t", http.DefaultClient, TelegramAPIBaseURL+"/"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, TelegramAPIBaseURL, api.(*tgAPI).baseURL)
+		})
+	}
+}
