@@ -188,7 +188,11 @@ func TestAvatar_PutIdenticon(t *testing.T) {
 	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", res)
 	fi, err := os.Stat("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 	assert.NoError(t, err)
-	assert.Equal(t, int64(999), fi.Size())
+	// the identicon is encoded by the standard library, so its byte count moves with the Go
+	// release: this read 999 until Go 1.27 changed the encoder. Assert it was written and is a
+	// decodable image instead
+	assert.Positive(t, fi.Size())
+	assertDecodableImage(t, "/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 
 }
 
@@ -210,9 +214,14 @@ func TestAvatar_PutFailed(t *testing.T) {
 	res, err := p.Put(u, client)
 	require.NoError(t, err)
 	assert.Equal(t, "http://localhost:8080/avatar/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image", res)
-	fi, err := os.Stat("/tmp/avatars.test/84/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image")
+	avatarPath := "/tmp/avatars.test/84/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image"
+	fi, err := os.Stat(avatarPath)
 	require.NoError(t, err)
-	assert.Equal(t, int64(992), fi.Size())
+	// the identicon is encoded by the standard library, so its byte count moves with the Go
+	// release: this read 992 until Go 1.27 changed the encoder. Assert it was written and is a
+	// decodable image instead
+	assert.Positive(t, fi.Size())
+	assertDecodableImage(t, avatarPath)
 }
 
 func TestAvatar_PutCapsBodySize(t *testing.T) {
@@ -601,4 +610,15 @@ func TestAvatar_Retry(t *testing.T) {
 	})
 	assert.Error(t, err)
 	assert.True(t, time.Since(st) >= time.Microsecond*5)
+}
+
+// assertDecodableImage checks the file holds an image the standard library can read back, which is
+// what an avatar store owes its caller. Byte counts belong to whichever encoder the Go release ships.
+func assertDecodableImage(t *testing.T, path string) {
+	t.Helper()
+	f, err := os.Open(path) //nolint:gosec // test-controlled path
+	require.NoError(t, err)
+	defer f.Close() //nolint:errcheck // read-only handle in a test
+	_, _, err = image.Decode(f)
+	require.NoError(t, err, "%s has to be a decodable image", path)
 }
