@@ -344,10 +344,9 @@ func TestIntegrationAvatar(t *testing.T) {
 	img, format, err := image.Decode(bytes.NewReader(b))
 	require.NoError(t, err, "the avatar endpoint has to serve a decodable image")
 	assert.Equal(t, "png", format)
-	bounds := img.Bounds()
-	assert.LessOrEqual(t, bounds.Dx(), 120, "wider than the resize limit")
-	assert.LessOrEqual(t, bounds.Dy(), 120, "taller than the resize limit")
-	assert.NotEmpty(t, b)
+	// the dev provider serves a 300x300 identicon and prepService sets AvatarResizeLimit to 120,
+	// so the result is exactly 120x120. An upper bound would pass a 60x60 regression
+	assert.Equal(t, image.Rect(0, 0, 120, 120), img.Bounds())
 }
 
 func TestIntegrationList(t *testing.T) {
@@ -817,3 +816,20 @@ func (c customHandler) Name() string {
 func (c customHandler) LoginHandler(http.ResponseWriter, *http.Request)  {}
 func (c customHandler) AuthHandler(http.ResponseWriter, *http.Request)   {}
 func (c customHandler) LogoutHandler(http.ResponseWriter, *http.Request) {}
+
+func TestNewService_PassesCookieOptionsToTokenService(t *testing.T) {
+	// the token.Opts literal in NewService has silently dropped a field twice, bd39e5e3 for
+	// SameSite and 59656e46 for XSRFIgnoreMethods, both in diffs shaped like this one: a
+	// re-indent plus one added key. Nothing failed either time, because nothing asserted the
+	// plumbing rather than the behavior
+	svc := NewService(Opts{
+		PartitionedCookies: true,
+		SecureCookies:      true,
+		SameSiteCookie:     http.SameSiteNoneMode,
+	})
+
+	ts := svc.TokenService()
+	assert.True(t, ts.PartitionedCookies, "PartitionedCookies did not reach the token service")
+	assert.True(t, ts.SecureCookies, "SecureCookies did not reach the token service")
+	assert.Equal(t, http.SameSiteNoneMode, ts.SameSite, "SameSite did not reach the token service")
+}
