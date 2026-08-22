@@ -82,6 +82,11 @@ type Opts struct {
 	AudSecrets        bool          // uses different secret for differed auds. important: adds pre-parsing of unverified token
 	SendJWTHeader     bool          // if enabled, also send JWT as a response header (in addition to the cookie)
 	SameSite          http.SameSite // define a cookie attribute making it impossible for the browser to send this cookie cross-site
+	// PartitionedCookies marks the auth cookies Partitioned (CHIPS), keying them to the embedding
+	// top-level site as well as their own. Needed where the application is framed by another site,
+	// as browsers phase out unpartitioned third-party cookies. Requires SecureCookies and
+	// SameSite=None; browsers reject the attribute otherwise.
+	PartitionedCookies bool
 }
 
 // NewService makes JWT service
@@ -261,11 +266,11 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 	}
 
 	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: tokenString, HttpOnly: true, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // Secure and SameSite come from service config
-		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite}
+		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite, Partitioned: j.PartitionedCookies}
 	http.SetCookie(w, &jwtCookie)
 
 	xsrfCookie := http.Cookie{Name: j.XSRFCookieName, Value: claims.Id, HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // HttpOnly false by design, JS reads it for the X-XSRF-Token header
-		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite}
+		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite, Partitioned: j.PartitionedCookies}
 	http.SetCookie(w, &xsrfCookie)
 
 	return claims, nil
@@ -336,11 +341,11 @@ func (j *Service) IsExpired(claims Claims) bool {
 // Reset token's cookies
 func (j *Service) Reset(w http.ResponseWriter) {
 	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: "", HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // expired removal cookie, carries no value
-		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite}
+		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite, Partitioned: j.PartitionedCookies}
 	http.SetCookie(w, &jwtCookie)
 
 	xsrfCookie := http.Cookie{Name: j.XSRFCookieName, Value: "", HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // expired removal cookie, carries no value
-		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite}
+		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite, Partitioned: j.PartitionedCookies}
 	http.SetCookie(w, &xsrfCookie)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

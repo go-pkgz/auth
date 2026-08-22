@@ -60,6 +60,10 @@ type Opts struct {
 	JWTQuery          string        // default "token"
 	SendJWTHeader     bool          // if enabled, also send JWT as a response header (in addition to the cookie)
 	SameSiteCookie    http.SameSite // limit cross-origin requests with SameSite cookie attribute
+	// PartitionedCookies marks auth cookies Partitioned (CHIPS) so they survive third-party cookie
+	// blocking when the application is framed by another site. Requires SecureCookies and
+	// SameSiteCookie set to http.SameSiteNoneMode.
+	PartitionedCookies bool
 
 	Issuer string // optional value for iss claim, usually the application name, default "go-pkgz/auth"
 
@@ -123,25 +127,26 @@ func NewService(opts Opts) (res *Service) {
 	}
 
 	jwtService := token.NewService(token.Opts{
-		SecretReader:      opts.SecretReader,
-		ClaimsUpd:         opts.ClaimsUpd,
-		SecureCookies:     opts.SecureCookies,
-		TokenDuration:     opts.TokenDuration,
-		CookieDuration:    opts.CookieDuration,
-		DisableXSRF:       opts.DisableXSRF,
-		DisableIAT:        opts.DisableIAT,
-		JWTCookieName:     opts.JWTCookieName,
-		JWTCookieDomain:   opts.JWTCookieDomain,
-		JWTHeaderKey:      opts.JWTHeaderKey,
-		XSRFCookieName:    opts.XSRFCookieName,
-		XSRFHeaderKey:     opts.XSRFHeaderKey,
-		XSRFIgnoreMethods: opts.XSRFIgnoreMethods,
-		SendJWTHeader:     opts.SendJWTHeader,
-		JWTQuery:          opts.JWTQuery,
-		Issuer:            res.issuer,
-		AudienceReader:    opts.AudienceReader,
-		AudSecrets:        opts.AudSecrets,
-		SameSite:          opts.SameSiteCookie,
+		SecretReader:       opts.SecretReader,
+		ClaimsUpd:          opts.ClaimsUpd,
+		SecureCookies:      opts.SecureCookies,
+		TokenDuration:      opts.TokenDuration,
+		CookieDuration:     opts.CookieDuration,
+		DisableXSRF:        opts.DisableXSRF,
+		DisableIAT:         opts.DisableIAT,
+		JWTCookieName:      opts.JWTCookieName,
+		JWTCookieDomain:    opts.JWTCookieDomain,
+		JWTHeaderKey:       opts.JWTHeaderKey,
+		XSRFCookieName:     opts.XSRFCookieName,
+		XSRFHeaderKey:      opts.XSRFHeaderKey,
+		XSRFIgnoreMethods:  opts.XSRFIgnoreMethods,
+		SendJWTHeader:      opts.SendJWTHeader,
+		JWTQuery:           opts.JWTQuery,
+		Issuer:             res.issuer,
+		AudienceReader:     opts.AudienceReader,
+		AudSecrets:         opts.AudSecrets,
+		SameSite:           opts.SameSiteCookie,
+		PartitionedCookies: opts.PartitionedCookies,
 	})
 
 	if opts.SecretReader == nil {

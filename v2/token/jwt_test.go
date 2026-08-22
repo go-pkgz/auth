@@ -699,3 +699,64 @@ var testClaims = Claims{
 		ID:    "myid-123456",
 	},
 }
+
+func TestJWT_PartitionedCookies(t *testing.T) {
+	// CHIPS keys a cookie to the embedding top-level site as well as its own, which is the only
+	// form of third-party cookie browsers still accept. Both Set and Reset have to carry it: a
+	// partitioned cookie and an unpartitioned expiry are different cookies to the browser, so
+	// clearing without the attribute leaves the original in place and the user signed in.
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: true,
+		SameSite: http.SameSiteNoneMode, PartitionedCookies: true,
+		TokenDuration: time.Hour, CookieDuration: days31,
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/set" {
+			_, err := j.Set(w, testClaims)
+			require.NoError(t, err)
+		}
+		if r.URL.Path == "/reset" {
+			j.Reset(w)
+		}
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	for _, path := range []string{"/set", "/reset"} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + path)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			cookies := resp.Header.Values("Set-Cookie")
+			require.Len(t, cookies, 2, "both the JWT and the XSRF cookie are written")
+			for _, c := range cookies {
+				assert.Contains(t, c, "Partitioned", "%s has to be partitioned", c)
+				assert.Contains(t, c, "Secure", "browsers reject Partitioned without Secure: %s", c)
+				assert.Contains(t, c, "SameSite=None", "a partitioned cookie is a cross-site one: %s", c)
+			}
+		})
+	}
+}
+
+func TestJWT_PartitionedCookiesOffByDefault(t *testing.T) {
+	// every existing deployment has to keep writing byte-identical cookies
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: true,
+		SameSite: http.SameSiteNoneMode, TokenDuration: time.Hour, CookieDuration: days31,
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := j.Set(w, testClaims)
+		require.NoError(t, err)
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	for _, c := range resp.Header.Values("Set-Cookie") {
+		assert.NotContains(t, c, "Partitioned", "%s must stay unpartitioned unless asked", c)
+	}
+}
