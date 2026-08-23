@@ -1094,6 +1094,40 @@ func TestTelegram_AvatarDownloadFallsBackToTheDefaultClient(t *testing.T) {
 	assert.Equal(t, []byte("avatar-bytes"), saver.content, "the fetched bytes were not stored")
 }
 
+func TestTelegram_APIBaseURLRejectsShapesThatMoveTheToken(t *testing.T) {
+	// the validator reads the parsed URL while request and Avatar build the request from the
+	// string, so a shape that parses to something empty but serializes to something else slips
+	// between the two. Both of these passed the checks and changed where the token went
+	for _, base := range []string{"https://proxy.example.com/tg?", "https://proxy.example.com/tg#"} {
+		t.Run(base, func(t *testing.T) {
+			_, err := NewTelegramAPIWithBaseURL("tok", http.DefaultClient, base)
+			assert.Error(t, err, "accepted a base that does not survive being formatted into a URL")
+		})
+	}
+}
+
+func TestTelegram_APIErrorDoesNotLeakAnEncodedToken(t *testing.T) {
+	// a proxy standing in for the API decides how it echoes the request URI, and percent-encoding
+	// it defeats both the exact-substring scrub and the /bot<token>/ shape regex
+	const token = "1234567:SECRET-TOK_EN-x"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(w, `{"description":%q}`, "forwarding "+url.QueryEscape(r.URL.RequestURI()))
+	}))
+	defer srv.Close()
+
+	tg, err := NewTelegramAPIWithBaseURL(token, srv.Client(), srv.URL)
+	require.NoError(t, err)
+
+	_, err = tg.BotInfo(context.Background())
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), token, "the raw token reached the error")
+	assert.NotContains(t, err.Error(), url.QueryEscape(token), "the encoded token reached the error")
+	decoded, decErr := url.QueryUnescape(err.Error())
+	require.NoError(t, decErr)
+	assert.NotContains(t, decoded, token, "the token is recoverable by decoding the error text")
+}
+
 // mockContentSaver records what saveTelegramAvatar hands it
 type mockContentSaver struct {
 	content []byte

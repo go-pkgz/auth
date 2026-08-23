@@ -400,39 +400,50 @@ func NewTelegramAPIWithBaseURL(token string, client *http.Client, baseURL string
 		return nil, fmt.Errorf("nil http client")
 	}
 
-	baseURL = strings.TrimSuffix(baseURL, "/")
+	baseURL = strings.TrimRight(baseURL, "/")
 	if baseURL == "" {
 		baseURL = TelegramAPIBaseURL
 	}
 
-	if err := validateTelegramBaseURL(baseURL); err != nil {
+	u, err := validateTelegramBaseURL(baseURL)
+	if err != nil {
 		return nil, err
 	}
 
-	return &tgAPI{client: client, token: token, baseURL: baseURL, avatarClient: client}, nil
+	// rebuild from what was validated, so the string checked is the string used. Parsing accepts
+	// shapes the checks below see as empty while fmt.Sprintf does not: a trailing "?" sets
+	// ForceQuery with RawQuery empty, and would push the whole "/bot<token>/method" into the query
+	// string, which is the part logs and referrers capture most eagerly. A trailing "#" is the
+	// mirror image and would bury every request in a fragment that is never sent
+	u.ForceQuery = false
+	u.Path = strings.TrimRight(u.Path, "/")
+
+	return &tgAPI{client: client, token: token, baseURL: u.String(), avatarClient: client}, nil
 }
 
 // validateTelegramBaseURL rejects anything that would send the bot token somewhere other than the
 // host the caller meant. "https://api.telegram.org@evil.tld" parses to host evil.tld, which is the
 // shape this exists for.
-func validateTelegramBaseURL(baseURL string) error {
+func validateTelegramBaseURL(baseURL string) (*neturl.URL, error) {
 	u, err := neturl.Parse(baseURL)
 	if err != nil {
-		return fmt.Errorf("invalid telegram api base url: %w", err)
+		return nil, fmt.Errorf("invalid telegram api base url: %w", err)
 	}
 	switch {
 	case u.Opaque != "":
-		return fmt.Errorf("telegram api base url must not be opaque: %s", baseURL)
+		return nil, fmt.Errorf("telegram api base url must not be opaque: %s", baseURL)
 	case u.Scheme != "http" && u.Scheme != "https":
-		return fmt.Errorf("telegram api base url must be http or https: %s", baseURL)
+		return nil, fmt.Errorf("telegram api base url must be http or https: %s", baseURL)
 	case u.Host == "":
-		return fmt.Errorf("telegram api base url must have a host: %s", baseURL)
+		return nil, fmt.Errorf("telegram api base url must have a host: %s", baseURL)
 	case u.User != nil:
-		return fmt.Errorf("telegram api base url must not carry userinfo: %s", baseURL)
-	case u.RawQuery != "" || u.Fragment != "":
-		return fmt.Errorf("telegram api base url must not carry a query or fragment: %s", baseURL)
+		return nil, fmt.Errorf("telegram api base url must not carry userinfo: %s", baseURL)
+	case u.RawQuery != "" || u.ForceQuery:
+		return nil, fmt.Errorf("telegram api base url must not carry a query: %s", baseURL)
+	case u.Fragment != "" || strings.HasSuffix(baseURL, "#"):
+		return nil, fmt.Errorf("telegram api base url must not carry a fragment: %s", baseURL)
 	}
-	return nil
+	return u, nil
 }
 
 // GetUpdates fetches incoming updates
@@ -566,10 +577,41 @@ func (tg *tgAPI) redactToken(err error) error {
 		return err
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, tg.token) {
+	for _, form := range []string{tg.token, neturl.QueryEscape(tg.token), neturl.PathEscape(tg.token)} {
+		msg = strings.ReplaceAll(msg, form, "<redacted>")
+	}
+
+	// substitution only catches encodings we thought of, and the upstream picks the encoding. So
+	// the result is checked once more against a decoded, case-folded copy: if the token is still
+	// recoverable from the text by any of those routes, the text goes rather than the token stays.
+	// A proxy echoing "%2Fbot1234%3ASECRET%2FgetMe" defeats every ReplaceAll above and lands here
+	if tokenRecoverable(msg, tg.token) {
+		return fmt.Errorf("unexpected telegram API error, text withheld because it carried the bot token")
+	}
+
+	if msg == err.Error() {
 		return err
 	}
-	return errors.New(strings.ReplaceAll(msg, tg.token, "<redacted>"))
+	return errors.New(msg)
+}
+
+// tokenRecoverable reports whether token can still be read out of msg after undoing the encodings
+// an upstream might have applied to it
+func tokenRecoverable(msg, token string) bool {
+	candidates := []string{msg}
+	if q, err := neturl.QueryUnescape(msg); err == nil {
+		candidates = append(candidates, q)
+	}
+	if p, err := neturl.PathUnescape(msg); err == nil {
+		candidates = append(candidates, p)
+	}
+	lowered := strings.ToLower(token)
+	for _, c := range candidates {
+		if strings.Contains(strings.ToLower(c), lowered) {
+			return true
+		}
+	}
+	return false
 }
 
 func (tg *tgAPI) parseError(r io.Reader, statusCode int) error {
