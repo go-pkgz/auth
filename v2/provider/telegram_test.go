@@ -1180,6 +1180,33 @@ func TestTelegram_APIBaseURLRejectsAPortWithoutAHost(t *testing.T) {
 	assert.Error(t, err, "accepted a base URL with a port and no host")
 }
 
+func TestTelegram_APIDoesNotFollowRedirects(t *testing.T) {
+	// Go copies the previous URL into Referer on an https-to-https redirect, and every URL here
+	// carries the bot token in its path, so following one hands the destination the token
+	const token = "1234567:SECRET-TOK_EN-x"
+	var refererSeen string
+	dest := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		refererSeen = r.Header.Get("Referer")
+		fmt.Fprint(w, `{"ok":true,"result":{"username":"somebot"}}`)
+	}))
+	defer dest.Close()
+
+	src := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, dest.URL+"/next", http.StatusFound)
+	}))
+	defer src.Close()
+
+	client := src.Client()
+	client.Transport = dest.Client().Transport // trusts both self-signed certs
+	tg, err := NewTelegramAPIWithBaseURL(token, client, src.URL)
+	require.NoError(t, err)
+
+	_, err = tg.BotInfo(context.Background())
+	require.Error(t, err, "the redirect was followed")
+	assert.Empty(t, refererSeen, "the redirect target was reached and saw Referer %q", refererSeen)
+	assert.NotContains(t, err.Error(), token, "the refusal itself leaked the token")
+}
+
 // mockContentSaver records what saveTelegramAvatar hands it
 type mockContentSaver struct {
 	content []byte

@@ -555,7 +555,7 @@ func (tg *tgAPI) request(ctx context.Context, method string, data any) error {
 			return fmt.Errorf("failed to create request: %w", tg.redactToken(redactBotURLInErr(err)))
 		}
 
-		resp, err := tg.client.Do(req)
+		resp, err := noRedirect(tg.client).Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send request: %w", tg.redactToken(redactBotURLInErr(err)))
 		}
@@ -701,7 +701,7 @@ func (th *TelegramHandler) saveTelegramAvatar(ctx context.Context, userID, avata
 	// survive, which building a fresh http.Client with a Timeout would discard
 	avatarCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	resp, err := client.Do(req.WithContext(avatarCtx))
+	resp, err := noRedirect(client).Do(req.WithContext(avatarCtx))
 	if err != nil {
 		th.Logf("[WARN] telegram avatar fetch failed: %v", redactBotURLInErr(err))
 		return ""
@@ -739,6 +739,23 @@ const maxTelegramAvatarSize = 10 << 20
 // the username "botFather" appearing elsewhere in a log line). Replacement
 // preserves the slashes via "/bot<redacted>/" to keep surrounding URL
 // structure intact for diagnostics.
+// noRedirect returns a shallow copy of c that refuses redirects. Every URL here carries the bot
+// token in its path, and Go copies the previous URL into Referer on any hop that is not
+// https-to-http, so following a redirect hands the destination the token, usually into its access
+// log. Telegram's own API does not redirect; a proxy standing in for it can, so this refuses
+// instead of leaking. The copy leaves the caller's client untouched, and the Transport is shared,
+// so custom CA, client certificates and proxy settings all survive
+func noRedirect(c *http.Client) *http.Client {
+	if c == nil {
+		return nil
+	}
+	cp := *c
+	cp.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return errors.New("refusing to follow a telegram api redirect: the bot token travels in the URL")
+	}
+	return &cp
+}
+
 // telegramUsername is the shape Telegram allows: 5 to 32 of [A-Za-z0-9_]
 var telegramUsername = regexp.MustCompile(`^[A-Za-z0-9_]{5,32}$`)
 
