@@ -434,7 +434,8 @@ func validateTelegramBaseURL(baseURL string) (*neturl.URL, error) {
 		return nil, fmt.Errorf("telegram api base url must not be opaque: %s", baseURL)
 	case u.Scheme != "http" && u.Scheme != "https":
 		return nil, fmt.Errorf("telegram api base url must be http or https: %s", baseURL)
-	case u.Host == "":
+	case u.Hostname() == "":
+		// u.Host is non-empty for "http://:9000", which resolves to the local machine
 		return nil, fmt.Errorf("telegram api base url must have a host: %s", baseURL)
 	case u.User != nil:
 		return nil, fmt.Errorf("telegram api base url must not carry userinfo: %s", baseURL)
@@ -535,6 +536,12 @@ func (tg *tgAPI) BotInfo(ctx context.Context) (*botInfo, error) {
 	if resp.Result == nil {
 		return nil, fmt.Errorf("received empty result")
 	}
+	// LoginHandler returns this straight to an unauthenticated caller in its "bot" field, and with
+	// a caller-supplied base the answer comes from whatever host that points at. An upstream free
+	// to choose the string could put the request URI, and so the bot token, into it
+	if !telegramUsername.MatchString(resp.Result.Username) {
+		return nil, fmt.Errorf("telegram api returned an implausible bot username")
+	}
 
 	return resp.Result, nil
 }
@@ -545,12 +552,12 @@ func (tg *tgAPI) request(ctx context.Context, method string, data any) error {
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 		if err != nil {
-			return fmt.Errorf("failed to create request: %w", redactBotURLInErr(err))
+			return fmt.Errorf("failed to create request: %w", tg.redactToken(redactBotURLInErr(err)))
 		}
 
 		resp, err := tg.client.Do(req)
 		if err != nil {
-			return fmt.Errorf("failed to send request: %w", redactBotURLInErr(err))
+			return fmt.Errorf("failed to send request: %w", tg.redactToken(redactBotURLInErr(err)))
 		}
 		defer resp.Body.Close() //nolint gosec // we don't care about response body
 
@@ -598,20 +605,26 @@ func (tg *tgAPI) redactToken(err error) error {
 // tokenRecoverable reports whether token can still be read out of msg after undoing the encodings
 // an upstream might have applied to it
 func tokenRecoverable(msg, token string) bool {
-	candidates := []string{msg}
-	if q, err := neturl.QueryUnescape(msg); err == nil {
-		candidates = append(candidates, q)
-	}
-	if p, err := neturl.PathUnescape(msg); err == nil {
-		candidates = append(candidates, p)
-	}
 	lowered := strings.ToLower(token)
-	for _, c := range candidates {
-		if strings.Contains(strings.ToLower(c), lowered) {
+	// decode repeatedly, because one pass turns a double-encoded "%253A" into "%3A" and leaves the
+	// token just as recoverable as it was. The cap stops a pathological input looping
+	seen := msg
+	for i := 0; i < 5; i++ {
+		if strings.Contains(strings.ToLower(seen), lowered) {
 			return true
 		}
+		next, err := neturl.QueryUnescape(seen)
+		if err != nil {
+			if next, err = neturl.PathUnescape(seen); err != nil {
+				return false
+			}
+		}
+		if next == seen {
+			return false
+		}
+		seen = next
 	}
-	return false
+	return strings.Contains(strings.ToLower(seen), lowered)
 }
 
 func (tg *tgAPI) parseError(r io.Reader, statusCode int) error {
@@ -726,6 +739,9 @@ const maxTelegramAvatarSize = 10 << 20
 // the username "botFather" appearing elsewhere in a log line). Replacement
 // preserves the slashes via "/bot<redacted>/" to keep surrounding URL
 // structure intact for diagnostics.
+// telegramUsername is the shape Telegram allows: 5 to 32 of [A-Za-z0-9_]
+var telegramUsername = regexp.MustCompile(`^[A-Za-z0-9_]{5,32}$`)
+
 var botTokenInURLPath = regexp.MustCompile(`/bot[A-Za-z0-9:_-]+/`)
 
 // redactBotURLInErr returns the error with any embedded Telegram bot-token

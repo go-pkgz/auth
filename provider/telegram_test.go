@@ -1128,6 +1128,58 @@ func TestTelegram_APIErrorDoesNotLeakAnEncodedToken(t *testing.T) {
 	assert.NotContains(t, decoded, token, "the token is recoverable by decoding the error text")
 }
 
+func TestTelegram_BotInfoRejectsAnImplausibleUsername(t *testing.T) {
+	// LoginHandler hands this value to an unauthenticated caller in its "bot" field. With a
+	// caller-supplied base the answer comes from whatever host that points at, so an upstream that
+	// echoes the request URI would publish the bot token through a public endpoint
+	const token = "1234567:SECRET-TOK_EN-x"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"ok":true,"result":{"username":%q}}`, r.URL.RequestURI())
+	}))
+	defer srv.Close()
+
+	tg, err := NewTelegramAPIWithBaseURL(token, srv.Client(), srv.URL)
+	require.NoError(t, err)
+
+	info, err := tg.BotInfo(context.Background())
+	require.Error(t, err, "an echoed request URI was accepted as a bot username")
+	assert.Nil(t, info)
+	assert.NotContains(t, err.Error(), token, "the rejection itself leaked the token")
+}
+
+func TestTelegram_APIErrorDoesNotLeakADoubleEncodedToken(t *testing.T) {
+	// one decoding pass turns %253A back into %3A and leaves the token just as readable
+	const token = "1234567:SECRET-TOK_EN-x"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		doubled := url.QueryEscape(url.QueryEscape(r.URL.RequestURI()))
+		fmt.Fprintf(w, `{"description":%q}`, "forwarding "+doubled)
+	}))
+	defer srv.Close()
+
+	tg, err := NewTelegramAPIWithBaseURL(token, srv.Client(), srv.URL)
+	require.NoError(t, err)
+
+	_, err = tg.BotInfo(context.Background())
+	require.Error(t, err)
+	text := err.Error()
+	for i := 0; i < 5; i++ {
+		assert.NotContains(t, text, token, "the token is recoverable after %d decoding passes", i)
+		next, decErr := url.QueryUnescape(text)
+		if decErr != nil || next == text {
+			break
+		}
+		text = next
+	}
+}
+
+func TestTelegram_APIBaseURLRejectsAPortWithoutAHost(t *testing.T) {
+	// u.Host is non-empty for this, so a check on Host alone lets it through, and an unspecified
+	// remote resolves to the local machine
+	_, err := NewTelegramAPIWithBaseURL("tok", http.DefaultClient, "http://:9000")
+	assert.Error(t, err, "accepted a base URL with a port and no host")
+}
+
 // mockContentSaver records what saveTelegramAvatar hands it
 type mockContentSaver struct {
 	content []byte
