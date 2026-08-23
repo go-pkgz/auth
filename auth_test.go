@@ -1,8 +1,12 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net"
 	"net/http"
@@ -333,7 +337,17 @@ func TestIntegrationAvatar(t *testing.T) {
 
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, 569, len(b))
+
+	// what the endpoint promises is a decodable image within the resize limit, not a byte count.
+	// the encoders are the standard library's, so their output moves with the Go release: this
+	// assertion read 569 bytes until Go 1.27 changed the compressor and produced 507 for the same
+	// picture, failing a test that nothing had touched
+	img, format, err := image.Decode(bytes.NewReader(b))
+	require.NoError(t, err, "the avatar endpoint has to serve a decodable image")
+	assert.Equal(t, "png", format)
+	// the dev provider serves a 300x300 identicon and prepService sets AvatarResizeLimit to 120,
+	// so the result is exactly 120x120. An upper bound would pass a 60x60 regression
+	assert.Equal(t, image.Rect(0, 0, 120, 120), img.Bounds())
 }
 
 func TestIntegrationList(t *testing.T) {
