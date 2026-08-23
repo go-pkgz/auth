@@ -642,4 +642,8 @@ func assertStoredImage(t *testing.T, path string, side int) {
 	img, _, err := image.Decode(f)
 	require.NoError(t, err, "%s has to be a decodable image", path)
 	assert.Equal(t, image.Rect(0, 0, side, side), img.Bounds(), "%s has the wrong dimensions", path)
+	// dimensions alone would pass for a blank canvas, and a generator that stopped drawing still
+	// produces one of exactly the right size. The byte-count assertions this replaced caught that
+	// by accident; this catches it on purpose
+	assert.False(t, uniformImage(img), "%s is a single flat color, so nothing was drawn into it", path)
 }

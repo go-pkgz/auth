@@ -279,8 +279,11 @@ func TestJWT_CookieAttributesFromOpts(t *testing.T) {
 	})
 
 	t.Run("reset", func(t *testing.T) {
-		// the removal pair has to repeat the attributes of the pair it removes, or the browser
-		// stores it as a separate cookie and leaves the original in place
+		// the removal pair has to repeat these attributes, though not because they are part of
+		// the cookie's identity: that is name, domain and path alone, which is why Reset writing
+		// HttpOnly false over a cookie Set wrote HttpOnly true still replaces it. The reason is
+		// that Chrome and Firefox reject SameSite=None without Secure outright, and a removal
+		// cookie the browser discards leaves the original in place
 		rr := httptest.NewRecorder()
 		j.Reset(rr)
 

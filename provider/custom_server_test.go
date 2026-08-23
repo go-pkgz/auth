@@ -179,6 +179,7 @@ func TestCustomProvider(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "png", avatarFormat)
 	assert.Equal(t, image.Rect(0, 0, 300, 300), avatarImg.Bounds())
+	assert.False(t, uniformImage(avatarImg), "the served avatar is a single flat color")
 	t.Logf("headers: %+v", resp.Header)
 
 	// check malicious user ID

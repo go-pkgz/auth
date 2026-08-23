@@ -347,6 +347,8 @@ func TestIntegrationAvatar(t *testing.T) {
 	// the dev provider serves a 300x300 identicon and prepService sets AvatarResizeLimit to 120,
 	// so the result is exactly 120x120. An upper bound would pass a 60x60 regression
 	assert.Equal(t, image.Rect(0, 0, 120, 120), img.Bounds())
+	// a blank canvas of the right size would satisfy everything above
+	assert.False(t, uniformImage(img), "the served avatar is a single flat color")
 }
 
 func TestIntegrationList(t *testing.T) {
@@ -816,3 +818,20 @@ func (c customHandler) Name() string {
 func (c customHandler) LoginHandler(http.ResponseWriter, *http.Request)  {}
 func (c customHandler) AuthHandler(http.ResponseWriter, *http.Request)   {}
 func (c customHandler) LogoutHandler(http.ResponseWriter, *http.Request) {}
+
+// uniformImage reports whether every pixel is the same color, which is what a generator that
+// stopped drawing produces: an image of exactly the right size carrying nothing
+func uniformImage(img image.Image) bool {
+	b := img.Bounds()
+	first := img.At(b.Min.X, b.Min.Y)
+	fr, fg, fb, fa := first.RGBA()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := img.At(x, y).RGBA()
+			if r != fr || g != fg || bl != fb || a != fa {
+				return false
+			}
+		}
+	}
+	return true
+}
