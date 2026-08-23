@@ -1071,6 +1071,29 @@ func TestTelegram_AvatarDownloadUsesTheSuppliedClient(t *testing.T) {
 	assert.Equal(t, []byte("avatar-bytes"), saver.content, "the fetched bytes were not stored")
 }
 
+func TestTelegram_AvatarDownloadFallsBackToTheDefaultClient(t *testing.T) {
+	// the companion to the case above, and the one that was missing. *tgAPI satisfies
+	// telegramAvatarClientProvider whichever constructor built it, so an API from NewTelegramAPI
+	// answers the capability with a nil client. Treating that as "no client available" drops the
+	// avatar for every caller of the original constructor, which is all of them
+	var served string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		served = r.URL.Path
+		_, _ = w.Write([]byte("avatar-bytes"))
+	}))
+	defer ts.Close()
+
+	saver := &mockContentSaver{}
+	th := TelegramHandler{L: logger.NoOp, ProviderName: "telegram", Telegram: NewTelegramAPI("tok", http.DefaultClient),
+		AvatarSaver: saver}
+
+	got := th.saveTelegramAvatar(context.Background(), "u1", ts.URL+"/file/bottok/photos/file_0.jpg")
+
+	require.NotEmpty(t, got, "the avatar was dropped for an API built with NewTelegramAPI")
+	assert.Contains(t, served, "/file/bot", "the download did not go through the file path: %s", served)
+	assert.Equal(t, []byte("avatar-bytes"), saver.content, "the fetched bytes were not stored")
+}
+
 // mockContentSaver records what saveTelegramAvatar hands it
 type mockContentSaver struct {
 	content []byte

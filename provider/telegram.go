@@ -633,16 +633,14 @@ func (th *TelegramHandler) saveTelegramAvatar(ctx context.Context, userID, avata
 		return ""
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
+	// only an API pointed at a caller-supplied base carries a client for this. NewTelegramAPI
+	// leaves it nil and keeps the default above, which is the transport those callers have always
+	// had here; *tgAPI satisfies the interface either way, so the nil is the signal, not the
+	// assertion
 	if provider, ok := th.Telegram.(telegramAvatarClientProvider); ok {
-		supplied := provider.avatarHTTPClient()
-		if supplied == nil {
-			// the capability is advertised but empty, which means the caller pointed the API at
-			// its own host without a client for it. Dropping the avatar beats silently fetching
-			// it over a transport they did not choose
-			th.Logf("[WARN] telegram avatar dropped: api advertises no client for avatar downloads")
-			return ""
+		if supplied := provider.avatarHTTPClient(); supplied != nil {
+			client = supplied
 		}
-		client = supplied
 	}
 	// the cap is applied through the context so the client's Transport, CheckRedirect and Jar
 	// survive, which building a fresh http.Client with a Timeout would discard
