@@ -4,7 +4,9 @@ package provider
 import (
 	"crypto/sha1" //nolint
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -49,35 +51,88 @@ func NewGoogle(p Params) Oauth2Handler {
 	})
 }
 
-// githubEnterpriseURLs derives the OAuth and user-info URLs for a GitHub Enterprise
-// Server instance from its base URL, e.g. "https://github.example.com". It returns
-// the oauth2 endpoint, the user-info URL, and false when base is not a usable
-// absolute http(s) URL, in which case the caller keeps the public github.com endpoints.
-func githubEnterpriseURLs(base string) (oauth2.Endpoint, string, bool) {
-	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(base), "/"))
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") ||
-		u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return oauth2.Endpoint{}, "", false
+// githubEnterpriseURLs derives the OAuth and user-info URLs plus the id-namespace realm for a
+// GitHub Enterprise Server instance from its base URL, e.g. "https://github.example.com". It
+// returns the oauth2 endpoint, the user-info URL, the realm, and false when base is not a usable
+// instance root, i.e. an absolute http(s) URL with no userinfo, query, fragment, or path beyond "/".
+func githubEnterpriseURLs(base string) (endpoint oauth2.Endpoint, infoURL, realm string, ok bool) {
+	base = strings.TrimSpace(base)
+	if base != "" && !strings.Contains(base, "://") && !strings.HasPrefix(base, "/") {
+		base = "https://" + base // scheme-less value like "github.example.com" is the likeliest typo, treat as https
 	}
-	root := u.String()
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") ||
+		u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
+		(u.Path != "" && u.Path != "/") {
+		return oauth2.Endpoint{}, "", "", false
+	}
+	// build the root from scheme and host only, never u.String(), so nothing from the raw input
+	// (a trailing "/", a stray "?", an empty host) can be concatenated onto the derived paths
+	root := u.Scheme + "://" + u.Host
 	return oauth2.Endpoint{
 		AuthURL:  root + "/login/oauth/authorize",
 		TokenURL: root + "/login/oauth/access_token",
-	}, root + "/api/v3/user", true
+	}, root + "/api/v3/user", githubEnterpriseRealm(u), true
 }
 
-// NewGithub makes github oauth2 provider
+// githubEnterpriseRealm is the id namespace for an enterprise instance: the lowercase host with a
+// single trailing DNS dot stripped, plus the port only when it is not the scheme default. Scheme
+// and path are excluded so http and https on the same authority resolve to the same realm. The
+// port is normalized through strconv.Atoi so ":0443" and ":443" do not read as different realms.
+func githubEnterpriseRealm(u *url.URL) string {
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	port := u.Port()
+	if port == "" {
+		return host
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		return net.JoinHostPort(host, port)
+	}
+	def := 443
+	if u.Scheme == "http" {
+		def = 80
+	}
+	if n == def {
+		return host
+	}
+	return net.JoinHostPort(host, strconv.Itoa(n))
+}
+
+// errInvalidGithubEnterpriseURL is returned by NewGithubEnterprise when the base URL is not a
+// usable instance root. It carries none of the input, so a mistyped URL cannot leak through it.
+var errInvalidGithubEnterpriseURL = errors.New("invalid github enterprise base url")
+
+// NewGithub makes github oauth2 provider for public github.com.
 func NewGithub(p Params) Oauth2Handler {
+	return newGithubHandler(p, github.Endpoint, "https://api.github.com/user", "")
+}
+
+// NewGithubEnterprise makes a github oauth2 provider backed by a self-hosted GitHub Enterprise
+// Server instance. baseURL is the instance root, e.g. "https://github.example.com"; the OAuth
+// authorize/token and /api/v3 user-info URLs are derived from it. It returns an error when baseURL
+// is not a usable http(s) instance root, so a mistyped URL fails registration instead of silently
+// authenticating against public github.com. The instance authority seeds the user id namespace, so
+// enterprise logins never collide with their public github.com namesakes. UserAttributes and
+// GithubNumericID on p are honored, so the combination needs no hand-built Params.
+func NewGithubEnterprise(p Params, baseURL string) (Oauth2Handler, error) {
+	if p.L == nil {
+		p.L = logger.NoOp
+	}
+	endpoint, infoURL, realm, ok := githubEnterpriseURLs(baseURL)
+	if !ok {
+		p.Logf("[WARN] invalid github enterprise url %s", redirectHostForLog(baseURL))
+		return Oauth2Handler{}, errInvalidGithubEnterpriseURL
+	}
+	return newGithubHandler(p, endpoint, infoURL, realm), nil
+}
+
+// newGithubHandler builds the github oauth2 handler shared by public github.com and enterprise.
+// realm is empty for public github.com, which keeps those ids byte-for-byte; a non-empty realm
+// seeds both the login and the numeric id hashes so enterprise ids stay isolated from github.com.
+func newGithubHandler(p Params, endpoint oauth2.Endpoint, infoURL, realm string) Oauth2Handler {
 	if p.L == nil {
 		p.L = logger.NoOp // mapUser below captures p, initOauth2Handler defaults its own copy only
-	}
-	endpoint, infoURL := github.Endpoint, "https://api.github.com/user"
-	if p.GithubEnterpriseURL != "" {
-		if ep, iu, ok := githubEnterpriseURLs(p.GithubEnterpriseURL); ok {
-			endpoint, infoURL = ep, iu
-		} else {
-			p.Logf("[WARN] invalid github enterprise url %q, using public github.com", p.GithubEnterpriseURL)
-		}
 	}
 	return initOauth2Handler(p, Oauth2Handler{
 		name:     "github",
@@ -86,7 +141,7 @@ func NewGithub(p Params) Oauth2Handler {
 		infoURL:  infoURL,
 		mapUser: func(data UserData, bdata []byte) token.User {
 			userInfo := token.User{
-				ID:      "github_" + token.HashID(sha1.New(), data.Value("login")),
+				ID:      "github_" + token.HashID(sha1.New(), githubLoginSeed(realm, data.Value("login"))),
 				Name:    data.Value("name"),
 				Picture: data.Value("avatar_url"),
 			}
@@ -97,9 +152,10 @@ func NewGithub(p Params) Oauth2Handler {
 					ID int64 `json:"id"`
 				}
 				if err := json.Unmarshal(bdata, &uinfoJSON); err == nil && uinfoJSON.ID != 0 {
-					userInfo.ID = "github_" + token.HashID(sha1.New(), "gid:"+strconv.FormatInt(uinfoJSON.ID, 10))
+					userInfo.ID = "github_" + token.HashID(sha1.New(), githubNumericSeed(realm, uinfoJSON.ID))
 				} else {
-					// keep the login-based value, matching the default derivation and its recycling caveat
+					// keep the login-based value, matching the default derivation and its recycling caveat.
+					// with a realm this is the enterprise-seeded login, not the public github.com one
 					p.Logf("[WARN] github numeric id not available, keeping login-based id")
 				}
 			}
@@ -113,6 +169,25 @@ func NewGithub(p Params) Oauth2Handler {
 			return userInfo
 		},
 	})
+}
+
+// githubLoginSeed returns the hash input for a login. Public github.com (empty realm) hashes the
+// bare login, unchanged; an enterprise realm namespaces it as "ghes:<realm>:login:<login>".
+func githubLoginSeed(realm, login string) string {
+	if realm == "" {
+		return login
+	}
+	return "ghes:" + realm + ":login:" + login
+}
+
+// githubNumericSeed returns the hash input for a numeric account id. Public github.com (empty
+// realm) keeps the "gid:<id>" form, unchanged; an enterprise realm namespaces it as
+// "ghes:<realm>:gid:<id>".
+func githubNumericSeed(realm string, id int64) string {
+	if realm == "" {
+		return "gid:" + strconv.FormatInt(id, 10)
+	}
+	return "ghes:" + realm + ":gid:" + strconv.FormatInt(id, 10)
 }
 
 // NewFacebook makes facebook oauth2 provider

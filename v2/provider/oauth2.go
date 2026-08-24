@@ -61,13 +61,6 @@ type Params struct {
 	// Enabling this changes the id of every existing github user, see README for the migration note.
 	// Best-effort: if the response carries no usable numeric id the login-derived id is kept.
 	GithubNumericID bool
-
-	// GithubEnterpriseURL points the github provider at a GitHub Enterprise Server
-	// instance instead of public github.com. Set it to the instance root, e.g.
-	// "https://github.example.com"; the OAuth authorize/token and /api/v3 user info
-	// URLs are derived from it. Empty keeps the public github.com endpoints. A value
-	// that is not a usable http(s) URL falls back to public github.com.
-	GithubEnterpriseURL string
 }
 
 // UserData is type for user information returned from oauth2 providers /info API method

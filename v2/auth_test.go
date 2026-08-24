@@ -153,21 +153,29 @@ func TestService_AddGithubEnterpriseProvider(t *testing.T) {
 
 	t.Run("registered under github name with enterprise url", func(t *testing.T) {
 		svc := NewService(options)
-		svc.AddGithubEnterpriseProvider("cid", "csecret", "https://github.example.com")
+		err := svc.AddGithubEnterpriseProvider("cid", "csecret", "https://github.example.com")
+		require.NoError(t, err)
 		p, err := svc.Provider("github")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		op := p.Provider.(provider.Oauth2Handler)
 		assert.Equal(t, "github", op.Name())
-		assert.Equal(t, "https://github.example.com", op.GithubEnterpriseURL)
+	})
+
+	t.Run("invalid enterprise url is a registration error", func(t *testing.T) {
+		svc := NewService(options)
+		err := svc.AddGithubEnterpriseProvider("cid", "csecret", "https://user:pw@github.example.com")
+		require.Error(t, err)
+		_, err = svc.Provider("github")
+		assert.Error(t, err, "nothing should be registered when the base url is rejected")
 	})
 
 	t.Run("default registration stays on public github.com", func(t *testing.T) {
 		svc := NewService(options)
 		svc.AddProvider("github", "cid", "csecret")
 		p, err := svc.Provider("github")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		op := p.Provider.(provider.Oauth2Handler)
-		assert.Empty(t, op.GithubEnterpriseURL)
+		assert.Equal(t, "github", op.Name())
 	})
 }
 

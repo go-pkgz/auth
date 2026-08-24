@@ -765,10 +765,16 @@ This is off by default because it changes the id of every existing GitHub user. 
 To authenticate against a self-hosted GitHub Enterprise Server instance instead of public github.com, register the provider with `AddGithubEnterpriseProvider`, passing the instance root URL. The OAuth authorize/token and `/api/v3` user info URLs are derived from it, and the callback URL is still `<domain>/auth/github/callback`:
 
 ```go
-service.AddGithubEnterpriseProvider("<Client ID>", "<Client Secret>", "https://github.example.com")
+if err := service.AddGithubEnterpriseProvider("<Client ID>", "<Client Secret>", "https://github.example.com"); err != nil {
+	log.Fatal(err)
+}
 ```
 
-The provider is registered under the same `github` name, so login and callback routes are unchanged. If the base URL is not a usable `http`/`https` URL the provider falls back to public github.com. To combine it with `UserAttributes` or `GithubNumericID`, set `GithubEnterpriseURL` when building `provider.Params` directly and register the result with `service.AddCustomHandler(provider.NewGithub(p))`, filling in the service-supplied fields as described in the numeric-id note above.
+Register the OAuth App on the Enterprise instance itself, not on `https://github.com/settings/developers`. OAuth Apps are per-instance, so a client id created on public github.com is unknown to your GHES server and authorization will fail. The callback URL is the same `<domain>/auth/github/callback` as above.
+
+The provider is registered under the same `github` name, so login and callback routes are unchanged. A base URL that is not a usable `http`/`https` instance root is a registration error rather than a silent fallback to public github.com, so a mistyped URL fails at startup instead of quietly authenticating people against the wrong server. A scheme-less value such as `github.example.com` is treated as `https://github.example.com`. To combine an enterprise instance with `UserAttributes` or `GithubNumericID`, pass those on `provider.Params` and build the handler with `provider.NewGithubEnterprise(p, baseURL)`, then register it with `service.AddCustomHandler(...)`, filling in the service-supplied fields as described in the numeric-id note above.
+
+The instance authority is the id namespace: enterprise user ids are seeded with the instance host (and non-default port), so an internal login never collides with its public github.com namesake and `http`/`https` on the same host resolve to the same id. Because the namespace is just the hostname, a replacement appliance brought up on the same host is indistinguishable from the original, so treat the hostname as a stable identity the way the numeric-id note above treats the account id.
 
 #### Facebook Auth Provider
 

@@ -412,10 +412,12 @@ func (s *Service) AddGithubProviderWithNumericID(cid, csecret string) {
 // AddGithubEnterpriseProvider adds a github provider backed by a GitHub Enterprise Server
 // instance instead of public github.com. baseURL is the instance root, e.g.
 // "https://github.example.com"; the OAuth authorize/token and /api/v3 user info URLs are
-// derived from it. If baseURL is not a usable http(s) URL the provider falls back to public
-// github.com. The provider is still registered under the "github" name.
+// derived from it. It returns an error when baseURL is not a usable http(s) instance root, so a
+// mistyped URL fails registration instead of silently authenticating against public github.com.
+// The provider is still registered under the "github" name. The instance authority seeds the
+// user id namespace, so enterprise logins never collide with their public github.com namesakes.
 // For advanced configuration (e.g., UserAttributes), construct provider.Params directly.
-func (s *Service) AddGithubEnterpriseProvider(cid, csecret, baseURL string) {
+func (s *Service) AddGithubEnterpriseProvider(cid, csecret, baseURL string) error {
 	p := provider.Params{
 		URL:                  s.opts.URL,
 		JwtService:           s.jwtService,
@@ -425,10 +427,14 @@ func (s *Service) AddGithubEnterpriseProvider(cid, csecret, baseURL string) {
 		Csecret:              csecret,
 		L:                    s.logger,
 		UserAttributes:       map[string]string{},
-		GithubEnterpriseURL:  baseURL,
 		AllowedRedirectHosts: s.opts.AllowedRedirectHosts,
 	}
-	s.addProvider(provider.NewGithub(p))
+	githubProvider, err := provider.NewGithubEnterprise(p, baseURL)
+	if err != nil {
+		return err
+	}
+	s.addProvider(githubProvider)
+	return nil
 }
 
 // AddDevProvider with a custom host and port
