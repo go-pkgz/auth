@@ -1,8 +1,12 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net"
 	"net/http"
@@ -332,7 +336,19 @@ func TestIntegrationAvatar(t *testing.T) {
 
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	assert.Equal(t, 569, len(b))
+
+	// what the endpoint promises is a decodable image within the resize limit, not a byte count.
+	// the encoders are the standard library's, so their output moves with the Go release: this
+	// assertion read 569 bytes until Go 1.27 changed the compressor and produced 507 for the same
+	// picture, failing a test that nothing had touched
+	img, format, err := image.Decode(bytes.NewReader(b))
+	require.NoError(t, err, "the avatar endpoint has to serve a decodable image")
+	assert.Equal(t, "png", format)
+	// the dev provider serves a 300x300 identicon and prepService sets AvatarResizeLimit to 120,
+	// so the result is exactly 120x120. An upper bound would pass a 60x60 regression
+	assert.Equal(t, image.Rect(0, 0, 120, 120), img.Bounds())
+	// a blank canvas of the right size would satisfy everything above
+	assert.False(t, uniformImage(img), "the served avatar is a single flat color")
 }
 
 func TestIntegrationList(t *testing.T) {
@@ -802,3 +818,20 @@ func (c customHandler) Name() string {
 func (c customHandler) LoginHandler(http.ResponseWriter, *http.Request)  {}
 func (c customHandler) AuthHandler(http.ResponseWriter, *http.Request)   {}
 func (c customHandler) LogoutHandler(http.ResponseWriter, *http.Request) {}
+
+// uniformImage reports whether every pixel is the same color, which is what a generator that
+// stopped drawing produces: an image of exactly the right size carrying nothing
+func uniformImage(img image.Image) bool {
+	b := img.Bounds()
+	first := img.At(b.Min.X, b.Min.Y)
+	fr, fg, fb, fa := first.RGBA()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := img.At(x, y).RGBA()
+			if r != fr || g != fg || bl != fb || a != fa {
+				return false
+			}
+		}
+	}
+	return true
+}

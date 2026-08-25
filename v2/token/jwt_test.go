@@ -242,6 +242,60 @@ func TestJWT_SetWithDomain(t *testing.T) {
 
 }
 
+// Secure and SameSite are read from the service config in four places, the two cookies Set writes
+// and the two Reset writes, and every other test in this file runs with SecureCookies false and the
+// zero SameSite, which emits no attribute at all. Any of the four could stop passing them through
+// and the rest of the suite would still pass. HttpOnly is asserted on the Set pair because the two
+// differ deliberately: the token is hidden from JS, while the XSRF value has to be readable for the
+// caller to echo it back in a header.
+func TestJWT_CookieAttributesFromOpts(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: true,
+		SameSite: http.SameSiteNoneMode, TokenDuration: time.Hour, CookieDuration: days31,
+		Issuer: "remark42", JWTCookieName: jwtCustomCookieName, XSRFCookieName: xsrfCustomCookieName,
+		DisableIAT: true})
+
+	checkPair := func(t *testing.T, cookies []*http.Cookie) {
+		require.Len(t, cookies, 2)
+		assert.Equal(t, jwtCustomCookieName, cookies[0].Name)
+		assert.Equal(t, xsrfCustomCookieName, cookies[1].Name)
+		for _, c := range cookies {
+			assert.True(t, c.Secure, "%s lost Secure", c.Name)
+			assert.Equal(t, http.SameSiteNoneMode, c.SameSite, "%s lost SameSite", c.Name)
+		}
+	}
+
+	t.Run("set", func(t *testing.T) {
+		claims := testClaims
+		claims.Handshake = nil
+
+		rr := httptest.NewRecorder()
+		_, err := j.Set(rr, claims)
+		require.NoError(t, err)
+
+		cookies := rr.Result().Cookies()
+		checkPair(t, cookies)
+		assert.True(t, cookies[0].HttpOnly, "the token must not be reachable from JS")
+		assert.False(t, cookies[1].HttpOnly, "the caller reads this one to build the XSRF header")
+	})
+
+	t.Run("reset", func(t *testing.T) {
+		// the removal pair has to repeat these attributes, though not because they are part of
+		// the cookie's identity: that is name, domain and path alone, which is why Reset writing
+		// HttpOnly false over a cookie Set wrote HttpOnly true still replaces it. The reason is
+		// that Chrome and Firefox reject SameSite=None without Secure outright, and a removal
+		// cookie the browser discards leaves the original in place
+		rr := httptest.NewRecorder()
+		j.Reset(rr)
+
+		cookies := rr.Result().Cookies()
+		checkPair(t, cookies)
+		for _, c := range cookies {
+			assert.Empty(t, c.Value, "%s still carries a value", c.Name)
+			assert.Equal(t, -1, c.MaxAge, "%s does not expire", c.Name)
+		}
+	})
+}
+
 func TestJWT_SendJWTHeader(t *testing.T) {
 
 	j := NewService(Opts{

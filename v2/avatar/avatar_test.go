@@ -188,7 +188,11 @@ func TestAvatar_PutIdenticon(t *testing.T) {
 	assert.Equal(t, "http://localhost:8080/avatar/b3daa77b4c04a9551b8781d03191fe098f325e67.image", res)
 	fi, err := os.Stat("/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image")
 	assert.NoError(t, err)
-	assert.Equal(t, int64(999), fi.Size())
+	// the identicon is encoded by the standard library, so its byte count moves with the Go
+	// release: this read 999 until Go 1.27 changed the encoder. This Proxy has no ResizeLimit, so
+	// resize returns the body verbatim and the stored identicon keeps the generator's 300x300
+	_ = fi
+	assertStoredImage(t, "/tmp/avatars.test/30/b3daa77b4c04a9551b8781d03191fe098f325e67.image", 300)
 
 }
 
@@ -210,9 +214,12 @@ func TestAvatar_PutFailed(t *testing.T) {
 	res, err := p.Put(u, client)
 	require.NoError(t, err)
 	assert.Equal(t, "http://localhost:8080/avatar/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image", res)
-	fi, err := os.Stat("/tmp/avatars.test/84/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image")
+	avatarPath := "/tmp/avatars.test/84/a1881c06eec96db9901c7bbfe41c42a3f08e9cb4.image"
+	fi, err := os.Stat(avatarPath)
 	require.NoError(t, err)
-	assert.Equal(t, int64(992), fi.Size())
+	// same as above: no ResizeLimit on this Proxy, so the generator's 300x300 is what is stored
+	_ = fi
+	assertStoredImage(t, avatarPath, 300)
 }
 
 func TestAvatar_PutCapsBodySize(t *testing.T) {
@@ -456,7 +463,29 @@ func TestAvatar_resize(t *testing.T) {
 		bounds := imgRz.Bounds()
 		assert.Equal(t, c.wr, bounds.Dx(), "file %s", c.file)
 		assert.Equal(t, c.hr, bounds.Dy(), "file %s", c.file)
+
+		// dimensions alone do not prove the scale ran: a resize that dropped its Scale call still
+		// encodes a correctly sized, entirely transparent PNG. This is the only place that opens
+		// the pixels, so it is the only thing standing between that regression and a green suite
+		assert.False(t, uniformImage(imgRz), "file %s resized to a uniform image, the scale did not run", c.file)
 	}
+}
+
+// uniformImage reports whether every pixel matches the first one, which is what a resize that
+// produced an empty canvas rather than a scaled picture looks like
+func uniformImage(img image.Image) bool {
+	b := img.Bounds()
+	first := img.At(b.Min.X, b.Min.Y)
+	fr, fg, fb, fa := first.RGBA()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := img.At(x, y).RGBA()
+			if r != fr || g != fg || bl != fb || a != fa {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // TestAvatar_resizeRejectsDecompressionBomb proves a tiny PNG that declares huge
@@ -601,4 +630,20 @@ func TestAvatar_Retry(t *testing.T) {
 	})
 	assert.Error(t, err)
 	assert.True(t, time.Since(st) >= time.Microsecond*5)
+}
+
+// assertStoredImage checks the file holds a square image of the expected side, which is what an
+// avatar store owes its caller. Byte counts belong to whichever encoder the Go release ships.
+func assertStoredImage(t *testing.T, path string, side int) {
+	t.Helper()
+	f, err := os.Open(path) //nolint:gosec // test-controlled path
+	require.NoError(t, err)
+	defer f.Close() //nolint:errcheck // read-only handle in a test
+	img, _, err := image.Decode(f)
+	require.NoError(t, err, "%s has to be a decodable image", path)
+	assert.Equal(t, image.Rect(0, 0, side, side), img.Bounds(), "%s has the wrong dimensions", path)
+	// dimensions alone would pass for a blank canvas, and a generator that stopped drawing still
+	// produces one of exactly the right size. The byte-count assertions this replaced caught that
+	// by accident; this catches it on purpose
+	assert.False(t, uniformImage(img), "%s is a single flat color, so nothing was drawn into it", path)
 }

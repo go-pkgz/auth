@@ -1,8 +1,11 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	_ "image/png"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -78,7 +81,14 @@ func TestDevProvider(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
 	assert.NoError(t, err)
-	assert.Equal(t, 960, len(body))
+	// the identicon is encoded by the standard library, so its byte count moves with the Go
+	// release: this read 960 until Go 1.27 changed the encoder. Assert the dimensions the
+	// generator promises instead, which is what the endpoint owes its caller
+	avatarImg, avatarFormat, err := image.Decode(bytes.NewReader(body))
+	require.NoError(t, err)
+	assert.Equal(t, "png", avatarFormat)
+	assert.Equal(t, image.Rect(0, 0, 300, 300), avatarImg.Bounds())
+	assert.False(t, uniformImage(avatarImg), "the served avatar is a single flat color")
 	t.Logf("headers: %+v", resp.Header)
 }
 
@@ -108,4 +118,21 @@ func TestDevProviderCancel(t *testing.T) {
 		t.Fail()
 	case <-done:
 	}
+}
+
+// uniformImage reports whether every pixel is the same color, which is what a generator that
+// stopped drawing produces: an image of exactly the right size carrying nothing
+func uniformImage(img image.Image) bool {
+	b := img.Bounds()
+	first := img.At(b.Min.X, b.Min.Y)
+	fr, fg, fb, fa := first.RGBA()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := img.At(x, y).RGBA()
+			if r != fr || g != fg || bl != fb || a != fa {
+				return false
+			}
+		}
+	}
+	return true
 }

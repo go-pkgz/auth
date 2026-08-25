@@ -1,8 +1,11 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	_ "image/png"
 	"io"
 	"log"
 	"net/http"
@@ -169,7 +172,14 @@ func TestCustomProvider(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
 	assert.NoError(t, err)
-	assert.Equal(t, 960, len(body))
+	// the identicon is encoded by the standard library, so its byte count moves with the Go
+	// release: this read 960 until Go 1.27 changed the encoder. Assert the dimensions the
+	// generator promises instead, which is what the endpoint owes its caller
+	avatarImg, avatarFormat, err := image.Decode(bytes.NewReader(body))
+	require.NoError(t, err)
+	assert.Equal(t, "png", avatarFormat)
+	assert.Equal(t, image.Rect(0, 0, 300, 300), avatarImg.Bounds())
+	assert.False(t, uniformImage(avatarImg), "the served avatar is a single flat color")
 	t.Logf("headers: %+v", resp.Header)
 
 	// check malicious user ID
