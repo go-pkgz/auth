@@ -54,14 +54,16 @@ func NewGoogle(p Params) Oauth2Handler {
 // githubEnterpriseURLs derives the OAuth and user-info URLs plus the id-namespace realm for a
 // GitHub Enterprise Server instance from its base URL, e.g. "https://github.example.com". It
 // returns the oauth2 endpoint, the user-info URL, the realm, and false when base is not a usable
-// instance root, i.e. an absolute http(s) URL with no userinfo, query, fragment, or path beyond "/".
+// instance root, i.e. an absolute http(s) URL with a host and no userinfo, query, fragment, or path
+// beyond "/". A host-less authority such as "https://:8443" (Host is ":8443" but Hostname is empty)
+// is rejected too, so an empty host can never end up in the derived URLs.
 func githubEnterpriseURLs(base string) (endpoint oauth2.Endpoint, infoURL, realm string, ok bool) {
 	base = strings.TrimSpace(base)
 	if base != "" && !strings.Contains(base, "://") && !strings.HasPrefix(base, "/") {
 		base = "https://" + base // scheme-less value like "github.example.com" is the likeliest typo, treat as https
 	}
 	u, err := url.Parse(base)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") ||
+	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") ||
 		u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
 		(u.Path != "" && u.Path != "/") {
 		return oauth2.Endpoint{}, "", "", false

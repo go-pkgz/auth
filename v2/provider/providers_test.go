@@ -195,7 +195,8 @@ func TestProviders_NewGithubEnterprise(t *testing.T) {
 	t.Run("invalid base url is a registration error", func(t *testing.T) {
 		for _, bad := range []string{"not a url", "ftp://github.example.com", "/only/path",
 			"https://github.example.com?x=1", "https://github.example.com#frag", "https://user:pw@github.example.com",
-			"https://", "https://github.example.com/api/v3", "https://github.example.com?"} {
+			"https://", "https://github.example.com/api/v3", "https://github.example.com?",
+			"https://:8443", "https://:443"} {
 			_, err := NewGithubEnterprise(base, bad)
 			assert.Error(t, err, "base %q should fail registration", bad)
 		}
