@@ -113,17 +113,16 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	// no sync is required because only a single goroutine in TelegramHandler.Run() reads and writes it
 	var tokenAlreadyUsed bool
 
-	var wgToken sync.WaitGroup
-	wgToken.Add(1)
-	defer func() {
-		if t.Failed() && servedToken == "" {
-			wgToken.Done() // for the case when test fails before token is generated
-		}
-	}()
+	// a channel, not a WaitGroup: cleanup waits for Run to return, so this gate has to honor ctx
+	tokenReady := make(chan struct{})
 
 	m := &TelegramAPIMock{
 		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
-			wgToken.Wait()
+			select {
+			case <-tokenReady:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 
 			if tokenAlreadyUsed || t.Failed() {
 				return nil, fmt.Errorf("token %s has been already used", servedToken)
@@ -189,7 +188,7 @@ func TestTelegramConfirmedRequest(t *testing.T) {
 	assert.NotEmpty(t, resp.Token)
 
 	servedToken = resp.Token
-	wgToken.Done()
+	close(tokenReady)
 
 	// check the token confirmation
 	assert.Eventually(t, func() bool {
@@ -678,6 +677,9 @@ func TestTelegram_TokenVerification(t *testing.T) {
 	assert.Len(t, tg.requests.data, 1)
 
 	// expired token, cleaned up by the cleanup
+	// package vars: left short, later tests get a cleanup ticker that deletes their requests
+	origPoll, origCleanup := apiPollInterval, expiredCleanupInterval
+	t.Cleanup(func() { apiPollInterval, expiredCleanupInterval = origPoll, origCleanup })
 	apiPollInterval = time.Hour
 	expiredCleanupInterval = time.Millisecond * 10
 	ctx, cancel := context.WithCancel(context.Background())
@@ -700,6 +702,8 @@ func TestTelegram_TokenVerification(t *testing.T) {
 }
 
 func setupHandler(t *testing.T, m TelegramAPI) (tg *TelegramHandler, cleanup func()) {
+	origPoll, origLifetime := apiPollInterval, tgAuthRequestLifetime
+	t.Cleanup(func() { apiPollInterval, tgAuthRequestLifetime = origPoll, origLifetime })
 	apiPollInterval = time.Millisecond * 10
 	tgAuthRequestLifetime = time.Millisecond * 100
 
@@ -720,16 +724,27 @@ func setupHandler(t *testing.T, m TelegramAPI) (tg *TelegramHandler, cleanup fun
 
 	assert.Equal(t, "telegram", tg.Name())
 
-	ctx, cleanup := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	go func() {
-		err := tg.Run(ctx)
-		if err != context.Canceled {
+		defer close(done)
+		if err := tg.Run(ctx); err != context.Canceled {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	}()
-	time.Sleep(20 * time.Millisecond)
 
-	return tg, cleanup
+	// Run installs the map after BotInfo returns, and wipes any token added before that
+	require.Eventually(t, func() bool {
+		tg.requests.RLock()
+		defer tg.requests.RUnlock()
+		return tg.requests.data != nil
+	}, time.Second, time.Millisecond, "Run did not initialize")
+
+	// cleanup waits for Run to return, so a caller may touch tg.requests after it
+	return tg, func() {
+		cancel()
+		<-done
+	}
 }
 
 const getUpdatesResp = `{
