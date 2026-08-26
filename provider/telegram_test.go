@@ -1222,3 +1222,72 @@ func (m *mockContentSaver) PutContent(userID string, content io.Reader) (string,
 	m.content = b
 	return "avatar/" + userID + ".image", nil
 }
+
+// TestTelegram_APIErrorWithheldWhenEscapingIsMalformed pins the direction tokenRecoverable has to
+// fail in. It gives up on the first unescape error, and a stray "%" anywhere in the text is enough
+// to cause one, so answering "not recoverable" there would release a message whose encodings were
+// never undone. The description here carries both: a double-encoded request URI, which needs two
+// passes to read, and a bare "%" that stops the decoder before it gets there.
+func TestTelegram_APIErrorWithheldWhenEscapingIsMalformed(t *testing.T) {
+	const token = "1234567:SECRET-TOK_EN-x"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		doubled := url.QueryEscape(url.QueryEscape(r.URL.RequestURI()))
+		fmt.Fprintf(w, `{"description":%q}`, "forwarding "+doubled+" at 100% load")
+	}))
+	defer srv.Close()
+
+	tg, err := NewTelegramAPIWithBaseURL(token, srv.Client(), srv.URL)
+	require.NoError(t, err)
+
+	_, err = tg.BotInfo(context.Background())
+	require.Error(t, err)
+
+	// the whole text goes, since nothing here can show the token is absent from it
+	assert.Contains(t, err.Error(), "text withheld", "the upstream text was released undecoded")
+
+	text := err.Error()
+	for i := 0; i < 5; i++ {
+		assert.NotContains(t, text, token, "the token is recoverable after %d decoding passes", i)
+		next, decErr := url.QueryUnescape(text)
+		if decErr != nil || next == text {
+			break
+		}
+		text = next
+	}
+}
+
+// TestTelegram_RedirectPolicyOfTheCallerIsKept covers the other half of the refusal. Refusing is
+// the right default, but a client arriving with a CheckRedirect carries a decision its operator
+// made about a base URL they chose themselves, and replacing it silently would override that.
+//
+// The hook is asserted to have run rather than merely to be present on the struct: a wrapper
+// installed in front of it would satisfy the weaker check while doing something else entirely.
+func TestTelegram_RedirectPolicyOfTheCallerIsKept(t *testing.T) {
+	const token = "1234567:SECRET-TOK_EN-x"
+	dest := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"ok":true,"result":{"username":"somebot"}}`)
+	}))
+	defer dest.Close()
+
+	src := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, dest.URL+"/next", http.StatusFound)
+	}))
+	defer src.Close()
+
+	var hookCalls int
+	client := src.Client()
+	client.Transport = dest.Client().Transport // trusts both self-signed certs
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		hookCalls++
+		return nil // this operator allows the hop
+	}
+
+	tg, err := NewTelegramAPIWithBaseURL(token, client, src.URL)
+	require.NoError(t, err)
+
+	info, err := tg.BotInfo(context.Background())
+	require.NoError(t, err, "the caller's policy was overridden by the refusal")
+	assert.Equal(t, "somebot", info.Username)
+	assert.Equal(t, 1, hookCalls, "the caller's CheckRedirect was not the hook that ran")
+}

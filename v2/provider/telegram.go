@@ -395,6 +395,12 @@ func NewTelegramAPI(token string, client *http.Client) TelegramAPI {
 // https URL with a host and no userinfo, query, fragment or opaque part, since every request
 // carries the bot token in its path and a malformed base sends it somewhere else. A path prefix
 // is allowed, for a proxy mounted under one.
+//
+// Redirects are refused by default, because Go copies the previous URL into Referer on any hop
+// that is not https-to-http and every URL here carries the token. A client arriving with its own
+// CheckRedirect keeps it: that hook is this caller's policy about a base they chose, and following
+// a redirect under it hands the token to the destination unless the hook strips the header or
+// refuses the hop itself.
 func NewTelegramAPIWithBaseURL(token string, client *http.Client, baseURL string) (TelegramAPI, error) {
 	if client == nil {
 		return nil, fmt.Errorf("nil http client")
@@ -429,20 +435,24 @@ func validateTelegramBaseURL(baseURL string) (*neturl.URL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid telegram api base url: %w", err)
 	}
+	// the rejected value is never echoed back: it is configuration that can carry credentials in
+	// its userinfo or a secret in its query, and the error travels to whatever logs the constructor
+	// failure. Naming the property that was wrong tells the operator what to fix without that
 	switch {
 	case u.Opaque != "":
-		return nil, fmt.Errorf("telegram api base url must not be opaque: %s", baseURL)
+		return nil, errors.New("telegram api base url must not be opaque")
 	case u.Scheme != "http" && u.Scheme != "https":
-		return nil, fmt.Errorf("telegram api base url must be http or https: %s", baseURL)
+		// the scheme is not a secret, and knowing which one was read is what makes this fixable
+		return nil, fmt.Errorf("telegram api base url must be http or https, got %q", u.Scheme)
 	case u.Hostname() == "":
 		// u.Host is non-empty for "http://:9000", which resolves to the local machine
-		return nil, fmt.Errorf("telegram api base url must have a host: %s", baseURL)
+		return nil, errors.New("telegram api base url must have a host")
 	case u.User != nil:
-		return nil, fmt.Errorf("telegram api base url must not carry userinfo: %s", baseURL)
+		return nil, errors.New("telegram api base url must not carry userinfo")
 	case u.RawQuery != "" || u.ForceQuery:
-		return nil, fmt.Errorf("telegram api base url must not carry a query: %s", baseURL)
+		return nil, errors.New("telegram api base url must not carry a query")
 	case u.Fragment != "" || strings.HasSuffix(baseURL, "#"):
-		return nil, fmt.Errorf("telegram api base url must not carry a fragment: %s", baseURL)
+		return nil, errors.New("telegram api base url must not carry a fragment")
 	}
 	return u, nil
 }
@@ -616,15 +626,23 @@ func tokenRecoverable(msg, token string) bool {
 		next, err := neturl.QueryUnescape(seen)
 		if err != nil {
 			if next, err = neturl.PathUnescape(seen); err != nil {
-				return false
+				// malformed escaping, so the text cannot be decoded and the token cannot be shown
+				// absent from it. One stray "%" in whatever the upstream echoed reaches here, and
+				// answering "not recoverable" would release a message that may still carry the
+				// token in an encoding this never got to undo
+				return true
 			}
 		}
 		if next == seen {
+			// decoding has converged and the loop has already examined this form, so the token is
+			// absent from every encoding of the text rather than merely undecided
 			return false
 		}
 		seen = next
 	}
-	return strings.Contains(strings.ToLower(seen), lowered)
+	// the cap ran out while the text was still changing, so the fully decoded form was never
+	// examined. Same reasoning as the decode failure above: undecided means withhold
+	return true
 }
 
 func (tg *tgAPI) parseError(r io.Reader, statusCode int) error {
@@ -739,15 +757,25 @@ const maxTelegramAvatarSize = 10 << 20
 // the username "botFather" appearing elsewhere in a log line). Replacement
 // preserves the slashes via "/bot<redacted>/" to keep surrounding URL
 // structure intact for diagnostics.
-// noRedirect returns a shallow copy of c that refuses redirects. Every URL here carries the bot
-// token in its path, and Go copies the previous URL into Referer on any hop that is not
-// https-to-http, so following a redirect hands the destination the token, usually into its access
-// log. Telegram's own API does not redirect; a proxy standing in for it can, so this refuses
-// instead of leaking. The copy leaves the caller's client untouched, and the Transport is shared,
-// so custom CA, client certificates and proxy settings all survive
+// noRedirect returns a client that refuses redirects, as the default for a caller who expressed no
+// policy of their own. Every URL here carries the bot token in its path, and Go copies the previous
+// URL into Referer on any hop that is not https-to-http, so following a redirect hands the
+// destination the token, usually into its access log. Telegram's own API does not redirect; a proxy
+// standing in for it can, so refusing is the right default.
+//
+// A client that already carries a CheckRedirect is returned untouched. That hook is the operator's
+// explicit policy about a base URL they chose themselves, and replacing it would override a
+// decision this package is in no position to second-guess. It is their responsibility from there:
+// see NewTelegramAPIWithBaseURL on what a permitted redirect exposes.
+//
+// The refusing copy is shallow, so the caller's client is untouched and its Transport is shared:
+// custom CA, client certificates and proxy settings all survive
 func noRedirect(c *http.Client) *http.Client {
 	if c == nil {
 		return nil
+	}
+	if c.CheckRedirect != nil {
+		return c
 	}
 	cp := *c
 	cp.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
