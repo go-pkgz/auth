@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -15,28 +16,23 @@ import (
 )
 
 func TestApplePublicKey_Fetch(t *testing.T) {
-	teardown := prepareAppleKeysTestServer(t, 8982)
-
-	defer teardown()
+	ts := prepareAppleKeysTestServer(t)
+	defer ts.Close()
 
 	// valid response checking
 	ctx := context.Background()
-	url := fmt.Sprintf("http://127.0.0.1:%d/keys", 8982)
-	set, err := fetchAppleJWK(ctx, url)
+	set, err := fetchAppleJWK(ctx, ts.URL+"/keys")
 	assert.NoError(t, err)
 	assert.NotEqual(t, appleKeySet{}, set)
 
 	// check service response error
-	url = fmt.Sprintf("http://127.0.0.1:%d/error", 8982)
-	_, err = fetchAppleJWK(ctx, url)
+	_, err = fetchAppleJWK(ctx, ts.URL+"/error")
 	assert.Error(t, err)
 
-	url = fmt.Sprintf("http://127.0.0.1:%d/no-answer", 8982)
 	ctx, cancelFunc := context.WithTimeout(ctx, time.Second*2)
-	_, err = fetchAppleJWK(ctx, url)
 	defer cancelFunc()
+	_, err = fetchAppleJWK(ctx, ts.URL+"/no-answer")
 	assert.Error(t, err)
-
 }
 
 func TestParseAppleJWK(t *testing.T) {
@@ -164,16 +160,13 @@ func TestAppleKeySet_KeyFunc(t *testing.T) {
 	assert.Error(t, err, "get JWT kid header not found")
 }
 
-//nolint:gosec //this is a test, we don't care about ReadHeaderTimeout
-func prepareAppleKeysTestServer(t *testing.T, authPort int) func() {
-	ts := &http.Server{
-		Addr: fmt.Sprintf(":%d", authPort),
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("[MOCK APPLE KEYS SERVER] request %s %s %+v", r.Method, r.URL, r.Header)
-			switch {
-			case strings.HasPrefix(r.URL.Path, "/keys"):
+func prepareAppleKeysTestServer(t *testing.T) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[MOCK APPLE KEYS SERVER] request %s %s %+v", r.Method, r.URL, r.Header)
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/keys"):
 
-				testKeys := `{
+			testKeys := `{
 					"keys": [
 					{
 					  "kty": "RSA",
@@ -201,26 +194,17 @@ func prepareAppleKeysTestServer(t *testing.T, authPort int) func() {
 					}
 				  ]
 				}`
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				_, err := w.Write([]byte(testKeys))
-				assert.NoError(t, err)
-			case strings.HasPrefix(r.URL.Path, "/error"):
-				_, err := w.Write([]byte("test error"))
-				assert.NoError(t, err)
-			case strings.HasPrefix(r.URL.Path, "/no-answer"):
-				time.Sleep(time.Second * 3)
-				return
-			default:
-				t.Fatalf("unexpected oauth request %s %s", r.Method, r.URL)
-			}
-		}),
-	}
-
-	go func() { _ = ts.ListenAndServe() }()
-
-	time.Sleep(time.Millisecond * 100) // let them start
-
-	return func() {
-		assert.NoError(t, ts.Close())
-	}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, err := w.Write([]byte(testKeys))
+			assert.NoError(t, err)
+		case strings.HasPrefix(r.URL.Path, "/error"):
+			_, err := w.Write([]byte("test error"))
+			assert.NoError(t, err)
+		case strings.HasPrefix(r.URL.Path, "/no-answer"):
+			<-r.Context().Done()
+		default:
+			// errorf not fatalf: FailNow is only valid on the test goroutine
+			t.Errorf("unexpected oauth request %s %s", r.Method, r.URL)
+		}
+	}))
 }
