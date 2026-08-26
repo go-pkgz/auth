@@ -433,11 +433,17 @@ func NewTelegramAPIWithBaseURL(token string, client *http.Client, baseURL string
 func validateTelegramBaseURL(baseURL string) (*neturl.URL, error) {
 	u, err := neturl.Parse(baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid telegram api base url: %w", err)
+		// the parse error is dropped rather than wrapped. *url.Error prints its URL field
+		// verbatim, so a base that is both credentialed and malformed, which never reaches the
+		// userinfo case below, would carry the credentials into the log; and the inner error is
+		// no safer, since "invalid port \":s3cr3t\" after host" and the IPv6 zone path both
+		// quote the input back
+		return nil, errors.New("telegram api base url is not a valid url")
 	}
-	// the rejected value is never echoed back: it is configuration that can carry credentials in
-	// its userinfo or a secret in its query, and the error travels to whatever logs the constructor
-	// failure. Naming the property that was wrong tells the operator what to fix without that
+	// no rejection echoes the value, here or in the parse branch above: it is configuration that
+	// can carry credentials in its userinfo or a secret in its query or its port, and the error
+	// travels to whatever logs the constructor failure. Naming the property that was wrong tells
+	// the operator what to fix without that
 	switch {
 	case u.Opaque != "":
 		return nil, errors.New("telegram api base url must not be opaque")

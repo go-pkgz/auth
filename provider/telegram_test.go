@@ -997,10 +997,20 @@ func TestTelegram_APIBaseURLRejectsUnusableValues(t *testing.T) {
 		"no host":                     "https://",
 		"carries a query":             "https://api.telegram.org?a=b",
 		"carries a fragment":          "https://api.telegram.org#x",
+		// both of these fail neturl.Parse, so they never reach the checks below and are refused
+		// by the branch that used to wrap the parse error. *url.Error prints the URL it was given
+		"credentialed and malformed": "https://user:pa%zzss@api.telegram.org/",
+		"secret in place of a port":  "https://proxy.example.com:s3cr3t/tg",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := NewTelegramAPIWithBaseURL("t", http.DefaultClient, base)
-			assert.Error(t, err, "%s has to be refused", base)
+			require.Error(t, err, "%s has to be refused", base)
+
+			// the refusal is logged by whoever built the client, and the value it refused is
+			// untrusted configuration. Without this the six rejections could each interpolate
+			// the base back and stay green
+			assert.NotContains(t, err.Error(), base,
+				"the rejection echoed the base url it refused")
 		})
 	}
 
