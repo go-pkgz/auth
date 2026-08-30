@@ -148,6 +148,40 @@ func TestService_AddGithubProviderWithNumericID(t *testing.T) {
 		assert.False(t, op.GithubNumericID)
 	})
 }
+func TestService_AddGithubEnterpriseProvider(t *testing.T) {
+	options := Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:          "http://127.0.0.1:8089",
+		Logger:       logger.Std,
+	}
+
+	t.Run("registered under github name with enterprise url", func(t *testing.T) {
+		svc := NewService(options)
+		err := svc.AddGithubEnterpriseProvider("cid", "csecret", "https://github.example.com")
+		require.NoError(t, err)
+		p, err := svc.Provider("github")
+		require.NoError(t, err)
+		op := p.Provider.(provider.Oauth2Handler)
+		assert.Equal(t, "github", op.Name())
+	})
+
+	t.Run("invalid enterprise url is a registration error", func(t *testing.T) {
+		svc := NewService(options)
+		err := svc.AddGithubEnterpriseProvider("cid", "csecret", "https://user:pw@github.example.com")
+		require.Error(t, err)
+		_, err = svc.Provider("github")
+		assert.Error(t, err, "nothing should be registered when the base url is rejected")
+	})
+
+	t.Run("default registration stays on public github.com", func(t *testing.T) {
+		svc := NewService(options)
+		svc.AddProvider("github", "cid", "csecret")
+		p, err := svc.Provider("github")
+		require.NoError(t, err)
+		op := p.Provider.(provider.Oauth2Handler)
+		assert.Equal(t, "github", op.Name())
+	})
+}
 
 func TestService_AddVerifProvider_UsesCustomConfirmationStore(t *testing.T) {
 	custom := &countingVerifStore{}
