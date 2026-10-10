@@ -298,6 +298,8 @@ The API for this provider:
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
 
+Only a confirmation token issued by this provider's own confirmation request is accepted for login. Other tokens signed with the same secret are rejected, including handshake tokens an application mints for its own mailed links, session tokens, and confirmations issued by another verify provider.
+
 #### Confirmation token replay protection
 
 Confirmation tokens are one-shot: a token redeemed once cannot be redeemed again within its TTL. This stops anyone with read access to the email link (forwarded mail, mail-gateway logs, mailbox archive) from independently consuming it after the user has.

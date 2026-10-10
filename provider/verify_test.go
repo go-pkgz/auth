@@ -22,10 +22,14 @@ import (
 
 // nolint
 var (
-	testConfirmedToken      = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn19.D8AvAunK7Tj-P6P56VyaoZ-hyA6U8duZ9HV8-ACEya8`
-	testConfirmedBadIDToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJibGFoQHVzZXIuY29tIn19.hB91-kyY9-Q2Ln6IJGR9StQi-QQiXYu8SV31YhOoTbc`
-	testConfirmedGravatar   = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJncmF2YTo6ZWVmcmV0c291bEBnbWFpbC5jb20ifX0.yQTtG7neX3YjLZ-SGeiiNmwNfJWA7nR50KAxDw834XE`
-	testConfirmedExpired    = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTU2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn19.bCFMAwCg1_l4yuEzFYzd0q9PstY-auHe2rwLqltffqo`
+	testConfirmedToken      = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn0sImF1dGhfcHJvdmlkZXIiOnsibmFtZSI6InRlc3QifX0.tgkx6qozC1lVhR3jHs6y3eVi8qGinGnObdDwv2LUI3g`
+	testConfirmedBadIDToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJibGFoQHVzZXIuY29tIn0sImF1dGhfcHJvdmlkZXIiOnsibmFtZSI6InRlc3QifX0.kjrAzVsUab-AufSp_ktH10srvbwfC6tSHW6uyLhuW84`
+	testConfirmedGravatar   = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJncmF2YTo6ZWVmcmV0c291bEBnbWFpbC5jb20ifSwiYXV0aF9wcm92aWRlciI6eyJuYW1lIjoidGVzdCJ9fQ.wiQ-SdXOYeORaKurYlWFcOFiYKEmxY520xW3CkKHiZw`
+	testConfirmedExpired    = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTU2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn0sImF1dGhfcHJvdmlkZXIiOnsibmFtZSI6InRlc3QifX0.1LEpvDlxIBHcL0ZYiKMuyunjmM3yGV63d1OKkE1s450`
+	// signed with the same secret but not issued by this provider's confirmation step
+	testForeignHandshakeToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn19.D8AvAunK7Tj-P6P56VyaoZ-hyA6U8duZ9HV8-ACEya8`
+	testOtherProviderToken    = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJoYW5kc2hha2UiOnsiaWQiOiJ0ZXN0MTIzOjpibGFoQHVzZXIuY29tIn0sImF1dGhfcHJvdmlkZXIiOnsibmFtZSI6Im90aGVyIn19.SPqYgomQ2HM9dUUDG4mk8aPDPw-xheq6C1UDer8S3io`
+	testSessionToken          = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJyZW1hcms0MiIsImV4cCI6MTg2MDMwNzQxMiwibmJmIjoxNTYwMzA1NTUyLCJ1c2VyIjp7Im5hbWUiOiJ0ZXN0MTIzIiwiaWQiOiJ0ZXN0XzYzYzEwMTc4MzhlNTY3YTUyNjgwMDc5MDgwNWVhZTRkYzk3NTQwMmIifSwiYXV0aF9wcm92aWRlciI6eyJuYW1lIjoidGVzdCJ9fQ.WrZuBnHuXnYz4jUim4m6YVpZs7zEgtIi78plDgdCUjE`
 )
 
 func TestVerifyHandler_LoginSendsWithRequestContext(t *testing.T) {
@@ -192,6 +196,50 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	assert.Equal(t, true, claims.SessionOnly)
 }
 
+// TestVerifyHandler_LoginRejectsTokensItDidNotIssue covers tokens signed with the same secret that
+// did not come from this provider's confirmation step. An application can mint its own handshake
+// tokens of the same user::address shape for links it mails, and a session token carries no
+// handshake at all; none of them prove the holder received this provider's confirmation.
+func TestVerifyHandler_LoginRejectsTokensItDidNotIssue(t *testing.T) {
+	for name, tkn := range map[string]string{
+		"handshake without provider": testForeignHandshakeToken,
+		"another provider":           testOtherProviderToken,
+		"session token":              testSessionToken,
+	} {
+		t.Run(name, func(t *testing.T) {
+			// the rejected token stays valid wherever it was issued for, so it must neither burn a
+			// replay-store entry nor reach the log
+			storeCalls := 0
+			var logged strings.Builder
+			e := VerifyHandler{
+				ProviderName: "test",
+				TokenService: token.NewService(token.Opts{
+					SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+					TokenDuration:  time.Hour,
+					CookieDuration: time.Hour * 24 * 31,
+				}),
+				Issuer: "iss-test",
+				L:      logger.Func(func(format string, args ...any) { fmt.Fprintf(&logged, format+"\n", args...) }),
+				ConfirmationStore: VerifConfirmationStoreFunc(func(string, time.Duration) (bool, error) {
+					storeCalls++
+					return false, nil
+				}),
+			}
+
+			rr := httptest.NewRecorder()
+			req, err := http.NewRequest("GET", "/login?token="+tkn, http.NoBody)
+			require.NoError(t, err)
+			require.NotPanics(t, func() { http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req) })
+			assert.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
+			assert.Equal(t, `{"error":"failed to verify confirmation token"}`+"\n", rr.Body.String())
+			assert.Empty(t, rr.Header().Values("Set-Cookie"), "no session for a token this provider did not issue")
+			assert.Zero(t, storeCalls, "a rejected token must not consume a replay-store entry")
+			assert.NotEmpty(t, logged.String(), "the rejection is logged")
+			assert.NotContains(t, logged.String(), tkn, "the rejected token must not be logged")
+		})
+	}
+}
+
 // TestVerifyHandler_PublicFromFlow_RejectsExternalHost drives the public flow:
 // /login?from=... -> sendConfirmation -> email-link click -> /login?token=...
 // -> validator rejects. Catches regressions where sendConfirmation drops the
@@ -259,6 +307,7 @@ func TestVerifyHandler_LoginAcceptConfirmFromRejectsExternalHost(t *testing.T) {
 	}
 
 	confTok, err := jwtSvc.Token(token.Claims{
+		AuthProvider: &token.AuthProvider{Name: "test"}, // set by the confirmation step
 		Handshake: &token.Handshake{
 			ID:   "test123::blah@user.com",
 			From: "https://evil.example.com/phish",
@@ -298,6 +347,7 @@ func TestVerifyHandler_LoginAcceptConfirmFromAllowsAllowlistedHost(t *testing.T)
 	}
 
 	confTok, err := jwtSvc.Token(token.Claims{
+		AuthProvider: &token.AuthProvider{Name: "test"}, // set by the confirmation step
 		Handshake: &token.Handshake{
 			ID:   "test123::blah@user.com",
 			From: "https://trusted.example.com/back",

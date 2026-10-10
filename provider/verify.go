@@ -231,6 +231,17 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// only a confirmation token this provider issued may sign someone in. Other tokens are signed
+	// with the same secret, including handshake tokens of the same user::address shape that an
+	// application mails for its own purposes, and none of them prove the holder received this
+	// provider's confirmation. The token is still a live credential elsewhere, so it is kept out of
+	// the logged URL.
+	if confClaims.Handshake == nil || confClaims.AuthProvider == nil || confClaims.AuthProvider.Name != e.ProviderName {
+		rest.SendErrorJSON(w, scrubTokenFromRequest(r), e.L, http.StatusForbidden, fmt.Errorf("not a %s confirmation token", e.ProviderName),
+			"failed to verify confirmation token")
+		return
+	}
+
 	store := e.ConfirmationStore
 	// guard against a typed-nil VerifConfirmationStoreFunc: a non-nil
 	// interface wrapping a nil func survives the != nil check above and
