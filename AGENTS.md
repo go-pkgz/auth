@@ -8,8 +8,8 @@
 | `cd v2 && go test -p 1 ./...` | Run the `github.com/go-pkgz/auth/v2` module tests. |
 | `go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...` | Root-module CI test command from `.github/workflows/ci.yml`. |
 | `cd v2 && go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...` | v2-module CI test command from `.github/workflows/ci-v2.yml`. |
-| `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --max-issues-per-linter=0 --max-same-issues=0` | Reproduce root-module CI lint locally. |
-| `cd v2 && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --config ../.golangci.yml --max-issues-per-linter=0 --max-same-issues=0` | Reproduce v2-module CI lint locally. |
+| `GOTOOLCHAIN=go1.26.0 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --max-issues-per-linter=0 --max-same-issues=0` | Reproduce root-module CI lint locally. |
+| `cd v2 && GOTOOLCHAIN=go1.26.0 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --config ../.golangci.yml --max-issues-per-linter=0 --max-same-issues=0` | Reproduce v2-module CI lint locally. |
 | `~/.claude/format.sh` | Format Go code when available; it runs gofmt/goimports. |
 
 ## Architecture
@@ -42,5 +42,6 @@
 
 - Run root and v2 tests separately; `go test ./...` from the root does not test the separate `v2` module.
 - When reproducing CI lint, use the pinned `v2.12.2` command above, not the globally installed `golangci-lint` binary unless its version matches CI.
+- The lint commands set `GOTOOLCHAIN=go1.26.0` because the pinned golangci-lint `v2.12.2` fails with `could not load export data` under Go 1.27.2, and CI runs Go 1.26.
 - Many tests bind fixed localhost ports in the 898x/899x range; use `-p 1` for package test runs to reduce port-collision risk.
 - `go test ./...` in the root includes Mongo tests only when `ENABLE_MONGO_TESTS=true`; without it, CI-only Mongo coverage may not run locally.
