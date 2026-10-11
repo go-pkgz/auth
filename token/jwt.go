@@ -277,6 +277,16 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 		cookieExpiration = int(j.CookieDuration.Seconds())
 	}
 
+	if j.PartitionedCookies {
+		// a pair written before the option was turned on is a different cookie to the browser and
+		// stays next to the partitioned one. It is sent first, so Get keeps reading it and the refresh
+		// in middleware keeps writing fresh claims into a partitioned pair nothing reads, until the
+		// legacy cookie runs out its CookieDuration. Expiring it moves the session over on the first
+		// refresh. The expiry goes before the live pair: a browser without CHIPS ignores Partitioned,
+		// so both address the same cookie there and the later header wins
+		j.expireLegacyCookies(w)
+	}
+
 	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: tokenString, HttpOnly: true, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // Secure and SameSite come from service config
 		MaxAge: cookieExpiration, Secure: j.SecureCookies, SameSite: j.SameSite, Partitioned: j.PartitionedCookies}
 	http.SetCookie(w, &jwtCookie)
@@ -365,18 +375,25 @@ func (j *Service) Reset(w http.ResponseWriter) {
 		// the option was turned on survives this. The browser then sends both, sorted oldest
 		// first, and Request.Cookie returns the first occurrence: Get reads the legacy one, which
 		// is expired but still validly signed, and the refresh in middleware turns it back into a
-		// live session. Clearing both forms is what actually signs the reader out. In a blocked
-		// third-party context the unpartitioned header is dropped, so it costs nothing there
-		legacyJWT := http.Cookie{Name: j.JWTCookieName, Value: "", HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // expired removal cookie, carries no value
-			MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite}
-		http.SetCookie(w, &legacyJWT)
-
-		legacyXSRF := http.Cookie{Name: j.XSRFCookieName, Value: "", HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // expired removal cookie, carries no value
-			MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite}
-		http.SetCookie(w, &legacyXSRF)
+		// live session. Clearing both forms is what actually signs the reader out
+		j.expireLegacyCookies(w)
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+}
+
+// expireLegacyCookies clears the unpartitioned JWT and XSRF cookies a browser may still hold from
+// before PartitionedCookies was turned on. In a blocked third-party context the unpartitioned
+// header is dropped, so it costs nothing there
+func (j *Service) expireLegacyCookies(w http.ResponseWriter) {
+	// HttpOnly as on the live cookie: a browser rejects an expiry for a __Http- prefixed name without it
+	legacyJWT := http.Cookie{Name: j.JWTCookieName, Value: "", HttpOnly: true, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // Secure and SameSite come from service config
+		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite}
+	http.SetCookie(w, &legacyJWT)
+
+	legacyXSRF := http.Cookie{Name: j.XSRFCookieName, Value: "", HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // expired removal cookie, carries no value
+		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite}
+	http.SetCookie(w, &legacyXSRF)
 }
 
 // checkAuds verifies if claims.Audience in the list of allowed by audReader

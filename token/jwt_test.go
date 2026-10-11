@@ -776,14 +776,20 @@ func TestJWT_PartitionedCookies(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Run("set writes both cookies partitioned", func(t *testing.T) {
+	t.Run("set writes both cookies partitioned after expiring any legacy pair", func(t *testing.T) {
 		resp, err := http.Get(ts.URL + "/set")
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
 		cookies := resp.Header.Values("Set-Cookie")
-		require.Len(t, cookies, 2, "both the JWT and the XSRF cookie are written")
-		for _, c := range cookies {
+		require.Len(t, cookies, 4, "the legacy pair is expired, then the JWT and the XSRF cookie are written")
+		for _, c := range cookies[:2] {
+			assert.Contains(t, c, "Max-Age=0", "%s has to be an expiry", c)
+			assert.NotContains(t, c, "Partitioned", "%s has to address the legacy cookie", c)
+		}
+		assert.Contains(t, cookies[0], "HttpOnly", "a __Http- prefixed JWT name is only expired with HttpOnly set")
+		for _, c := range cookies[2:] {
+			assert.NotContains(t, c, "Max-Age=0", "%s has to be the live cookie", c)
 			assert.Contains(t, c, "Partitioned", "%s has to be partitioned", c)
 			assert.Contains(t, c, "Secure", "browsers reject Partitioned without Secure: %s", c)
 			assert.Contains(t, c, "SameSite=None", "a partitioned cookie is a cross-site one: %s", c)
@@ -811,6 +817,91 @@ func TestJWT_PartitionedCookies(t *testing.T) {
 		// that stale cookie is expired-but-signed, so the refresh path would sign the reader back in
 		assert.Equal(t, 2, partitioned, "the partitioned pair has to be cleared")
 		assert.Equal(t, 2, legacy, "so does any pair written before the option was enabled")
+	})
+}
+
+func TestJWT_PartitionedCookiesReplaceLegacyOnSet(t *testing.T) {
+	// a deployment turns the option on while readers still hold cookies written before it. The
+	// browser keeps that unpartitioned pair next to the partitioned one and sends it first, so a
+	// refresh has to expire it, or Get keeps reading the stale claims and the refreshed ones never
+	// reach the reader
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: true,
+		SameSite: http.SameSiteNoneMode, PartitionedCookies: true, DisableXSRF: true,
+		TokenDuration: time.Hour, CookieDuration: days31,
+	})
+
+	claimsNamed := func(name string) Claims {
+		c := testClaims
+		c.Handshake = nil
+		u := *testClaims.User
+		u.Name = name
+		c.User = &u
+		return c
+	}
+	legacyToken, err := j.Token(claimsNamed("legacy"))
+	require.NoError(t, err)
+
+	// what the middleware does on refresh: read the claims the request carries, write updated ones
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, _, getErr := j.Get(r)
+		require.NoError(t, getErr)
+		assert.Equal(t, "legacy", claims.User.Name)
+		_, setErr := j.Set(w, claimsNamed("refreshed"))
+		require.NoError(t, setErr)
+	}))
+	defer ts.Close()
+
+	// both forms, legacy first, the way the browser sends them
+	req, err := http.NewRequest("GET", ts.URL, http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: j.JWTCookieName, Value: legacyToken})
+	req.AddCookie(&http.Cookie{Name: j.JWTCookieName, Value: legacyToken})
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// a jar applying the response's Set-Cookie headers in order, keyed the way the browser keys them
+	apply := func(jar map[string]string, key func(c *http.Cookie) string) {
+		for _, c := range resp.Cookies() {
+			if c.MaxAge < 0 {
+				delete(jar, key(c))
+				continue
+			}
+			jar[key(c)] = c.Value
+		}
+	}
+	nameIn := func(token string) string {
+		claims, parseErr := j.Parse(token)
+		require.NoError(t, parseErr)
+		return claims.User.Name
+	}
+
+	t.Run("a browser with CHIPS is left with the partitioned pair only", func(t *testing.T) {
+		jar := map[string]string{
+			j.JWTCookieName: legacyToken, j.XSRFCookieName: "legacy-xsrf",
+			j.JWTCookieName + " partitioned": legacyToken, j.XSRFCookieName + " partitioned": "legacy-xsrf",
+		}
+		apply(jar, func(c *http.Cookie) string {
+			if c.Partitioned {
+				return c.Name + " partitioned"
+			}
+			return c.Name
+		})
+		assert.NotContains(t, jar, j.JWTCookieName, "the legacy JWT is sent first and would shadow the refresh")
+		assert.NotContains(t, jar, j.XSRFCookieName, "the legacy XSRF cookie goes with it")
+		require.Contains(t, jar, j.JWTCookieName+" partitioned")
+		assert.Equal(t, "refreshed", nameIn(jar[j.JWTCookieName+" partitioned"]))
+		assert.Equal(t, testClaims.Id, jar[j.XSRFCookieName+" partitioned"])
+	})
+
+	t.Run("a browser without CHIPS keeps the refreshed session", func(t *testing.T) {
+		// Partitioned is ignored there, so the expiry and the new cookie address the same cookie and
+		// the expiry has to come first
+		jar := map[string]string{j.JWTCookieName: legacyToken, j.XSRFCookieName: "legacy-xsrf"}
+		apply(jar, func(c *http.Cookie) string { return c.Name })
+		require.Contains(t, jar, j.JWTCookieName, "the expiry must not remove the session written in the same response")
+		assert.Equal(t, "refreshed", nameIn(jar[j.JWTCookieName]))
+		assert.Equal(t, testClaims.Id, jar[j.XSRFCookieName])
 	})
 }
 
