@@ -222,12 +222,12 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// GET /login?token=confirmation-jwt&sess=1
 	confClaims, err := e.TokenService.Parse(tkn)
 	if err != nil {
-		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, err, "failed to verify confirmation token")
+		rest.SendErrorJSON(w, scrubTokenFromRequest(r), e.L, http.StatusForbidden, err, "failed to verify confirmation token")
 		return
 	}
 
 	if e.TokenService.IsExpired(confClaims) {
-		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, fmt.Errorf("expired"), "failed to verify confirmation token")
+		rest.SendErrorJSON(w, scrubTokenFromRequest(r), e.L, http.StatusForbidden, fmt.Errorf("expired"), "failed to verify confirmation token")
 		return
 	}
 

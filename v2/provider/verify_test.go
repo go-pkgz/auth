@@ -240,6 +240,42 @@ func TestVerifyHandler_LoginRejectsTokensItDidNotIssue(t *testing.T) {
 	}
 }
 
+// regression: the parse-failure and expired branches logged the request url with the token in it
+func TestVerifyHandler_LoginRejectionKeepsTokenOutOfLog(t *testing.T) {
+	tbl := []struct {
+		name string
+		tkn  string
+	}{
+		{name: "bad signature", tkn: testConfirmedToken + "x"},
+		{name: "expired", tkn: testConfirmedExpired},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			var logged strings.Builder
+			e := VerifyHandler{
+				ProviderName: "test",
+				TokenService: token.NewService(token.Opts{
+					SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+					TokenDuration:  time.Hour,
+					CookieDuration: time.Hour * 24 * 31,
+				}),
+				Issuer: "iss-test",
+				L:      logger.Func(func(format string, args ...any) { fmt.Fprintf(&logged, format+"\n", args...) }),
+			}
+
+			rr := httptest.NewRecorder()
+			req, err := http.NewRequest("GET", "/login?token="+tt.tkn, http.NoBody)
+			require.NoError(t, err)
+			http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
+			assert.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
+			assert.Equal(t, `{"error":"failed to verify confirmation token"}`+"\n", rr.Body.String())
+			assert.NotEmpty(t, logged.String())
+			assert.NotContains(t, logged.String(), tt.tkn)
+		})
+	}
+}
+
 // TestVerifyHandler_PublicFromFlow_RejectsExternalHost drives the public flow:
 // /login?from=... -> sendConfirmation -> email-link click -> /login?token=...
 // -> validator rejects. Catches regressions where sendConfirmation drops the
