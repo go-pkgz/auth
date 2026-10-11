@@ -425,9 +425,8 @@ func TestOauth2LoginRejectsFailedUserInfo(t *testing.T) {
 		}),
 	}
 
-	go func() { _ = oauth.ListenAndServe() }()
-	go func() { _ = ts.ListenAndServe() }()
-	time.Sleep(time.Millisecond * 100) // let them start
+	startServer(t, oauth)
+	startServer(t, ts)
 	defer func() {
 		assert.NoError(t, ts.Close())
 		assert.NoError(t, oauth.Close())
@@ -541,10 +540,8 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHoo
 		}),
 	}
 
-	go func() { _ = oauth.ListenAndServe() }()
-	go func() { _ = ts.ListenAndServe() }()
-
-	time.Sleep(time.Millisecond * 100) // let them start
+	startServer(t, oauth)
+	startServer(t, ts)
 
 	return func() {
 		assert.NoError(t, ts.Close())

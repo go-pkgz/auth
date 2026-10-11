@@ -40,8 +40,8 @@ func TestDevProvider(t *testing.T) {
 	router.Handle("/auth/dev/", http.HandlerFunc(s.Handler))
 
 	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router} //nolint:gosec
+	startServer(t, ts)
 	go devOauth2Srv.Run(context.TODO())
-	go ts.ListenAndServe()
 	defer func() {
 		devOauth2Srv.Shutdown()
 		_ = ts.Shutdown(context.TODO())

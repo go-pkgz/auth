@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -189,4 +190,15 @@ func (n *mockHandler) AuthHandler(w http.ResponseWriter, _ *http.Request) {
 }
 func (n *mockHandler) LogoutHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("logout"))
+}
+
+func startServer(t *testing.T, srv *http.Server) {
+	t.Helper()
+	ln, err := net.Listen("tcp", srv.Addr)
+	require.NoError(t, err, "can't bind test server to %s", srv.Addr)
+	t.Cleanup(func() {
+		_ = srv.Close()
+		_ = ln.Close()
+	})
+	go func() { _ = srv.Serve(ln) }()
 }

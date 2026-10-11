@@ -351,10 +351,8 @@ func prepOauth1Test(t *testing.T, loginPort, authPort int, paramOpts ...func(*Pa
 		}),
 	}
 
-	go func() { _ = oauth.ListenAndServe() }()
-	go func() { _ = ts.ListenAndServe() }()
-
-	time.Sleep(time.Millisecond * 400) // let them start
+	startServer(t, oauth)
+	startServer(t, ts)
 
 	return func() {
 		assert.NoError(t, ts.Close())

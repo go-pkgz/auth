@@ -141,7 +141,7 @@ func TestCustomProvider(t *testing.T) {
 	ctx := t.Context()
 
 	go prov.Run(ctx)
-	go ts.ListenAndServe()
+	startServer(t, ts)
 
 	defer func() {
 		prov.Shutdown()

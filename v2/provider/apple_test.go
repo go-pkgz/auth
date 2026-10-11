@@ -862,10 +862,8 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 		}),
 	}
 
-	go func() { _ = oauth.ListenAndServe() }()
-	go func() { _ = ts.ListenAndServe() }()
-
-	time.Sleep(time.Millisecond * 100) // let them start
+	startServer(t, oauth)
+	startServer(t, ts)
 
 	return func() {
 
