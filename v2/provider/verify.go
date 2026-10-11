@@ -231,9 +231,9 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// only a confirmation token this provider issued may sign someone in. Other tokens are signed
-	// with the same secret, including handshake tokens of the same user::address shape that an
-	// application mails for its own purposes, and none of them prove the holder received this
+	// only a handshake token carrying this provider's name may sign someone in. Other tokens are
+	// signed with the same secret, including handshake tokens of the same user::address shape that
+	// an application mails for its own purposes, and none of them prove the holder received this
 	// provider's confirmation. The token is still a live credential elsewhere, so it is kept out of
 	// the logged URL.
 	if confClaims.Handshake == nil || confClaims.AuthProvider == nil || confClaims.AuthProvider.Name != e.ProviderName {

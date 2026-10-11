@@ -298,7 +298,7 @@ The API for this provider:
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
 
-Only a confirmation token issued by this provider's own confirmation request is accepted for login. Other tokens signed with the same secret are rejected, including handshake tokens an application mints for its own mailed links, session tokens, and confirmations issued by another verify provider.
+Only a signed handshake token that carries this provider's name is accepted for login. Session tokens, confirmations issued by another verify provider, and handshake tokens an application mints without this provider's name are rejected, even though they are signed with the same secret.
 
 #### Confirmation token replay protection
 
