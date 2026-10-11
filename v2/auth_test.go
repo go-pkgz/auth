@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -834,4 +835,47 @@ func uniformImage(img image.Image) bool {
 		}
 	}
 	return true
+}
+
+func TestNewService_PassesCookieOptionsToTokenService(t *testing.T) {
+	// the token.Opts literal in NewService has silently dropped a field twice, bd39e5e3 for
+	// SameSite and 59656e46 for XSRFIgnoreMethods, both in diffs shaped like this one: a
+	// re-indent plus one added key. Nothing failed either time, because nothing asserted the
+	// plumbing rather than the behavior
+	svc := NewService(Opts{
+		PartitionedCookies: true,
+		SecureCookies:      true,
+		SameSiteCookie:     http.SameSiteNoneMode,
+	})
+
+	ts := svc.TokenService()
+	assert.True(t, ts.PartitionedCookies, "PartitionedCookies did not reach the token service")
+	assert.True(t, ts.SecureCookies, "SecureCookies did not reach the token service")
+	assert.Equal(t, http.SameSiteNoneMode, ts.SameSite, "SameSite did not reach the token service")
+}
+
+func TestNewService_WarnsOnPartitionedWithoutSecure(t *testing.T) {
+	// http.SetCookie writes through String and never calls Valid, so this pairing produces a
+	// header the browser silently drops with no error anywhere. The warning is the only signal
+	var logged []string
+	capture := logger.Func(func(format string, args ...any) {
+		logged = append(logged, fmt.Sprintf(format, args...))
+	})
+
+	NewService(Opts{PartitionedCookies: true, SecureCookies: false, Logger: capture})
+	assert.Condition(t, func() bool {
+		for _, l := range logged {
+			if strings.Contains(l, "PartitionedCookies requires SecureCookies") {
+				return true
+			}
+		}
+		return false
+	}, "no warning for Partitioned without Secure, logged: %v", logged)
+
+	logged = nil
+	NewService(Opts{PartitionedCookies: true, SecureCookies: true, Logger: capture})
+	for _, l := range logged {
+		assert.NotContains(t, l, "PartitionedCookies requires SecureCookies",
+			"warned about a correctly configured pairing")
+	}
 }

@@ -473,6 +473,46 @@ func TestAvatar_resize(t *testing.T) {
 
 // uniformImage reports whether every pixel matches the first one, which is what a resize that
 // produced an empty canvas rather than a scaled picture looks like
+func TestGenerateAvatar_DiffersPerUser(t *testing.T) {
+	// the geometry assertions elsewhere accept a generator that ignores its user argument: a single
+	// fixed image decodes, is png, is 300x300 and is not uniform for every caller. The byte counts
+	// this replaced rejected that by accident, since different users gave different lengths. Assert
+	// the pixels differ, not the encoded size, which is the thing that moved with the Go release
+	one, err := GenerateAvatar("user-one")
+	require.NoError(t, err)
+	two, err := GenerateAvatar("user-two")
+	require.NoError(t, err)
+
+	imgOne, _, err := image.Decode(bytes.NewReader(one))
+	require.NoError(t, err)
+	imgTwo, _, err := image.Decode(bytes.NewReader(two))
+	require.NoError(t, err)
+	require.Equal(t, imgOne.Bounds(), imgTwo.Bounds(), "same geometry is the precondition for comparing pixels")
+
+	differs := false
+	b := imgOne.Bounds()
+	for y := b.Min.Y; y < b.Max.Y && !differs; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if imgOne.At(x, y) != imgTwo.At(x, y) {
+				differs = true
+				break
+			}
+		}
+	}
+	assert.True(t, differs, "two users produced pixel-identical identicons, so the user argument is ignored")
+
+	// and the same user twice has to be stable, or avatars churn on every login
+	again, err := GenerateAvatar("user-one")
+	require.NoError(t, err)
+	imgAgain, _, err := image.Decode(bytes.NewReader(again))
+	require.NoError(t, err)
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			require.Equal(t, imgOne.At(x, y), imgAgain.At(x, y), "identicon is not stable for the same user")
+		}
+	}
+}
+
 func uniformImage(img image.Image) bool {
 	b := img.Bounds()
 	first := img.At(b.Min.X, b.Min.Y)
