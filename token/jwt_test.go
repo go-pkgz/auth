@@ -280,15 +280,15 @@ func TestJWT_CookieAttributesFromOpts(t *testing.T) {
 
 	t.Run("reset", func(t *testing.T) {
 		// the removal pair has to repeat these attributes, though not because they are part of
-		// the cookie's identity: that is name, domain and path alone, which is why Reset writing
-		// HttpOnly false over a cookie Set wrote HttpOnly true still replaces it. The reason is
-		// that Chrome and Firefox reject SameSite=None without Secure outright, and a removal
-		// cookie the browser discards leaves the original in place
+		// the cookie's identity: that is name, domain and path alone. The reason is that Chrome and
+		// Firefox reject SameSite=None without Secure outright, and a removal cookie the browser
+		// discards leaves the original in place
 		rr := httptest.NewRecorder()
 		j.Reset(rr)
 
 		cookies := rr.Result().Cookies()
 		checkPair(t, cookies)
+		assert.True(t, cookies[0].HttpOnly, "a browser rejects a __Http- prefixed removal cookie without HttpOnly")
 		for _, c := range cookies {
 			assert.Empty(t, c.Value, "%s still carries a value", c.Name)
 			assert.Equal(t, -1, c.MaxAge, "%s does not expire", c.Name)
@@ -645,7 +645,7 @@ func TestJWT_Reset(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	assert.Equal(t, "jc1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0", resp.Header.Get("Set-Cookie"))
+	assert.Equal(t, "jc1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; HttpOnly", resp.Header.Get("Set-Cookie"))
 	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
 }
 

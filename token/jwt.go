@@ -362,7 +362,8 @@ func (j *Service) IsExpired(claims Claims) bool {
 
 // Reset token's cookies
 func (j *Service) Reset(w http.ResponseWriter) {
-	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: "", HttpOnly: false, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // expired removal cookie, carries no value
+	// HttpOnly as on the live cookie: a browser rejects an expiry for a __Http- prefixed name without it
+	jwtCookie := http.Cookie{Name: j.JWTCookieName, Value: "", HttpOnly: true, Path: "/", Domain: j.JWTCookieDomain, //nolint:gosec // Secure and SameSite come from service config
 		MaxAge: -1, Expires: time.Unix(0, 0), Secure: j.SecureCookies, SameSite: j.SameSite, Partitioned: j.PartitionedCookies}
 	http.SetCookie(w, &jwtCookie)
 
