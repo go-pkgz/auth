@@ -240,36 +240,54 @@ func TestVerifyHandler_LoginRejectsTokensItDidNotIssue(t *testing.T) {
 	}
 }
 
-// regression: the parse-failure and expired branches logged the request url with the token in it
-func TestVerifyHandler_LoginRejectionKeepsTokenOutOfLog(t *testing.T) {
+// regression: login error branches logged the request url with the token in it
+func TestVerifyHandler_LoginErrorsKeepTokenOutOfLog(t *testing.T) {
 	tbl := []struct {
-		name string
-		tkn  string
+		name        string
+		tkn         string
+		avatarErr   error
+		secretReads int
+		status      int
+		body        string
 	}{
-		{name: "bad signature", tkn: testConfirmedToken + "x"},
-		{name: "expired", tkn: testConfirmedExpired},
+		{name: "bad signature", tkn: testConfirmedToken + "x", status: http.StatusForbidden, body: "failed to verify confirmation token"},
+		{name: "expired", tkn: testConfirmedExpired, status: http.StatusForbidden, body: "failed to verify confirmation token"},
+		{name: "bad handshake id", tkn: testConfirmedBadIDToken, status: http.StatusBadRequest, body: "invalid handshake token"},
+		{name: "avatar save failed", tkn: testConfirmedToken, avatarErr: fmt.Errorf("avatar save error"),
+			status: http.StatusInternalServerError, body: "failed to save avatar to proxy"},
+		{name: "set token failed", tkn: testConfirmedToken, secretReads: 1, status: http.StatusInternalServerError, body: "failed to set token"},
 	}
 
 	for _, tt := range tbl {
 		t.Run(tt.name, func(t *testing.T) {
 			var logged strings.Builder
+			reads := 0
 			e := VerifyHandler{
 				ProviderName: "test",
 				TokenService: token.NewService(token.Opts{
-					SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+					SecretReader: token.SecretFunc(func(string) (string, error) {
+						reads++
+						if tt.secretReads > 0 && reads > tt.secretReads {
+							return "", fmt.Errorf("secret unavailable")
+						}
+						return "secret", nil
+					}),
 					TokenDuration:  time.Hour,
 					CookieDuration: time.Hour * 24 * 31,
 				}),
 				Issuer: "iss-test",
 				L:      logger.Func(func(format string, args ...any) { fmt.Fprintf(&logged, format+"\n", args...) }),
 			}
+			if tt.avatarErr != nil {
+				e.AvatarSaver = mockAvatarSaverVerif{err: tt.avatarErr}
+			}
 
 			rr := httptest.NewRecorder()
 			req, err := http.NewRequest("GET", "/login?token="+tt.tkn, http.NoBody)
 			require.NoError(t, err)
 			http.HandlerFunc(e.LoginHandler).ServeHTTP(rr, req)
-			assert.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
-			assert.Equal(t, `{"error":"failed to verify confirmation token"}`+"\n", rr.Body.String())
+			assert.Equal(t, tt.status, rr.Code, rr.Body.String())
+			assert.Equal(t, `{"error":"`+tt.body+`"}`+"\n", rr.Body.String())
 			assert.NotEmpty(t, logged.String())
 			assert.NotContains(t, logged.String(), tt.tkn)
 		})
