@@ -366,7 +366,7 @@ Contact [@BotFather](https://t.me/botfather) and follow his instructions to crea
 
 Next initialize TelegramHandler with following parameters:
 * `ProviderName` - Any unique name to distinguish between providers
-* `SuccessMsg` - Message sent to user on successfull authentication
+* `SuccessMsg` - Message sent to user on successful authentication
 * `ErrorMsg` - Message sent on errors (e.g. login request expired)
 * `Telegram` - Telegram API implementation. Use provider.NewTelegramAPI with following arguments
 	1. The secret token bot father gave you
