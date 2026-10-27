@@ -123,6 +123,41 @@ func TestDirect_LoginHandlerCustomUserID(t *testing.T) {
 	assert.Equal(t, `{"name":"myuser","id":"test_18c4eec1ecbe23902609e999c4d3da997e7ac10f","picture":""}`+"\n", rr.Body.String())
 }
 
+// regression: a 40-hex username skipped hashing and got the id of the user whose sha1 it spells.
+func TestDirect_LoginHandlerHexUserID(t *testing.T) {
+	const aliceHash = "522b276a356bdf39013dfabea2cd43e141ecc9e8"
+	tbl := []struct {
+		name   string
+		idFunc UserIDFunc
+		wantID string
+	}{
+		{name: "hex username is hashed", wantID: "test_c7ce375e45f37b15ba20069e4c26e87af25a6523"},
+		{name: "custom id func keeps hex passthrough", idFunc: func(string, *http.Request) string { return aliceHash }, wantID: "test_" + aliceHash},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			d := DirectHandler{
+				ProviderName: "test",
+				CredChecker:  &mockCredsChecker{ok: true},
+				TokenService: token.NewService(token.Opts{
+					SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+					TokenDuration:  time.Hour,
+					CookieDuration: time.Hour,
+				}),
+				Issuer:     "iss-test",
+				L:          logger.NoOp,
+				UserIDFunc: tt.idFunc,
+			}
+			rr := httptest.NewRecorder()
+			req, err := http.NewRequest("GET", "/login?user="+aliceHash+"&passwd=pppp", http.NoBody)
+			require.NoError(t, err)
+			d.LoginHandler(rr, req)
+			require.Equal(t, http.StatusOK, rr.Code)
+			assert.Equal(t, `{"name":"`+aliceHash+`","id":"`+tt.wantID+`","picture":""}`+"\n", rr.Body.String())
+		})
+	}
+}
+
 // TestDirect_LoginHandlerSessionOnly proves the documented session parameter, and the
 // legacy sess spelling, both produce a session cookie instead of a persistent one.
 func TestDirect_LoginHandlerSessionOnly(t *testing.T) {
