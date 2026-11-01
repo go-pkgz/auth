@@ -439,7 +439,7 @@ This provider brings two extra functions:
 
 1. Adds ability to use any third-party oauth2 providers in addition to the list of directly supported. Included [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L113) demonstrates how to do it for bitbucket.
 In order to add a new oauth2 provider following input is required:
-	* `Name` - any name is allowed except the names from list of supported providers. It is possible to register more than one client for one given oauth2 provider (for example using different names `bitbucket_dev` and `bitbucket_prod`)
+	* `Name` - any name is allowed except the names from list of supported providers, unless the custom provider replaces the built-in registration of that name, as in [Google user email](#google-user-email). It is possible to register more than one client for one given oauth2 provider (for example using different names `bitbucket_dev` and `bitbucket_prod`)
 	* `Client` - ID and secret of client
 	* `Endpoint` - auth URL and token URL. This information could be obtained from auth2 provider page
 	* `InfoURL` - oauth2 provider API method to read information of logged in user. This method could be found in documentation of oauth2 provider (e.g. for bitbucket https://developer.atlassian.com/bitbucket/api/2/reference/resource/user)
@@ -720,6 +720,40 @@ Authentication handled by external providers. You should setup oauth2 for all (o
 7.  Take note of the **Client ID** and **Client Secret**
 
 _instructions for google oauth2 setup borrowed from [oauth2_proxy](https://github.com/bitly/oauth2_proxy)_
+
+##### Google user email
+
+The built-in Google provider requests only the `userinfo.profile` scope, and Google includes `email` in the user info response only when the email scope was granted. The token therefore has no email, and mapping `email` with `AddProviderWithUserAttributes` gives an empty value. The minimal scope is deliberate, see [#37](https://github.com/go-pkgz/auth/issues/37).
+
+To get the email, register Google as a custom provider in place of `service.AddProvider("google", ...)`. Under the name `google` the registered callback URI stays `/auth/google/callback`, and the user id is computed the same way as by the built-in provider, so existing users keep their ids. `google.Endpoint` comes from `golang.org/x/oauth2/google`.
+
+```go
+c := auth.Client{Cid: os.Getenv("GOOGLE_CID"), Csecret: os.Getenv("GOOGLE_CSEC")}
+service.AddCustomProvider("google", c, provider.CustomHandlerOpt{
+	Endpoint: google.Endpoint,
+	InfoURL:  "https://www.googleapis.com/oauth2/v3/userinfo",
+	Scopes: []string{
+		"https://www.googleapis.com/auth/userinfo.profile",
+		"https://www.googleapis.com/auth/userinfo.email",
+	},
+	MapUserFn: func(data provider.UserData, _ []byte) token.User {
+		u := token.User{
+			ID:      "google_" + token.HashID(sha1.New(), data.Value("sub")),
+			Name:    data.Value("name"),
+			Picture: data.Value("picture"),
+		}
+		if u.Name == "" {
+			u.Name = "noname_" + u.ID[8:12]
+		}
+		if data.Value("email_verified") == "true" {
+			u.Email = data.Value("email")
+		}
+		return u
+	},
+})
+```
+
+The example sets `Email` only for an address Google reports as verified. Read the [email-as-identity caveat](#email-as-identity-caveat) before keying application records on it.
 
 #### Microsoft Auth Provider
 
