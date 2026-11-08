@@ -371,6 +371,7 @@ Next initialize TelegramHandler with following parameters:
 * `Telegram` - Telegram API implementation. Use provider.NewTelegramAPI with following arguments
 	1. The secret token bot father gave you
 	2. An http.Client for accessing Telegram API's
+* `ChatIDAttribute` - optional. The user ID stays the hashed `telegram_...` value; when this key is set, a fresh login also stores the user's raw Telegram chat ID as a string attribute under it (read with `user.StrAttr(key)`), so the app can message the user through the bot. Leave it empty unless the app needs the raw ID: the attribute goes into the JWT and the `/auth/user` and login responses. Users with tokens issued before the key was set get the attribute on their next login.
 
 ```go
 token := os.Getenv("TELEGRAM_TOKEN")
