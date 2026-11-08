@@ -502,6 +502,83 @@ func TestTelegramProcessUpdates_BotTokenNeverInUserPicture(t *testing.T) {
 	assert.NotContains(t, logged, botToken, "no log line must contain the bot token")
 }
 
+func TestTelegramProcessUpdates_ChatIDAttribute(t *testing.T) {
+	tests := []struct {
+		name     string
+		attr     string
+		wantAttr bool
+	}{
+		{name: "empty key leaves the chat id out", attr: ""},
+		{name: "set key stores the chat id", attr: "telegram_chat_id", wantAttr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			avatarSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write(tinyPNG)
+			}))
+			defer avatarSrv.Close()
+			m := &TelegramAPIMock{
+				AvatarFunc:  func(context.Context, int) (string, error) { return avatarSrv.URL + "/file/botX/photo.jpg", nil },
+				SendFunc:    func(context.Context, int, string) error { return nil },
+				BotInfoFunc: botInfoFunc,
+			}
+
+			jwtSvc := authtoken.NewService(authtoken.Opts{
+				SecretReader:   authtoken.SecretFunc(func(string) (string, error) { return "secret", nil }),
+				TokenDuration:  time.Hour,
+				CookieDuration: time.Hour * 24,
+			})
+			const tok = "registered-token"
+			th := &TelegramHandler{
+				ProviderName:    "telegram",
+				ChatIDAttribute: tt.attr,
+				Telegram:        m,
+				TokenService:    jwtSvc,
+				AvatarSaver:     &mockAvatarSaver{},
+				L:               t,
+				SuccessMsg:      "ok",
+			}
+			th.requests.data = map[string]tgAuthRequest{tok: {expires: time.Now().Add(time.Hour)}}
+
+			updates := &telegramUpdate{}
+			require.NoError(t, json.Unmarshal(fmt.Appendf(nil, getUpdatesResp, tok), updates))
+			th.processUpdates(context.Background(), updates)
+
+			w := httptest.NewRecorder()
+			th.LoginHandler(w, httptest.NewRequest("GET", "/?token="+tok, http.NoBody))
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+			var resp authtoken.User
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			assert.Contains(t, resp.ID, "telegram_", "id stays hashed")
+			assert.NotContains(t, resp.ID, "313131313", "id must not carry the raw chat id")
+
+			// the attribute must reach the JWT the app reads back, not only the login response
+			r := httptest.NewRequest("GET", "/", http.NoBody)
+			for _, c := range w.Result().Cookies() {
+				r.AddCookie(c)
+			}
+			for _, c := range w.Result().Cookies() {
+				if c.Name == "XSRF-TOKEN" {
+					r.Header.Set("X-XSRF-TOKEN", c.Value)
+				}
+			}
+			claims, _, err := jwtSvc.Get(r)
+			require.NoError(t, err)
+			require.NotNil(t, claims.User)
+
+			if !tt.wantAttr {
+				assert.Empty(t, resp.Attributes, "no attributes expected in the login response")
+				assert.Empty(t, claims.User.Attributes, "no attributes expected in the token")
+				return
+			}
+			assert.Equal(t, "313131313", resp.StrAttr(tt.attr))
+			assert.Equal(t, "313131313", claims.User.StrAttr(tt.attr))
+		})
+	}
+}
+
 func TestTelegramLogout(t *testing.T) {
 	m := &TelegramAPIMock{
 		GetUpdatesFunc: func(ctx context.Context) (*telegramUpdate, error) {
