@@ -547,6 +547,27 @@ _This technique used in the [example](https://github.com/go-pkgz/auth/blob/maste
 The process can be simplified by doing all checks directly in `Validator`, but depends on particular case such solution
 can be too expensive because `Validator` runs on each request as a part of auth middleware. In contrast, `ClaimsUpdater` called on token creation/refresh only.
 
+### Linking an anonymous user after login
+
+An app that lets users start anonymously (a direct provider, see [Direct authentication](#direct-authentication)) may want to move what they created to the account they log in with later. The library keeps no users, so the move is the app's job, and it must not happen automatically right after login: the email confirmation link and the Telegram token work from any browser, so an attacker can send his own confirmation link to a user who is in the middle of linking, that browser gets logged into the attacker's account, and an automatic merge would move the anonymous data there.
+
+A safe flow, implemented and tested in [`v2/linking_example_test.go`](v2/linking_example_test.go):
+
+1. Make anonymous ids unguessable. With `AddDirectProvider` the id is a hash of the name, so anyone typing the same name gets the same id. Use `AddDirectProviderWithUserIDFunc` and add a random part:
+
+    ```go
+    service.AddDirectProviderWithUserIDFunc("anonymous",
+        provider.CredCheckerFunc(func(string, string) (bool, error) { return true, nil }), // any name, no password
+        func(user string, _ *http.Request) string { return user + "::" + rand.Text() })  // crypto/rand
+    ```
+
+2. Before redirecting to `/auth/<provider>/login`, call your own endpoint with POST, behind `Middleware().Auth` and with the `X-XSRF-TOKEN` header. It checks that the current user is anonymous, stores a short-lived pending record server-side (a random nonce, the anonymous id, for email login the address the user is about to confirm, an expiration) and sets the nonce in an `HttpOnly`, `SameSite=Lax` cookie. Don't read the anonymous token inside the login flow itself: the oauth providers replace the JWT cookie with a handshake token at the start of the login.
+3. After the login, if the request carries the nonce cookie and the pending record is still alive, show `Move your anonymous data to <account>?` and remember the exact user id shown. Only a confirmation POST (with the same XSRF header) moves the data. The POST carries the user id the screen showed, and the move happens only when it equals both the current user id and the last id shown, so an old screen cannot confirm after the browser was logged into another account. Move the data and delete the pending record in one transaction, so the move cannot run twice.
+
+The confirmation screen must show something an attacker cannot fake, and the display name is not enough: for email login it comes from the `user` query parameter. For email, bind the identity in step 2: keep the typed address and accept only the user id `"email_" + token.HashID(sha1.New(), address)`.
+
+The endpoints of steps 2 and 3 must reject a token passed as `?token=` or in the JWT header. The middleware accepts those before the cookie and does not check the XSRF header for them.
+
 ### Multi-tenant services and support for different audiences
 
 For complex systems a single authenticator may serve multiple distinct subsystems or multiple set of independent users. For example some SaaS offerings may need to provide different authentications for different customers and prevent use of tokens/cookies made by another customer.
