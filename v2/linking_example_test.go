@@ -26,35 +26,67 @@ import (
 // afterwards, as described in the README section "Linking an anonymous user after login".
 // auth keeps no users, so the pending link and the data live in the app.
 type linkApp struct {
-	mu      sync.Mutex
-	pending map[string]*pendingLink // by nonce
-	data    map[string][]string     // app records by user id
+	mu        sync.Mutex
+	jwtQuery  string                  // Opts.JWTQuery, "token" by default
+	jwtHeader string                  // Opts.JWTHeaderKey, "X-JWT" by default
+	providers map[string]bool         // providers a link may move the data to
+	pending   map[string]*pendingLink // by nonce
+	data      map[string][]string     // app records by user id
 }
 
 type pendingLink struct {
-	anonID  string
-	address string // email address typed when the link started, binds the identity allowed to receive the data
-	shownTo string // user id the confirmation screen named
-	expires time.Time
+	anonID   string
+	provider string // provider the user is about to log in with, only its users can receive the data
+	address  string // for email, the address typed at start, only its user id can receive the data
+	shownTo  string // user id the confirmation screen named
+	expires  time.Time
 }
 
 const linkCookie = "link_nonce"
 
-func newLinkApp() *linkApp {
-	return &linkApp{pending: map[string]*pendingLink{}, data: map[string][]string{}}
+// newLinkApp takes the JWT query and header names from Opts. Opts keeps them empty when left to the
+// library defaults, and an empty name would make cookieTokenOnly match nothing, so it falls back to them.
+func newLinkApp(jwtQuery, jwtHeader string, providers ...string) *linkApp {
+	if jwtQuery == "" {
+		jwtQuery = "token"
+	}
+	if jwtHeader == "" {
+		jwtHeader = "X-JWT"
+	}
+	a := &linkApp{jwtQuery: jwtQuery, jwtHeader: jwtHeader, providers: map[string]bool{},
+		pending: map[string]*pendingLink{}, data: map[string][]string{}}
+	for _, p := range providers {
+		a.providers[p] = true
+	}
+	return a
 }
 
-// cookieTokenOnly rejects a token passed as ?token= or in the JWT header: the middleware accepts those
+// cookieTokenOnly rejects a token passed in the query or the JWT header: the middleware accepts those
 // before the cookie and checks no XSRF header for them.
-func cookieTokenOnly(r *http.Request) bool {
-	return r.URL.Query().Get("token") == "" && r.Header.Get("X-JWT") == ""
+func (a *linkApp) cookieTokenOnly(r *http.Request) bool {
+	return r.URL.Query().Get(a.jwtQuery) == "" && r.Header.Get(a.jwtHeader) == ""
+}
+
+// accepts tells whether userID may receive the data. The display name is no proof, for email it comes
+// from the user query parameter. An email link binds the exact address typed at start. Any other
+// provider binds only the provider, so its user has to recognize the account on the confirmation screen.
+func (p *pendingLink) accepts(userID string) bool {
+	if p.provider == "email" {
+		return userID == "email_"+token.HashID(sha1.New(), p.address) //nolint:gosec
+	}
+	return strings.HasPrefix(userID, p.provider+"_")
 }
 
 // start runs behind the auth middleware, before the frontend sends an anonymous user to a real provider
 func (a *linkApp) start(w http.ResponseWriter, r *http.Request) {
 	user := token.MustGetUserInfo(r)
-	if r.Method != http.MethodPost || !cookieTokenOnly(r) || !strings.HasPrefix(user.ID, "anonymous_") {
+	if r.Method != http.MethodPost || !a.cookieTokenOnly(r) || !strings.HasPrefix(user.ID, "anonymous_") {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	prov, address := r.FormValue("provider"), r.FormValue("address")
+	if !a.providers[prov] || (prov == "email") != (address != "") {
+		http.Error(w, "a known provider is required, and an address for email only", http.StatusBadRequest)
 		return
 	}
 	b := make([]byte, 16)
@@ -64,7 +96,7 @@ func (a *linkApp) start(w http.ResponseWriter, r *http.Request) {
 	}
 	nonce := hex.EncodeToString(b)
 	a.mu.Lock()
-	a.pending[nonce] = &pendingLink{anonID: user.ID, address: r.FormValue("address"), expires: time.Now().Add(10 * time.Minute)}
+	a.pending[nonce] = &pendingLink{anonID: user.ID, provider: prov, address: address, expires: time.Now().Add(10 * time.Minute)}
 	a.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: linkCookie, Value: nonce, Path: "/", HttpOnly: true, Secure: r.TLS != nil,
 		SameSite: http.SameSiteLaxMode, MaxAge: 600})
@@ -87,7 +119,9 @@ func (a *linkApp) lookup(r *http.Request) (*pendingLink, string) {
 // confirm shows on GET which account the data would move to, and moves it on POST, both behind the middleware
 func (a *linkApp) confirm(w http.ResponseWriter, r *http.Request) {
 	user := token.MustGetUserInfo(r)
-	if !cookieTokenOnly(r) || strings.HasPrefix(user.ID, "anonymous_") {
+	// a confirm by the anonymous user itself would append the data to itself and then delete it.
+	// accepts refuses it too while "anonymous" is not a link provider, this check does not depend on that.
+	if !a.cookieTokenOnly(r) || strings.HasPrefix(user.ID, "anonymous_") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -98,15 +132,13 @@ func (a *linkApp) confirm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no pending link", http.StatusConflict)
 		return
 	}
+	if !p.accepts(user.ID) {
+		http.Error(w, "logged in with another account than the link was started for", http.StatusForbidden)
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet:
-		// the display name is not proof: for email it comes from the user query parameter.
-		// bind the identity to the address typed at start instead.
-		if p.address != "" && user.ID != "email_"+token.HashID(sha1.New(), p.address) { //nolint:gosec
-			http.Error(w, "logged in as a different address", http.StatusForbidden)
-			return
-		}
 		p.shownTo = user.ID
 		_ = json.NewEncoder(w).Encode(map[string]string{"move_to": user.ID})
 	case http.MethodPost:
@@ -134,23 +166,31 @@ type linkEnv struct {
 	letter map[string]string // last confirmation token sent, by address
 }
 
+// non-default names, so a check hardcoding "token" and "X-JWT" fails the tests
+const linkJWTQuery, linkJWTHeader = "jwt", "X-Link-JWT"
+
 func newLinkEnv(t *testing.T) *linkEnv {
 	t.Helper()
-	env := &linkEnv{app: newLinkApp(), letter: map[string]string{}}
 	ts := httptest.NewUnstartedServer(nil)
-	env.url = "http://" + ts.Listener.Addr().String()
-
-	svc := NewService(Opts{
+	opts := Opts{
 		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 		TokenDuration:  time.Hour,
 		CookieDuration: time.Hour,
 		Issuer:         "link-test",
-		URL:            env.url,
-	})
+		URL:            "http://" + ts.Listener.Addr().String(),
+		JWTQuery:       linkJWTQuery,
+		JWTHeaderKey:   linkJWTHeader,
+	}
+	env := &linkEnv{url: opts.URL, app: newLinkApp(opts.JWTQuery, opts.JWTHeaderKey, "email", "password"),
+		letter: map[string]string{}}
+	svc := NewService(opts)
 	// anonymous ids carry a random part, so a second user typing the same name gets another id
 	svc.AddDirectProviderWithUserIDFunc("anonymous",
 		provider.CredCheckerFunc(func(string, string) (bool, error) { return true, nil }),
 		func(user string, _ *http.Request) string { return user + "::" + rand.Text() })
+	svc.AddDirectProvider("password", provider.CredCheckerFunc(func(user, password string) (bool, error) {
+		return password == "pw-"+user, nil
+	}))
 	svc.AddVerifProvider("email", "{{.Token}}", provider.SenderFunc(func(address, text string) error {
 		env.mu.Lock()
 		env.letter[address] = text
@@ -242,6 +282,11 @@ func (b *browser) loginAnonymous(name string) string {
 	return b.user().ID
 }
 
+func (b *browser) startLink(form url.Values) {
+	code, body := b.do(http.MethodPost, "/link/start", form)
+	require.Equal(b.t, http.StatusNoContent, code, body)
+}
+
 // requestEmailLink asks for a confirmation letter, from any browser, and returns the token sent to address
 func (b *browser) requestEmailLink(name, address string) string {
 	code, body := b.do(http.MethodGet, "/auth/email/login?aud=link-test&user="+url.QueryEscape(name)+
@@ -257,7 +302,20 @@ func (b *browser) openEmailLink(tkn string) {
 	require.Equal(b.t, http.StatusOK, code, body)
 }
 
+// openPasswordLink opens the login link of a password account, which its owner can send to anyone
+func (b *browser) openPasswordLink(name string) {
+	code, body := b.do(http.MethodGet, "/auth/password/login?aud=link-test&user="+url.QueryEscape(name)+
+		"&passwd="+url.QueryEscape("pw-"+name), nil)
+	require.Equal(b.t, http.StatusOK, code, body)
+}
+
 func emailID(address string) string { return "email_" + token.HashID(sha1.New(), address) } //nolint:gosec
+
+func emailLink(address string) url.Values {
+	return url.Values{"provider": {"email"}, "address": {address}}
+}
+
+var passwordLink = url.Values{"provider": {"password"}}
 
 func TestLinkAnonymousUser(t *testing.T) {
 	env := newLinkEnv(t)
@@ -268,8 +326,7 @@ func TestLinkAnonymousUser(t *testing.T) {
 
 	code, _ := victim.do(http.MethodGet, "/link/start", nil)
 	assert.Equal(t, http.StatusForbidden, code, "start is POST only, so a plain link cannot trigger it")
-	code, body := victim.do(http.MethodPost, "/link/start", url.Values{"address": {"victim@example.com"}})
-	require.Equal(t, http.StatusNoContent, code, body)
+	victim.startLink(emailLink("victim@example.com"))
 
 	victim.openEmailLink(victim.requestEmailLink("victim", "victim@example.com"))
 	require.Equal(t, emailID("victim@example.com"), victim.user().ID)
@@ -278,7 +335,7 @@ func TestLinkAnonymousUser(t *testing.T) {
 	code, _ = victim.do(http.MethodPost, "/link/confirm", moveTo)
 	assert.Equal(t, http.StatusConflict, code, "nothing moves before the confirmation screen named the account")
 
-	code, body = victim.do(http.MethodGet, "/link/confirm", nil)
+	code, body := victim.do(http.MethodGet, "/link/confirm", nil)
 	require.Equal(t, http.StatusOK, code, body)
 	assert.Contains(t, body, emailID("victim@example.com"))
 
@@ -289,13 +346,52 @@ func TestLinkAnonymousUser(t *testing.T) {
 	assert.Equal(t, []string{"draft 1", "draft 2"}, env.app.data[emailID("victim@example.com")])
 	assert.Empty(t, env.app.data[anonID])
 
-	// replaying the nonce, as a second tab or a captured cookie would, finds nothing to move
 	victim.setCookie(nonce)
 	code, _ = victim.do(http.MethodPost, "/link/confirm", moveTo)
-	assert.Equal(t, http.StatusConflict, code, "a link is consumed once")
+	assert.Equal(t, http.StatusConflict, code, "a replayed nonce, from a second tab or a captured cookie, finds nothing to move")
 
-	code, _ = victim.do(http.MethodPost, "/link/start", url.Values{"address": {"victim@example.com"}})
+	code, _ = victim.do(http.MethodPost, "/link/start", emailLink("victim@example.com"))
 	assert.Equal(t, http.StatusForbidden, code, "only an anonymous user can start a link")
+}
+
+func TestLinkAnonymousUser_PasswordProvider(t *testing.T) {
+	env := newLinkEnv(t)
+	victim := env.browser(t)
+	anonID := victim.loginAnonymous("guest")
+	env.app.data[anonID] = []string{"draft"}
+	victim.startLink(passwordLink)
+
+	victim.openPasswordLink("alice")
+	alice := victim.user().ID
+	code, body := victim.do(http.MethodGet, "/link/confirm", nil)
+	require.Equal(t, http.StatusOK, code, body)
+	code, body = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {alice}})
+	require.Equal(t, http.StatusNoContent, code, body)
+	assert.Equal(t, []string{"draft"}, env.app.data[alice])
+	assert.Empty(t, env.app.data[anonID])
+}
+
+func TestLinkAnonymousUser_StartNeedsKnownProvider(t *testing.T) {
+	tbl := []struct {
+		name string
+		form url.Values
+	}{
+		{"no provider", nil},
+		{"unknown provider", url.Values{"provider": {"github"}}},
+		{"anonymous provider", url.Values{"provider": {"anonymous"}}},
+		{"email without address", url.Values{"provider": {"email"}}},
+		{"address for a provider other than email", url.Values{"provider": {"password"}, "address": {"a@example.com"}}},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newLinkEnv(t)
+			guest := env.browser(t)
+			guest.loginAnonymous("guest")
+			code, _ := guest.do(http.MethodPost, "/link/start", tt.form)
+			assert.Equal(t, http.StatusBadRequest, code)
+			assert.Empty(t, env.app.pending)
+		})
+	}
 }
 
 func TestLinkAnonymousUser_AttackerConfirmationLink(t *testing.T) {
@@ -303,67 +399,79 @@ func TestLinkAnonymousUser_AttackerConfirmationLink(t *testing.T) {
 	victim := env.browser(t)
 	anonID := victim.loginAnonymous("guest")
 	env.app.data[anonID] = []string{"draft"}
-	code, body := victim.do(http.MethodPost, "/link/start", url.Values{"address": {"victim@example.com"}})
-	require.Equal(t, http.StatusNoContent, code, body)
+	victim.startLink(emailLink("victim@example.com"))
 
-	// the attacker requests a letter for his own address and gets the victim to open it,
-	// which logs the victim's browser into the attacker's account
 	attackerLink := env.browser(t).requestEmailLink("victim", "attacker@example.com")
 	victim.openEmailLink(attackerLink)
-	require.Equal(t, emailID("attacker@example.com"), victim.user().ID)
+	require.Equal(t, emailID("attacker@example.com"), victim.user().ID, "the attacker's letter logs the victim's browser in")
 
-	code, _ = victim.do(http.MethodGet, "/link/confirm", nil)
+	code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
 	assert.Equal(t, http.StatusForbidden, code, "the account must match the address typed at start")
 	code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {emailID("attacker@example.com")}})
-	assert.Equal(t, http.StatusConflict, code)
+	assert.Equal(t, http.StatusForbidden, code)
 	assert.Equal(t, []string{"draft"}, env.app.data[anonID], "the data stays with the anonymous user")
 	assert.Empty(t, env.app.data[emailID("attacker@example.com")])
 }
 
-func TestLinkAnonymousUser_ConfirmNeedsRealLogin(t *testing.T) {
-	// without an address to bind, as for Telegram or an oauth provider, confirm still refuses an anonymous user
-	env := newLinkEnv(t)
-	guest := env.browser(t)
-	anonID := guest.loginAnonymous("guest")
-	env.app.data[anonID] = []string{"draft"}
-	code, body := guest.do(http.MethodPost, "/link/start", nil)
-	require.Equal(t, http.StatusNoContent, code, body)
-
-	code, _ = guest.do(http.MethodGet, "/link/confirm", nil)
-	assert.Equal(t, http.StatusForbidden, code)
-	code, _ = guest.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {anonID}})
-	assert.Equal(t, http.StatusForbidden, code)
-	assert.Equal(t, []string{"draft"}, env.app.data[anonID])
-}
-
-func TestLinkAnonymousUser_AccountSwitchAfterConfirmScreen(t *testing.T) {
-	// no address to bind, as for Telegram or an oauth provider. The screen showed account A, then the
-	// browser got logged into B (an attacker's Telegram or email link) and a page reload showed B.
-	// A click on the old screen still names A, and must not move the data to B.
+func TestLinkAnonymousUser_LoginWithAnotherProvider(t *testing.T) {
 	env := newLinkEnv(t)
 	victim := env.browser(t)
 	anonID := victim.loginAnonymous("guest")
 	env.app.data[anonID] = []string{"draft"}
-	code, body := victim.do(http.MethodPost, "/link/start", nil)
-	require.Equal(t, http.StatusNoContent, code, body)
+	victim.startLink(passwordLink)
 
-	victim.openEmailLink(victim.requestEmailLink("victim", "a@example.com"))
-	code, body = victim.do(http.MethodGet, "/link/confirm", nil)
-	require.Equal(t, http.StatusOK, code, body)
-	require.Contains(t, body, emailID("a@example.com"))
+	victim.openEmailLink(env.browser(t).requestEmailLink("victim", "attacker@example.com"))
+	require.Equal(t, emailID("attacker@example.com"), victim.user().ID, "the attacker's letter logs the victim's browser in")
 
-	victim.openEmailLink(env.browser(t).requestEmailLink("victim", "b@example.com"))
-	require.Equal(t, emailID("b@example.com"), victim.user().ID)
-
-	code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {emailID("b@example.com")}})
-	assert.Equal(t, http.StatusConflict, code, "B was never shown, so naming B must not move the data")
-
-	code, body = victim.do(http.MethodGet, "/link/confirm", nil) // a reload in another tab shows B
-	require.Equal(t, http.StatusOK, code, body)
-	code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {emailID("a@example.com")}})
-	assert.Equal(t, http.StatusConflict, code, "the old screen names A while B is logged in")
+	code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
+	assert.Equal(t, http.StatusForbidden, code, "a link started for the password provider must not offer an email account")
+	code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {emailID("attacker@example.com")}})
+	assert.Equal(t, http.StatusForbidden, code)
 	assert.Equal(t, []string{"draft"}, env.app.data[anonID], "the data stays with the anonymous user")
-	assert.Empty(t, env.app.data[emailID("b@example.com")])
+	assert.Empty(t, env.app.data[emailID("attacker@example.com")])
+}
+
+func TestLinkAnonymousUser_ConfirmNeedsRealLogin_EvenWithAnonymousProviderAllowed(t *testing.T) {
+	env := newLinkEnv(t)
+	env.app.providers["anonymous"] = true
+	guest := env.browser(t)
+	anonID := guest.loginAnonymous("guest")
+	env.app.data[anonID] = []string{"draft"}
+	guest.startLink(url.Values{"provider": {"anonymous"}})
+
+	code, _ := guest.do(http.MethodGet, "/link/confirm", nil)
+	assert.Equal(t, http.StatusForbidden, code, "confirm refuses a user who is still anonymous, even when accepts lets him through")
+	code, _ = guest.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {anonID}})
+	assert.Equal(t, http.StatusForbidden, code, "confirm refuses a user who is still anonymous, even when accepts lets him through")
+	assert.Equal(t, []string{"draft"}, env.app.data[anonID])
+}
+
+func TestLinkAnonymousUser_AccountSwitchAfterConfirmScreen(t *testing.T) {
+	env := newLinkEnv(t)
+	victim := env.browser(t)
+	anonID := victim.loginAnonymous("guest")
+	env.app.data[anonID] = []string{"draft"}
+	victim.startLink(passwordLink)
+
+	victim.openPasswordLink("alice")
+	alice := victim.user().ID
+	code, body := victim.do(http.MethodGet, "/link/confirm", nil)
+	require.Equal(t, http.StatusOK, code, body)
+	require.Contains(t, body, alice)
+
+	victim.openPasswordLink("mallory")
+	mallory := victim.user().ID
+	require.NotEqual(t, alice, mallory, "the attacker's login link logs the victim's browser into his account")
+
+	code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {mallory}})
+	assert.Equal(t, http.StatusConflict, code, "an account the screen never named must not receive the data")
+
+	code, body = victim.do(http.MethodGet, "/link/confirm", nil)
+	require.Equal(t, http.StatusOK, code, body, "a reload in another tab names the attacker's account")
+	code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {alice}})
+	assert.Equal(t, http.StatusConflict, code, "the old screen names alice while the attacker is logged in")
+	assert.Equal(t, []string{"draft"}, env.app.data[anonID], "the data stays with the anonymous user")
+	assert.Empty(t, env.app.data[mallory])
 }
 
 func TestLinkAnonymousUser_ExpiredLink(t *testing.T) {
@@ -371,8 +479,7 @@ func TestLinkAnonymousUser_ExpiredLink(t *testing.T) {
 	victim := env.browser(t)
 	anonID := victim.loginAnonymous("guest")
 	env.app.data[anonID] = []string{"draft"}
-	code, body := victim.do(http.MethodPost, "/link/start", url.Values{"address": {"victim@example.com"}})
-	require.Equal(t, http.StatusNoContent, code, body)
+	victim.startLink(emailLink("victim@example.com"))
 	env.app.mu.Lock()
 	for _, p := range env.app.pending {
 		p.expires = time.Now().Add(-time.Second)
@@ -380,7 +487,7 @@ func TestLinkAnonymousUser_ExpiredLink(t *testing.T) {
 	env.app.mu.Unlock()
 
 	victim.openEmailLink(victim.requestEmailLink("victim", "victim@example.com"))
-	code, _ = victim.do(http.MethodGet, "/link/confirm", nil)
+	code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
 	assert.Equal(t, http.StatusConflict, code, "an expired link offers nothing to move")
 	assert.Equal(t, []string{"draft"}, env.app.data[anonID])
 }
@@ -393,25 +500,48 @@ func TestLinkAnonymousUser_RejectsNonCookieToken(t *testing.T) {
 	require.NotNil(t, jwtCookie)
 	jwt := jwtCookie.Value
 
-	// a token in the query or the JWT header is accepted by the middleware without an XSRF check,
-	// so a cross-site request could carry it; the link endpoints refuse it
+	const why = "the middleware takes a query or header token without an XSRF check, so a cross-site request could carry it"
 	stranger := env.browser(t)
-	code, _ := stranger.do(http.MethodPost, "/link/start?token="+url.QueryEscape(jwt), url.Values{"address": {"x@example.com"}})
-	assert.Equal(t, http.StatusForbidden, code)
-	code, _ = stranger.doWithHeader(http.MethodPost, "/link/start", url.Values{"address": {"x@example.com"}},
-		http.Header{"X-JWT": {jwt}})
-	assert.Equal(t, http.StatusForbidden, code)
+	code, _ := stranger.do(http.MethodPost, "/link/start?"+linkJWTQuery+"="+url.QueryEscape(jwt), emailLink("x@example.com"))
+	assert.Equal(t, http.StatusForbidden, code, why)
+	code, _ = stranger.doWithHeader(http.MethodPost, "/link/start", emailLink("x@example.com"), http.Header{linkJWTHeader: {jwt}})
+	assert.Equal(t, http.StatusForbidden, code, why)
 	assert.Empty(t, env.app.pending)
 
-	code, body := victim.do(http.MethodPost, "/link/start", url.Values{"address": {"victim@example.com"}})
-	require.Equal(t, http.StatusNoContent, code, body)
+	victim.startLink(emailLink("victim@example.com"))
 	victim.openEmailLink(victim.requestEmailLink("victim", "victim@example.com"))
 	realJWT := victim.cookie("JWT")
 	require.NotNil(t, realJWT)
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		code, _ = stranger.do(method, "/link/confirm?token="+url.QueryEscape(realJWT.Value), nil)
-		assert.Equal(t, http.StatusForbidden, code, method)
-		code, _ = stranger.doWithHeader(method, "/link/confirm", nil, http.Header{"X-JWT": {realJWT.Value}})
-		assert.Equal(t, http.StatusForbidden, code, method)
+		code, _ = stranger.do(method, "/link/confirm?"+linkJWTQuery+"="+url.QueryEscape(realJWT.Value), nil)
+		assert.Equal(t, http.StatusForbidden, code, method+": "+why)
+		code, _ = stranger.doWithHeader(method, "/link/confirm", nil, http.Header{linkJWTHeader: {realJWT.Value}})
+		assert.Equal(t, http.StatusForbidden, code, method+": "+why)
 	}
+}
+
+func TestLinkAnonymousUser_DefaultJWTNames(t *testing.T) {
+	a := newLinkApp("", "") // Opts left at the library defaults keeps both names empty
+	r := httptest.NewRequest(http.MethodPost, "/link/start?token=x", http.NoBody)
+	assert.False(t, a.cookieTokenOnly(r), "a token in the default query parameter must be refused")
+	r = httptest.NewRequest(http.MethodPost, "/link/start", http.NoBody)
+	r.Header.Set("X-JWT", "x")
+	assert.False(t, a.cookieTokenOnly(r), "a token in the default header must be refused")
+	assert.True(t, a.cookieTokenOnly(httptest.NewRequest(http.MethodPost, "/link/start", http.NoBody)))
+}
+
+func TestLinkAnonymousUser_NonceCookieAttributes(t *testing.T) {
+	a := newLinkApp("", "", "password")
+	r := httptest.NewRequest(http.MethodPost, "/link/start", strings.NewReader("provider=password"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r = token.SetUserInfo(r, token.User{ID: "anonymous_1"})
+	w := httptest.NewRecorder()
+	a.start(w, r)
+	require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+
+	cookies := w.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.Equal(t, linkCookie, cookies[0].Name)
+	assert.True(t, cookies[0].HttpOnly, "page scripts must not read the nonce")
+	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite, "a cross-site POST to confirm must not carry the nonce")
 }
