@@ -754,28 +754,22 @@ func TestTelegram_TokenVerification(t *testing.T) {
 	assert.Len(t, tg.requests.data, 1)
 
 	// expired token, cleaned up by the cleanup
-	// package vars: left short, later tests get a cleanup ticker that deletes their requests
-	origPoll, origCleanup := apiPollInterval, expiredCleanupInterval
-	t.Cleanup(func() { apiPollInterval, expiredCleanupInterval = origPoll, origCleanup })
-	apiPollInterval = time.Hour
+	// package var: left short, later tests get a cleanup ticker that deletes their requests
+	origCleanup := expiredCleanupInterval
+	t.Cleanup(func() { expiredCleanupInterval = origCleanup })
 	expiredCleanupInterval = time.Millisecond * 10
-	ctx, cancel := context.WithCancel(context.Background())
-	go tg.Run(ctx)
-	// that sleep is needed because Run() will create new requests.data map, and we need to be sure that
-	// it's created by the time addToken is called.
-	time.Sleep(expiredCleanupInterval)
-	err = tg.addToken("expired token", time.Now().Add(-time.Minute))
-	assert.NoError(t, err)
+	tg, cleanup = setupHandler(t, m)
+	defer cleanup()
+	err = tg.addToken("expiring token", time.Now().Add(200*time.Millisecond))
+	require.NoError(t, err)
 	tg.requests.RLock()
 	assert.Len(t, tg.requests.data, 1)
 	tg.requests.RUnlock()
-	time.Sleep(expiredCleanupInterval * 2)
-	tg.requests.RLock()
-	assert.Len(t, tg.requests.data, 0)
-	tg.requests.RUnlock()
-	cancel()
-	// give enough time for Run() to finish
-	time.Sleep(expiredCleanupInterval)
+	require.Eventually(t, func() bool {
+		tg.requests.RLock()
+		defer tg.requests.RUnlock()
+		return len(tg.requests.data) == 0
+	}, 2*time.Second, time.Millisecond, "expired token not cleaned up")
 }
 
 func setupHandler(t *testing.T, m TelegramAPI) (tg *TelegramHandler, cleanup func()) {
