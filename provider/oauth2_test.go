@@ -7,11 +7,14 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -351,6 +354,91 @@ func TestOauth2LoginDoesNotLogUserProfile(t *testing.T) {
 	assert.NotContains(t, logged, "oauth-sensitive@example.com")
 }
 
+func TestOauth2LoginSendsPKCEChallenge(t *testing.T) {
+	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31})
+	var logBuf strings.Builder
+	var logMu sync.Mutex
+	captureLog := logger.Func(func(format string, args ...any) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		fmt.Fprintf(&logBuf, format+"\n", args...)
+	})
+	p := initOauth2Handler(Params{URL: "http://example.com", Cid: "cid", Csecret: "csecret", JwtService: jwtSvc,
+		Issuer: "remark42", L: captureLog},
+		Oauth2Handler{name: "mock", endpoint: oauth2.Endpoint{AuthURL: "https://idp.example.com/authorize",
+			TokenURL: "https://idp.example.com/token"}})
+
+	login := func() (challenge, verifier string) {
+		rr := httptest.NewRecorder()
+		p.LoginHandler(rr, httptest.NewRequest(http.MethodGet, "/auth/mock/login?site=remark", http.NoBody))
+		require.Equal(t, http.StatusFound, rr.Code)
+		loc, err := url.Parse(rr.Header().Get("Location"))
+		require.NoError(t, err)
+		assert.Equal(t, "S256", loc.Query().Get("code_challenge_method"))
+		challenge = loc.Query().Get("code_challenge")
+		require.NotEmpty(t, challenge, "authorize URL must carry a PKCE challenge")
+
+		var jwtCookie *http.Cookie
+		for _, c := range rr.Result().Cookies() {
+			if c.Name == "JWT" {
+				jwtCookie = c
+			}
+		}
+		require.NotNil(t, jwtCookie, "handshake cookie must be set")
+		claims, err := jwtSvc.Parse(jwtCookie.Value)
+		require.NoError(t, err)
+		require.NotNil(t, claims.Handshake)
+		verifier = claims.Handshake.CodeVerifier
+		require.NotEmpty(t, verifier, "handshake must keep the verifier for the callback")
+		assert.Equal(t, challenge, oauth2.S256ChallengeFromVerifier(verifier), "challenge must be derived from the stored verifier")
+		return challenge, verifier
+	}
+
+	c1, v1 := login()
+	c2, v2 := login()
+	assert.NotEqual(t, v1, v2, "each login needs a fresh verifier")
+	assert.NotEqual(t, c1, c2)
+
+	logMu.Lock()
+	logged := logBuf.String()
+	logMu.Unlock()
+	assert.Contains(t, logged, "login url", "the debug line must still be written")
+	assert.NotContains(t, logged, v1, "the verifier must never be logged")
+	assert.NotContains(t, logged, v2, "the verifier must never be logged")
+}
+
+func TestOauth2CallbackWithoutPKCEVerifier(t *testing.T) {
+	// a login started before PKCE support has no verifier in its handshake; the callback must not send one
+	teardown := prepOauth2Test(t, 8695, 8696, nil)
+	defer teardown()
+
+	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31})
+	hs, err := jwtSvc.Token(token.Claims{
+		Handshake:    &token.Handshake{State: "pre-pkce-state"},
+		AuthProvider: &token.AuthProvider{Name: "mock"},
+		StandardClaims: jwt.StandardClaims{
+			Id:        "cid",
+			Audience:  "remark",
+			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
+			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
+		},
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:8695/callback?code=g0ZGZmNjVmOWI&state=pre-pkce-state", http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: hs})
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, resp.Body.Close()) }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "callback must succeed without a verifier, got %s", string(body))
+}
+
 func TestMakeRedirURL(t *testing.T) {
 	cases := []struct{ rootURL, route, out string }{
 		{"localhost:8080/", "/my/auth/path/google", "localhost:8080/my/auth/path/callback"},
@@ -491,17 +579,40 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHoo
 	count := 0
 	useIDs := []string{"myuser1", "myuser2"} // user for first ans second calls
 
+	var pkceMu sync.Mutex
+	var challenge, challengeMethod string // recorded by the authorize endpoint, checked by the token endpoint
+
 	oauth := &http.Server{ //nolint:gosec
 		Addr: fmt.Sprintf(":%d", authPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[MOCK OAUTH] request %s %s %+v", r.Method, r.URL, r.Header)
 			switch {
 			case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
+				pkceMu.Lock()
+				challenge, challengeMethod = r.URL.Query().Get("code_challenge"), r.URL.Query().Get("code_challenge_method")
+				pkceMu.Unlock()
 				state := r.URL.Query().Get("state")
 				w.Header().Add("Location", fmt.Sprintf("http://localhost:%d/callback?code=g0ZGZmNjVmOWI&state=%s",
 					loginPort, state))
 				w.WriteHeader(302)
 			case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
+				// behave as a server enforcing PKCE: a challenge requires the matching verifier,
+				// and no challenge means no verifier is expected
+				require.NoError(t, r.ParseForm())
+				verifier := r.PostForm.Get("code_verifier")
+				pkceMu.Lock()
+				wantChallenge, method := challenge, challengeMethod
+				pkceMu.Unlock()
+				pkceOK := verifier == "" && wantChallenge == ""
+				if wantChallenge != "" {
+					pkceOK = method == "S256" && oauth2.S256ChallengeFromVerifier(verifier) == wantChallenge
+				}
+				if !pkceOK {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+					return
+				}
 				res := `{
 					"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3",
 					"token_type":"bearer",

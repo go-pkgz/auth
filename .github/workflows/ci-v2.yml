@@ -41,7 +41,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ steps.gomod.outputs.version }}
           check-latest: true
@@ -72,7 +72,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.15.0
           args: --config=../.golangci.yml
           working-directory: v2
 

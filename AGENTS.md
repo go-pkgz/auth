@@ -8,8 +8,6 @@
 | `cd v2 && go test -p 1 ./...` | Run the `github.com/go-pkgz/auth/v2` module tests. |
 | `go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...` | Root-module CI test command from `.github/workflows/ci.yml`. |
 | `cd v2 && go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...` | v2-module CI test command from `.github/workflows/ci-v2.yml`. |
-| `GOTOOLCHAIN=go1.26.0 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --max-issues-per-linter=0 --max-same-issues=0` | Reproduce root-module CI lint locally. |
-| `cd v2 && GOTOOLCHAIN=go1.26.0 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --config ../.golangci.yml --max-issues-per-linter=0 --max-same-issues=0` | Reproduce v2-module CI lint locally. |
 | `~/.claude/format.sh` | Format Go code when available; it runs gofmt/goimports. |
 
 ## Architecture
@@ -22,9 +20,8 @@
 - `avatar/` owns avatar proxying/storage and has filesystem, bbolt, GridFS, and no-op stores.
 - `middleware/` owns auth, trace, admin-only, RBAC, basic auth, validator, token refresh, and request user context.
 
-## CI and Lint Notes
+## CI Notes
 
-- CI pins golangci-lint through GitHub Actions (`golangci/golangci-lint-action@v9` with `version: v2.12.2` in `.github/workflows/ci*.yml`). Newer local `golangci-lint` versions can report extra `gosec` findings that CI does not enforce.
 - Root CI (`.github/workflows/ci.yml`) ignores `v2/**`, `_example/**`, and `ci-v2.yml`; v2 CI (`.github/workflows/ci-v2.yml`) runs only for `v2/**`, `_example/**`, and `ci-v2.yml` changes.
 - Mongo-backed tests run in CI with `ENABLE_MONGO_TESTS=true` after `wbari/start-mongoDB@v0.2` starts MongoDB 6.0.
 - The workflow coverage step currently installs `github.com/mattn/goveralls@latest` with `COVERALLS_TOKEN=${{ secrets.GITHUB_TOKEN }}`; security reviews should keep checking this supply-chain path.
@@ -41,7 +38,5 @@
 ## Testing Gotchas
 
 - Run root and v2 tests separately; `go test ./...` from the root does not test the separate `v2` module.
-- When reproducing CI lint, use the pinned `v2.12.2` command above, not the globally installed `golangci-lint` binary unless its version matches CI.
-- The lint commands set `GOTOOLCHAIN=go1.26.0` because the pinned golangci-lint `v2.12.2` fails with `could not load export data` under Go 1.27.2, and CI runs Go 1.26.
 - Many tests bind fixed localhost ports in the 898x/899x range; use `-p 1` for package test runs to reduce port-collision risk.
 - `go test ./...` in the root includes Mongo tests only when `ENABLE_MONGO_TESTS=true`; without it, CI-only Mongo coverage may not run locally.

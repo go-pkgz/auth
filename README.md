@@ -691,6 +691,8 @@ By default, this library doesn't print anything to stdout/stderr, however user c
 
 Authentication handled by external providers. You should setup oauth2 for all (or some) of them to allow users to authenticate. It is not mandatory to have all of them, but at least one should be correctly configured.
 
+Every oauth2 login through the shared oauth2 handler, which serves the built-in oauth2 providers except Apple and every `AddCustomProvider` registration, uses PKCE ([RFC 7636](https://www.rfc-editor.org/rfc/rfc7636)) with the `S256` method: the login sends a code challenge, and the callback sends the matching verifier, kept in the handshake token, to the token endpoint. Servers without PKCE support ignore both, so no configuration is needed.
+
 #### Google Auth Provider
 
 1.  Create a new project: https://console.developers.google.com/project
