@@ -90,6 +90,11 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if oauthClaims.Handshake == nil {
+		rest.SendErrorJSON(w, r, h.L, http.StatusForbidden, nil, "invalid handshake token")
+		return
+	}
+
 	requestToken, verifier, err := oauth1.ParseAuthorizationCallback(r)
 	if err != nil {
 		rest.SendErrorJSON(w, r, h.L, http.StatusInternalServerError, err, "failed to parse response from oauth1 server")

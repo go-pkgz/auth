@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dghubble/oauth1"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -199,6 +200,37 @@ func TestOauth1AuthHandlerReadsHandshakeFromCookieOnly(t *testing.T) {
 				assert.NotEqual(t, "JWT", c.Name, "no session cookie for a handshake outside the cookie")
 			}
 		})
+	}
+}
+
+func TestOauth1AuthHandlerRejectsClaimsWithoutHandshake(t *testing.T) {
+	// regression: a session cookie on the callback dereferenced a nil handshake and panicked
+	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31, XSRFIgnoreMethods: []string{http.MethodGet}})
+	teardown := prepOauth1Test(t, 8965, 8966, func(p *Params) { p.JwtService = jwtSvc })
+	defer teardown()
+
+	session, err := jwtSvc.Token(token.Claims{
+		User: &token.User{ID: "mock_myuser1", Name: "name1"},
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        "cid",
+			Audience:  []string{"remark42"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
+		},
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodGet,
+		"http://localhost:8965/callback?oauth_token=sdjasd09AfdkzztyRadrdR&oauth_verifier=gsjad032ajjjOIU", http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: session})
+	resp, err := (&http.Client{Timeout: timeout * time.Second}).Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	for _, c := range resp.Cookies() {
+		assert.NotEqual(t, "JWT", c.Name, "no session cookie for claims without a handshake")
 	}
 }
 
