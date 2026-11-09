@@ -1094,3 +1094,73 @@ func TestAppleHandler_AuthHandlerFormPostRedirectsWithSeeOther(t *testing.T) {
 	assert.Equal(t, from, postResp.Header.Get("Location"))
 	assert.NotEmpty(t, postResp.Cookies(), "session cookies must still be set on the redirect response")
 }
+
+func TestAppleHandler_AuthHandlerReadsHandshakeFromCookieOnly(t *testing.T) {
+	teardown := prepareAppleOauthTest(t, 8961, 8962, nil, testIDTokenOverride{})
+	defer teardown()
+
+	startLogin := func(t *testing.T) (state, handshake string) {
+		t.Helper()
+		jar, err := cookiejar.New(nil)
+		require.NoError(t, err)
+		var callbackURL *url.URL
+		client := &http.Client{Jar: jar, Timeout: 5 * time.Second,
+			CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+				if strings.HasPrefix(req.URL.Path, "/callback") {
+					callbackURL = req.URL
+					return http.ErrUseLastResponse
+				}
+				return nil
+			},
+		}
+		resp, err := client.Get("http://localhost:8961/login?site=remark")
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.NotNil(t, callbackURL)
+		u, err := url.Parse("http://localhost:8961/")
+		require.NoError(t, err)
+		for _, c := range jar.Cookies(u) {
+			if c.Name == "JWT" {
+				handshake = c.Value
+			}
+		}
+		require.NotEmpty(t, handshake)
+		return callbackURL.Query().Get("state"), handshake
+	}
+
+	tbl := []struct {
+		name string
+		req  func(state, handshake string) *http.Request
+	}{
+		{name: "query", req: func(state, handshake string) *http.Request {
+			form := url.Values{"state": {state}, "code": {"code"}}
+			r, err := http.NewRequest(http.MethodPost, "http://localhost:8961/callback?token="+url.QueryEscape(handshake),
+				strings.NewReader(form.Encode()))
+			require.NoError(t, err)
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			return r
+		}},
+		{name: "header", req: func(state, handshake string) *http.Request {
+			form := url.Values{"state": {state}, "code": {"code"}}
+			r, err := http.NewRequest(http.MethodPost, "http://localhost:8961/callback", strings.NewReader(form.Encode()))
+			require.NoError(t, err)
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r.Header.Set("X-JWT", handshake)
+			return r
+		}},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			state, handshake := startLogin(t)
+			noFollow := &http.Client{Timeout: 5 * time.Second,
+				CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			resp, err := noFollow.Do(tt.req(state, handshake))
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+			for _, c := range resp.Cookies() {
+				assert.NotEqual(t, "JWT", c.Name, "no session cookie for a handshake outside the cookie")
+			}
+		})
+	}
+}

@@ -693,6 +693,8 @@ Authentication handled by external providers. You should setup oauth2 for all (o
 
 Every oauth2 login through the shared oauth2 handler, which serves the built-in oauth2 providers except Apple and every `AddCustomProvider` registration, uses PKCE ([RFC 7636](https://www.rfc-editor.org/rfc/rfc7636)) with the `S256` method: the login sends a code challenge, and the callback sends the matching verifier, kept in the handshake token, to the token endpoint. Servers without PKCE support ignore both, so no configuration is needed.
 
+The oauth2, oauth1 and Apple callbacks read the handshake token only from the JWT cookie set by the login step. A handshake token passed in the JWT query parameter or header (`token` and `X-JWT` by default) is ignored on the callback, so the callback requires the handshake cookie from the login step. Login handlers give the handshake a 30-minute expiry, and the callback rejects a handshake whose expiry has passed, so a user who leaves the provider's consent page open longer has to start the login again. A handshake without an expiry is still accepted.
+
 #### Google Auth Provider
 
 1.  Create a new project: https://console.developers.google.com/project

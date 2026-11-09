@@ -167,7 +167,7 @@ func (p Oauth2Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 // AuthHandler fills user info and redirects to "from" url. This is callback url redirected locally by browser
 // GET /callback
 func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
-	oauthClaims, _, err := p.JwtService.Get(r)
+	oauthClaims, err := handshakeFromCookie(p.JwtService, r)
 	if err != nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusInternalServerError, err, "failed to get token")
 		return
