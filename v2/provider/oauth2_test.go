@@ -611,7 +611,8 @@ func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHoo
 				pkceMu.Lock()
 				wantChallenge, method := challenge, challengeMethod
 				pkceMu.Unlock()
-				pkceOK := verifier == "" && wantChallenge == ""
+				_, sent := r.PostForm["code_verifier"]
+				pkceOK := !sent && wantChallenge == ""
 				if wantChallenge != "" {
 					pkceOK = method == "S256" && oauth2.S256ChallengeFromVerifier(verifier) == wantChallenge
 				}
