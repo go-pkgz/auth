@@ -71,7 +71,7 @@ High for correctness, compatibility and anything touching credentials, identity 
 attributes or redirect validation. Report those even when the trigger needs an operator mistake, because
 the operator is a third party we never hear from.
 
-Lower for style. The project pins its own linters (`.golangci.yml`, golangci-lint v2.12.2 in CI) and a
+Lower for style. The project pins its own linters (`.golangci.yml`, golangci-lint v2.15.0 in CI) and a
 formatter; findings a configured tool already owns are noise. Line length is 140, not 120.
 
 A finding must name an observable symptom and a trigger that actually occurs. An untested branch with no
