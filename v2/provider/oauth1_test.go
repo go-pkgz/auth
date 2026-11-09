@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -142,6 +143,63 @@ func TestOauth1Logout(t *testing.T) {
 	assert.Equal(t, "", resp.Cookies()[0].Value)
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name, "xsrf cookie cleared")
 	assert.Equal(t, "", resp.Cookies()[1].Value)
+}
+
+func TestOauth1AuthHandlerReadsHandshakeFromCookieOnly(t *testing.T) {
+	teardown := prepOauth1Test(t, 8963, 8964)
+	defer teardown()
+
+	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	startLogin := func(t *testing.T) (callbackURL, handshake string) {
+		t.Helper()
+		jar, err := cookiejar.New(nil)
+		require.NoError(t, err)
+		client := &http.Client{Jar: jar, Timeout: timeout * time.Second, CheckRedirect: noRedirect}
+		resp, err := client.Get("http://localhost:8963/login?site=remark")
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		for _, c := range resp.Cookies() {
+			if c.Name == "JWT" {
+				handshake = c.Value
+			}
+		}
+		require.NotEmpty(t, handshake)
+		resp, err = client.Get(resp.Header.Get("Location"))
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		return resp.Header.Get("Location"), handshake
+	}
+
+	tbl := []struct {
+		name string
+		req  func(callbackURL, handshake string) *http.Request
+	}{
+		{name: "query", req: func(callbackURL, handshake string) *http.Request {
+			r, err := http.NewRequest(http.MethodGet, callbackURL+"&token="+url.QueryEscape(handshake), http.NoBody)
+			require.NoError(t, err)
+			return r
+		}},
+		{name: "header", req: func(callbackURL, handshake string) *http.Request {
+			r, err := http.NewRequest(http.MethodGet, callbackURL, http.NoBody)
+			require.NoError(t, err)
+			r.Header.Set("X-JWT", handshake)
+			return r
+		}},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			callbackURL, handshake := startLogin(t)
+			resp, err := (&http.Client{Timeout: timeout * time.Second}).Do(tt.req(callbackURL, handshake))
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+			for _, c := range resp.Cookies() {
+				assert.NotEqual(t, "JWT", c.Name, "no session cookie for a handshake outside the cookie")
+			}
+		})
+	}
 }
 
 func TestOauth1InitProvider(t *testing.T) {

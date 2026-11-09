@@ -130,6 +130,16 @@ func sessionOnlyFromRequest(r *http.Request) bool {
 	return false
 }
 
+// handshakeFromCookie reads the handshake token from the JWT cookie only, ignoring the JWT query
+// parameter and header that TokenService.Get would otherwise prefer.
+func handshakeFromCookie(svc TokenService, r *http.Request) (token.Claims, error) {
+	cr := r.Clone(r.Context())
+	cr.URL.RawQuery = ""
+	cr.Header = http.Header{"Cookie": r.Header.Values("Cookie")}
+	claims, _, err := svc.Get(cr)
+	return claims, err
+}
+
 func randToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

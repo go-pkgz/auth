@@ -245,6 +245,63 @@ func TestOauth2InvalidHandler(t *testing.T) {
 	assert.Equal(t, 500, resp.StatusCode)
 }
 
+func TestOauth2AuthHandlerReadsHandshakeFromCookieOnly(t *testing.T) {
+	teardown := prepOauth2Test(t, 8971, 8972, nil)
+	defer teardown()
+
+	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	startLogin := func(t *testing.T) (callbackURL, handshake string) {
+		t.Helper()
+		jar, err := cookiejar.New(nil)
+		require.NoError(t, err)
+		client := &http.Client{Jar: jar, Timeout: 5 * time.Second, CheckRedirect: noRedirect}
+		resp, err := client.Get("http://localhost:8971/login?site=remark")
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		for _, c := range resp.Cookies() {
+			if c.Name == "JWT" {
+				handshake = c.Value
+			}
+		}
+		require.NotEmpty(t, handshake)
+		resp, err = client.Get(resp.Header.Get("Location"))
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		return resp.Header.Get("Location"), handshake
+	}
+
+	tbl := []struct {
+		name string
+		req  func(callbackURL, handshake string) *http.Request
+	}{
+		{name: "query", req: func(callbackURL, handshake string) *http.Request {
+			r, err := http.NewRequest(http.MethodGet, callbackURL+"&token="+url.QueryEscape(handshake), http.NoBody)
+			require.NoError(t, err)
+			return r
+		}},
+		{name: "header", req: func(callbackURL, handshake string) *http.Request {
+			r, err := http.NewRequest(http.MethodGet, callbackURL, http.NoBody)
+			require.NoError(t, err)
+			r.Header.Set("X-JWT", handshake)
+			return r
+		}},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			callbackURL, handshake := startLogin(t)
+			resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(tt.req(callbackURL, handshake))
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+			for _, c := range resp.Cookies() {
+				assert.NotEqual(t, "JWT", c.Name, "no session cookie for a handshake outside the cookie")
+			}
+		})
+	}
+}
+
 // TestOauth2LoginFromRejectsExternalHost reproduces the open-redirect attack
 // against the oauth2 login flow.
 //
