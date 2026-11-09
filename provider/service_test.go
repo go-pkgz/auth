@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -70,6 +71,47 @@ func TestHandler(t *testing.T) {
 		})
 	}
 
+}
+
+func TestHandshakeFromCookie(t *testing.T) {
+	svc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), TokenDuration: time.Hour})
+	mint := func(t *testing.T, exp int64) string {
+		t.Helper()
+		tkn, err := svc.Token(token.Claims{Handshake: &token.Handshake{State: "st"},
+			StandardClaims: jwt.StandardClaims{Id: "cid", Audience: "remark42", ExpiresAt: exp}})
+		require.NoError(t, err)
+		return tkn
+	}
+
+	tbl := []struct {
+		name    string
+		cookie  bool
+		exp     int64
+		wantErr string
+	}{
+		{name: "valid cookie", cookie: true, exp: time.Now().Add(30 * time.Minute).Unix()},
+		{name: "expired cookie", cookie: true, exp: time.Now().Add(-time.Minute).Unix(), wantErr: "handshake token expired"},
+		{name: "cookie without exp", cookie: true, exp: 0},
+		{name: "query only", cookie: false, exp: time.Now().Add(30 * time.Minute).Unix(), wantErr: "token cookie was not presented"},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			tkn := mint(t, tt.exp)
+			r := httptest.NewRequest(http.MethodGet, "/callback?state=st&token="+tkn, http.NoBody)
+			if tt.cookie {
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: tkn})
+			}
+			claims, err := handshakeFromCookie(svc, r)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, claims.Handshake)
+			assert.Equal(t, "st", claims.Handshake.State)
+			assert.Equal(t, "state=st&token="+tkn, r.URL.RawQuery, "original request must stay untouched")
+		})
+	}
 }
 
 func TestRandToken(t *testing.T) {
