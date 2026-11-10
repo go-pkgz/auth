@@ -5,6 +5,7 @@ import (
 	"crypto/sha1" //nolint:gosec // the email provider derives user ids with sha1
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -29,6 +30,7 @@ type linkApp struct {
 	mu        sync.Mutex
 	jwtQuery  string                  // Opts.JWTQuery, "token" by default
 	jwtHeader string                  // Opts.JWTHeaderKey, "X-JWT" by default
+	secure    bool                    // Opts.SecureCookies, r.TLS is nil behind a TLS-terminating proxy
 	providers map[string]bool         // providers a link may move the data to
 	pending   map[string]*pendingLink // by nonce
 	data      map[string][]string     // app records by user id
@@ -44,17 +46,18 @@ type pendingLink struct {
 
 const linkCookie = "link_nonce"
 
-// newLinkApp takes the JWT query and header names from Opts. Opts keeps them empty when left to the
-// library defaults, and an empty name would make cookieTokenOnly match nothing, so it falls back to them.
-func newLinkApp(jwtQuery, jwtHeader string, providers ...string) *linkApp {
-	if jwtQuery == "" {
-		jwtQuery = "token"
+// newLinkApp takes the JWT query and header names and the cookie Secure flag from the Opts passed to
+// NewService. Opts keeps the names empty when left to the library defaults, and an empty name would make
+// cookieTokenOnly match nothing, so it falls back to them.
+func newLinkApp(opts Opts, providers ...string) *linkApp {
+	a := &linkApp{jwtQuery: opts.JWTQuery, jwtHeader: opts.JWTHeaderKey, secure: opts.SecureCookies,
+		providers: map[string]bool{}, pending: map[string]*pendingLink{}, data: map[string][]string{}}
+	if a.jwtQuery == "" {
+		a.jwtQuery = "token"
 	}
-	if jwtHeader == "" {
-		jwtHeader = "X-JWT"
+	if a.jwtHeader == "" {
+		a.jwtHeader = "X-JWT"
 	}
-	a := &linkApp{jwtQuery: jwtQuery, jwtHeader: jwtHeader, providers: map[string]bool{},
-		pending: map[string]*pendingLink{}, data: map[string][]string{}}
 	for _, p := range providers {
 		a.providers[p] = true
 	}
@@ -70,6 +73,8 @@ func (a *linkApp) cookieTokenOnly(r *http.Request) bool {
 // accepts tells whether userID may receive the data. The display name is no proof, for email it comes
 // from the user query parameter. An email link binds the exact address typed at start. Any other
 // provider binds only the provider, so its user has to recognize the account on the confirmation screen.
+// The provider is told by the "<provider>_" id prefix, which the dev provider, NewCustomServer with its
+// default mapper, a custom MapUserFn and AddCustomHandler may not set.
 func (p *pendingLink) accepts(userID string) bool {
 	if p.provider == "email" {
 		return userID == "email_"+token.HashID(sha1.New(), p.address) //nolint:gosec
@@ -98,7 +103,7 @@ func (a *linkApp) start(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	a.pending[nonce] = &pendingLink{anonID: user.ID, provider: prov, address: address, expires: time.Now().Add(10 * time.Minute)}
 	a.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: linkCookie, Value: nonce, Path: "/", HttpOnly: true, Secure: r.TLS != nil,
+	http.SetCookie(w, &http.Cookie{Name: linkCookie, Value: nonce, Path: "/", HttpOnly: true, Secure: a.secure,
 		SameSite: http.SameSiteLaxMode, MaxAge: 600})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -152,7 +157,7 @@ func (a *linkApp) confirm(w http.ResponseWriter, r *http.Request) {
 		a.data[user.ID] = append(a.data[user.ID], a.data[p.anonID]...)
 		delete(a.data, p.anonID)
 		delete(a.pending, nonce)
-		http.SetCookie(w, &http.Cookie{Name: linkCookie, Path: "/", MaxAge: -1})
+		http.SetCookie(w, &http.Cookie{Name: linkCookie, Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.secure})
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -181,7 +186,7 @@ func newLinkEnv(t *testing.T) *linkEnv {
 		JWTQuery:       linkJWTQuery,
 		JWTHeaderKey:   linkJWTHeader,
 	}
-	env := &linkEnv{url: opts.URL, app: newLinkApp(opts.JWTQuery, opts.JWTHeaderKey, "email", "password"),
+	env := &linkEnv{url: opts.URL, app: newLinkApp(opts, "email", "password"),
 		letter: map[string]string{}}
 	svc := NewService(opts)
 	// anonymous ids carry a random part, so a second user typing the same name gets another id
@@ -521,9 +526,10 @@ func TestLinkAnonymousUser_RejectsNonCookieToken(t *testing.T) {
 }
 
 func TestLinkAnonymousUser_DefaultJWTNames(t *testing.T) {
-	a := newLinkApp("", "") // Opts left at the library defaults keeps both names empty
+	a := newLinkApp(Opts{})
 	r := httptest.NewRequest(http.MethodPost, "/link/start?token=x", http.NoBody)
-	assert.False(t, a.cookieTokenOnly(r), "a token in the default query parameter must be refused")
+	assert.False(t, a.cookieTokenOnly(r),
+		"Opts left at the library defaults keeps both names empty, a token in the default query parameter must still be refused")
 	r = httptest.NewRequest(http.MethodPost, "/link/start", http.NoBody)
 	r.Header.Set("X-JWT", "x")
 	assert.False(t, a.cookieTokenOnly(r), "a token in the default header must be refused")
@@ -531,17 +537,23 @@ func TestLinkAnonymousUser_DefaultJWTNames(t *testing.T) {
 }
 
 func TestLinkAnonymousUser_NonceCookieAttributes(t *testing.T) {
-	a := newLinkApp("", "", "password")
-	r := httptest.NewRequest(http.MethodPost, "/link/start", strings.NewReader("provider=password"))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r = token.SetUserInfo(r, token.User{ID: "anonymous_1"})
-	w := httptest.NewRecorder()
-	a.start(w, r)
-	require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+	for _, secure := range []bool{false, true} {
+		t.Run(fmt.Sprintf("SecureCookies=%v", secure), func(t *testing.T) {
+			a := newLinkApp(Opts{SecureCookies: secure}, "password")
+			// a plain http request, as a handler behind a TLS-terminating proxy sees it
+			r := httptest.NewRequest(http.MethodPost, "/link/start", strings.NewReader("provider=password"))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r = token.SetUserInfo(r, token.User{ID: "anonymous_1"})
+			w := httptest.NewRecorder()
+			a.start(w, r)
+			require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
 
-	cookies := w.Result().Cookies()
-	require.Len(t, cookies, 1)
-	assert.Equal(t, linkCookie, cookies[0].Name)
-	assert.True(t, cookies[0].HttpOnly, "page scripts must not read the nonce")
-	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite, "a cross-site POST to confirm must not carry the nonce")
+			cookies := w.Result().Cookies()
+			require.Len(t, cookies, 1)
+			assert.Equal(t, linkCookie, cookies[0].Name)
+			assert.True(t, cookies[0].HttpOnly, "page scripts must not read the nonce")
+			assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite, "a cross-site POST to confirm must not carry the nonce")
+			assert.Equal(t, secure, cookies[0].Secure, "the nonce cookie must follow Opts.SecureCookies like the JWT cookie")
+		})
+	}
 }
