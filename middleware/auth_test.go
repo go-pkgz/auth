@@ -176,32 +176,37 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	defer server.Close()
 
 	var refreshCount int32
-	var wg sync.WaitGroup
 	a.RefreshCache = newTestRefreshCache()
-	wg.Add(100)
-	for range 100 {
-		time.Sleep(1 * time.Millisecond) // TODO! not sure how testRefreshCache may have misses without this delay
+	sendExpired := func() {
+		jar, err := cookiejar.New(nil)
+		require.Nil(t, err)
+		client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+		req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+		require.NoError(t, err)
+
+		expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
+		req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
+			MaxAge: expiration, Secure: false})
+		req.Header.Add("X-XSRF-TOKEN", "random id")
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		assert.Equal(t, 201, resp.StatusCode)
+
+		cookies := resp.Cookies()
+		if len(cookies) == 2 && resp.Cookies()[0].Name == "JWT" && resp.Cookies()[0].Value != testJwtExpired {
+			atomic.AddInt32(&refreshCount, 1)
+		}
+	}
+
+	// the middleware does not dedupe simultaneous refreshes, so one request fills the cache first
+	sendExpired()
+	var wg sync.WaitGroup
+	wg.Add(99)
+	for range 99 {
 		go func() {
 			defer wg.Done()
-			jar, err := cookiejar.New(nil)
-			require.Nil(t, err)
-			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-			req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
-			require.NoError(t, err)
-
-			expiration := int(365 * 24 * time.Hour.Seconds()) //nolint
-			req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/",
-				MaxAge: expiration, Secure: false})
-			req.Header.Add("X-XSRF-TOKEN", "random id")
-
-			resp, err := client.Do(req)
-			require.NoError(t, err)
-			assert.Equal(t, 201, resp.StatusCode)
-
-			cookies := resp.Cookies()
-			if len(cookies) == 2 && resp.Cookies()[0].Name == "JWT" && resp.Cookies()[0].Value != testJwtExpired {
-				atomic.AddInt32(&refreshCount, 1)
-			}
+			sendExpired()
 		}()
 	}
 	wg.Wait()
