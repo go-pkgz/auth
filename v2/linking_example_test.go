@@ -31,6 +31,7 @@ type linkApp struct {
 	jwtQuery  string                  // Opts.JWTQuery, "token" by default
 	jwtHeader string                  // Opts.JWTHeaderKey, "X-JWT" by default
 	secure    bool                    // Opts.SecureCookies, r.TLS is nil behind a TLS-terminating proxy
+	now       func() time.Time        // read under mu, tests move it forward
 	providers map[string]bool         // providers a link may move the data to
 	pending   map[string]*pendingLink // by nonce
 	data      map[string][]string     // app records by user id
@@ -46,12 +47,40 @@ type pendingLink struct {
 
 const linkCookie = "link_nonce"
 
+// provider names, shared with the AddDirectProviderWithUserIDFunc and AddVerifProvider calls: user ids
+// are "<provider name>_" + hash, so a check written against another name would bind nothing. They are not
+// the usual "anonymous" and "email", so a check hardcoding those fails the tests.
+const (
+	linkAnonProvider  = "guest"
+	linkVerifProvider = "mail"
+)
+
+// providerOf returns the provider part of a built-in user id, "<provider name>_<hex hash>". A provider name
+// may itself contain "_", so a prefix check for "password_" would also pass "password_backup_<hash>".
+func providerOf(userID string) string {
+	i := strings.LastIndex(userID, "_")
+	if i < 0 {
+		return ""
+	}
+	return userID[:i]
+}
+
+// a pending link has to outlive the login it waits for. The verify provider's confirmation token is
+// valid for 30 minutes (v2/provider/verify.go, not configurable) and is issued after start, so a link
+// with an address lives that long plus time for the confirmation screen; the nonce alone moves nothing
+// there. For a link without an address the nonce alone is enough to move the data to any account of
+// that provider, so it keeps a short window, and a login slower than that leaves the data where it is.
+const (
+	linkTTLWithAddress = 30*time.Minute + 15*time.Minute
+	linkTTLNoAddress   = 10 * time.Minute
+)
+
 // newLinkApp takes the JWT query and header names and the cookie Secure flag from the Opts passed to
 // NewService. Opts keeps the names empty when left to the library defaults, and an empty name would make
 // cookieTokenOnly match nothing, so it falls back to them.
 func newLinkApp(opts Opts, providers ...string) *linkApp {
 	a := &linkApp{jwtQuery: opts.JWTQuery, jwtHeader: opts.JWTHeaderKey, secure: opts.SecureCookies,
-		providers: map[string]bool{}, pending: map[string]*pendingLink{}, data: map[string][]string{}}
+		providers: map[string]bool{}, pending: map[string]*pendingLink{}, data: map[string][]string{}, now: time.Now}
 	if a.jwtQuery == "" {
 		a.jwtQuery = "token"
 	}
@@ -73,24 +102,24 @@ func (a *linkApp) cookieTokenOnly(r *http.Request) bool {
 // accepts tells whether userID may receive the data. The display name is no proof, for email it comes
 // from the user query parameter. An email link binds the exact address typed at start. Any other
 // provider binds only the provider, so its user has to recognize the account on the confirmation screen.
-// The provider is told by the "<provider>_" id prefix, which the dev provider, NewCustomServer with its
-// default mapper, a custom MapUserFn and AddCustomHandler may not set.
+// The provider is told by the "<provider>_<hash>" id form, which the dev provider, NewCustomServer with its
+// default mapper, a custom MapUserFn, AddCustomHandler and a ClaimsUpd rewriting the id may not keep.
 func (p *pendingLink) accepts(userID string) bool {
-	if p.provider == "email" {
-		return userID == "email_"+token.HashID(sha1.New(), p.address) //nolint:gosec
+	if p.provider == linkVerifProvider {
+		return userID == linkVerifProvider+"_"+token.HashID(sha1.New(), p.address) //nolint:gosec
 	}
-	return strings.HasPrefix(userID, p.provider+"_")
+	return providerOf(userID) == p.provider
 }
 
 // start runs behind the auth middleware, before the frontend sends an anonymous user to a real provider
 func (a *linkApp) start(w http.ResponseWriter, r *http.Request) {
 	user := token.MustGetUserInfo(r)
-	if r.Method != http.MethodPost || !a.cookieTokenOnly(r) || !strings.HasPrefix(user.ID, "anonymous_") {
+	if r.Method != http.MethodPost || !a.cookieTokenOnly(r) || providerOf(user.ID) != linkAnonProvider {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	prov, address := r.FormValue("provider"), r.FormValue("address")
-	if !a.providers[prov] || (prov == "email") != (address != "") {
+	if !a.providers[prov] || (prov == linkVerifProvider) != (address != "") {
 		http.Error(w, "a known provider is required, and an address for email only", http.StatusBadRequest)
 		return
 	}
@@ -100,11 +129,15 @@ func (a *linkApp) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nonce := hex.EncodeToString(b)
+	ttl := linkTTLNoAddress
+	if address != "" {
+		ttl = linkTTLWithAddress
+	}
 	a.mu.Lock()
-	a.pending[nonce] = &pendingLink{anonID: user.ID, provider: prov, address: address, expires: time.Now().Add(10 * time.Minute)}
+	a.pending[nonce] = &pendingLink{anonID: user.ID, provider: prov, address: address, expires: a.now().Add(ttl)}
 	a.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: linkCookie, Value: nonce, Path: "/", HttpOnly: true, Secure: a.secure,
-		SameSite: http.SameSiteLaxMode, MaxAge: 600})
+		SameSite: http.SameSiteLaxMode, MaxAge: int(ttl / time.Second)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -115,7 +148,7 @@ func (a *linkApp) lookup(r *http.Request) (*pendingLink, string) {
 		return nil, ""
 	}
 	p, ok := a.pending[c.Value]
-	if !ok || time.Now().After(p.expires) {
+	if !ok || a.now().After(p.expires) {
 		return nil, ""
 	}
 	return p, c.Value
@@ -125,8 +158,8 @@ func (a *linkApp) lookup(r *http.Request) (*pendingLink, string) {
 func (a *linkApp) confirm(w http.ResponseWriter, r *http.Request) {
 	user := token.MustGetUserInfo(r)
 	// a confirm by the anonymous user itself would append the data to itself and then delete it.
-	// accepts refuses it too while "anonymous" is not a link provider, this check does not depend on that.
-	if !a.cookieTokenOnly(r) || strings.HasPrefix(user.ID, "anonymous_") {
+	// accepts refuses it too while the anonymous provider is not a link provider, this check does not depend on that.
+	if !a.cookieTokenOnly(r) || providerOf(user.ID) == linkAnonProvider {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -149,7 +182,7 @@ func (a *linkApp) confirm(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		// move_to is the account the screen named. a later GET from another tab may have shown another
 		// account, so the POST must name the same account that is logged in and was last shown.
-		if moveTo := r.FormValue("move_to"); moveTo == "" || moveTo != user.ID || p.shownTo != user.ID {
+		if moveTo := r.FormValue("move_to"); moveTo != user.ID || p.shownTo != user.ID {
 			http.Error(w, "confirm the account shown first", http.StatusConflict)
 			return
 		}
@@ -186,17 +219,17 @@ func newLinkEnv(t *testing.T) *linkEnv {
 		JWTQuery:       linkJWTQuery,
 		JWTHeaderKey:   linkJWTHeader,
 	}
-	env := &linkEnv{url: opts.URL, app: newLinkApp(opts, "email", "password"),
+	env := &linkEnv{url: opts.URL, app: newLinkApp(opts, linkVerifProvider, "password"),
 		letter: map[string]string{}}
 	svc := NewService(opts)
 	// anonymous ids carry a random part, so a second user typing the same name gets another id
-	svc.AddDirectProviderWithUserIDFunc("anonymous",
+	svc.AddDirectProviderWithUserIDFunc(linkAnonProvider,
 		provider.CredCheckerFunc(func(string, string) (bool, error) { return true, nil }),
 		func(user string, _ *http.Request) string { return user + "::" + rand.Text() })
 	svc.AddDirectProvider("password", provider.CredCheckerFunc(func(user, password string) (bool, error) {
 		return password == "pw-"+user, nil
 	}))
-	svc.AddVerifProvider("email", "{{.Token}}", provider.SenderFunc(func(address, text string) error {
+	svc.AddVerifProvider(linkVerifProvider, "{{.Token}}", provider.SenderFunc(func(address, text string) error {
 		env.mu.Lock()
 		env.letter[address] = text
 		env.mu.Unlock()
@@ -282,7 +315,7 @@ func (b *browser) user() token.User {
 }
 
 func (b *browser) loginAnonymous(name string) string {
-	code, body := b.do(http.MethodGet, "/auth/anonymous/login?aud=link-test&passwd=x&user="+url.QueryEscape(name), nil)
+	code, body := b.do(http.MethodGet, "/auth/"+linkAnonProvider+"/login?aud=link-test&passwd=x&user="+url.QueryEscape(name), nil)
 	require.Equal(b.t, http.StatusOK, code, body)
 	return b.user().ID
 }
@@ -294,7 +327,7 @@ func (b *browser) startLink(form url.Values) {
 
 // requestEmailLink asks for a confirmation letter, from any browser, and returns the token sent to address
 func (b *browser) requestEmailLink(name, address string) string {
-	code, body := b.do(http.MethodGet, "/auth/email/login?aud=link-test&user="+url.QueryEscape(name)+
+	code, body := b.do(http.MethodGet, "/auth/"+linkVerifProvider+"/login?aud=link-test&user="+url.QueryEscape(name)+
 		"&address="+url.QueryEscape(address), nil)
 	require.Equal(b.t, http.StatusOK, code, body)
 	b.env.mu.Lock()
@@ -303,7 +336,7 @@ func (b *browser) requestEmailLink(name, address string) string {
 }
 
 func (b *browser) openEmailLink(tkn string) {
-	code, body := b.do(http.MethodGet, "/auth/email/login?token="+url.QueryEscape(tkn), nil)
+	code, body := b.do(http.MethodGet, "/auth/"+linkVerifProvider+"/login?token="+url.QueryEscape(tkn), nil)
 	require.Equal(b.t, http.StatusOK, code, body)
 }
 
@@ -314,10 +347,20 @@ func (b *browser) openPasswordLink(name string) {
 	require.Equal(b.t, http.StatusOK, code, body)
 }
 
-func emailID(address string) string { return "email_" + token.HashID(sha1.New(), address) } //nolint:gosec
+func emailID(address string) string { //nolint:gosec
+	return linkVerifProvider + "_" + token.HashID(sha1.New(), address)
+}
 
 func emailLink(address string) url.Values {
-	return url.Values{"provider": {"email"}, "address": {address}}
+	return url.Values{"provider": {linkVerifProvider}, "address": {address}}
+}
+
+// later moves the app's clock forward. The login tokens keep real time, so this ages the pending link only.
+func (env *linkEnv) later(d time.Duration) {
+	env.app.mu.Lock()
+	defer env.app.mu.Unlock()
+	now := env.app.now()
+	env.app.now = func() time.Time { return now.Add(d) }
 }
 
 var passwordLink = url.Values{"provider": {"password"}}
@@ -383,8 +426,8 @@ func TestLinkAnonymousUser_StartNeedsKnownProvider(t *testing.T) {
 	}{
 		{"no provider", nil},
 		{"unknown provider", url.Values{"provider": {"github"}}},
-		{"anonymous provider", url.Values{"provider": {"anonymous"}}},
-		{"email without address", url.Values{"provider": {"email"}}},
+		{"anonymous provider", url.Values{"provider": {linkAnonProvider}}},
+		{"email without address", url.Values{"provider": {linkVerifProvider}}},
 		{"address for a provider other than email", url.Values{"provider": {"password"}, "address": {"a@example.com"}}},
 	}
 	for _, tt := range tbl {
@@ -438,11 +481,11 @@ func TestLinkAnonymousUser_LoginWithAnotherProvider(t *testing.T) {
 
 func TestLinkAnonymousUser_ConfirmNeedsRealLogin_EvenWithAnonymousProviderAllowed(t *testing.T) {
 	env := newLinkEnv(t)
-	env.app.providers["anonymous"] = true
+	env.app.providers[linkAnonProvider] = true
 	guest := env.browser(t)
 	anonID := guest.loginAnonymous("guest")
 	env.app.data[anonID] = []string{"draft"}
-	guest.startLink(url.Values{"provider": {"anonymous"}})
+	guest.startLink(url.Values{"provider": {linkAnonProvider}})
 
 	code, _ := guest.do(http.MethodGet, "/link/confirm", nil)
 	assert.Equal(t, http.StatusForbidden, code, "confirm refuses a user who is still anonymous, even when accepts lets him through")
@@ -468,6 +511,8 @@ func TestLinkAnonymousUser_AccountSwitchAfterConfirmScreen(t *testing.T) {
 	mallory := victim.user().ID
 	require.NotEqual(t, alice, mallory, "the attacker's login link logs the victim's browser into his account")
 
+	code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {alice}})
+	assert.Equal(t, http.StatusConflict, code, "the screen named alice, but mallory is logged in now")
 	code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {mallory}})
 	assert.Equal(t, http.StatusConflict, code, "an account the screen never named must not receive the data")
 
@@ -479,22 +524,55 @@ func TestLinkAnonymousUser_AccountSwitchAfterConfirmScreen(t *testing.T) {
 	assert.Empty(t, env.app.data[mallory])
 }
 
-func TestLinkAnonymousUser_ExpiredLink(t *testing.T) {
+func TestLinkAnonymousUser_SlowEmailLogin(t *testing.T) {
 	env := newLinkEnv(t)
 	victim := env.browser(t)
 	anonID := victim.loginAnonymous("guest")
 	env.app.data[anonID] = []string{"draft"}
 	victim.startLink(emailLink("victim@example.com"))
-	env.app.mu.Lock()
-	for _, p := range env.app.pending {
-		p.expires = time.Now().Add(-time.Second)
-	}
-	env.app.mu.Unlock()
 
+	env.later(15 * time.Minute)
 	victim.openEmailLink(victim.requestEmailLink("victim", "victim@example.com"))
-	code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
-	assert.Equal(t, http.StatusConflict, code, "an expired link offers nothing to move")
-	assert.Equal(t, []string{"draft"}, env.app.data[anonID])
+	env.later(25 * time.Minute) // the letter was sent at minute 15 and is still valid at minute 40
+	code, body := victim.do(http.MethodGet, "/link/confirm", nil)
+	require.Equal(t, http.StatusOK, code, "a link with an address must outlive the confirmation letter, "+body)
+	code, body = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {emailID("victim@example.com")}})
+	require.Equal(t, http.StatusNoContent, code, body)
+	assert.Equal(t, []string{"draft"}, env.app.data[emailID("victim@example.com")])
+	assert.Empty(t, env.app.data[anonID])
+}
+
+func TestLinkAnonymousUser_ExpiredLink(t *testing.T) {
+	tbl := []struct {
+		name  string
+		form  url.Values
+		ttl   time.Duration
+		login func(b *browser)
+	}{
+		{"email", emailLink("victim@example.com"), linkTTLWithAddress,
+			func(b *browser) { b.openEmailLink(b.requestEmailLink("victim", "victim@example.com")) }},
+		{"no address", passwordLink, linkTTLNoAddress, func(b *browser) { b.openPasswordLink("alice") }},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newLinkEnv(t)
+			victim := env.browser(t)
+			anonID := victim.loginAnonymous("guest")
+			env.app.data[anonID] = []string{"draft"}
+			victim.startLink(tt.form)
+			tt.login(victim)
+
+			env.later(tt.ttl - 2*time.Second)
+			code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
+			require.Equal(t, http.StatusOK, code, "the link is still alive just before its time")
+			env.later(3 * time.Second)
+			code, _ = victim.do(http.MethodGet, "/link/confirm", nil)
+			assert.Equal(t, http.StatusConflict, code, "an expired link offers nothing to move")
+			code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {victim.user().ID}})
+			assert.Equal(t, http.StatusConflict, code, "an expired link moves nothing")
+			assert.Equal(t, []string{"draft"}, env.app.data[anonID])
+		})
+	}
 }
 
 func TestLinkAnonymousUser_RejectsNonCookieToken(t *testing.T) {
@@ -537,13 +615,21 @@ func TestLinkAnonymousUser_DefaultJWTNames(t *testing.T) {
 }
 
 func TestLinkAnonymousUser_NonceCookieAttributes(t *testing.T) {
-	for _, secure := range []bool{false, true} {
-		t.Run(fmt.Sprintf("SecureCookies=%v", secure), func(t *testing.T) {
-			a := newLinkApp(Opts{SecureCookies: secure}, "password")
-			// a plain http request, as a handler behind a TLS-terminating proxy sees it
-			r := httptest.NewRequest(http.MethodPost, "/link/start", strings.NewReader("provider=password"))
+	tbl := []struct {
+		secure bool
+		form   string
+		maxAge int
+	}{
+		{false, "provider=password", int(linkTTLNoAddress / time.Second)},
+		{true, "provider=password", int(linkTTLNoAddress / time.Second)},
+		{true, "provider=" + linkVerifProvider + "&address=a%40example.com", int(linkTTLWithAddress / time.Second)},
+	}
+	for _, tt := range tbl {
+		t.Run(fmt.Sprintf("SecureCookies=%v %s", tt.secure, tt.form), func(t *testing.T) {
+			a := newLinkApp(Opts{SecureCookies: tt.secure}, "password", linkVerifProvider)
+			r := httptest.NewRequest(http.MethodPost, "/link/start", strings.NewReader(tt.form))
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			r = token.SetUserInfo(r, token.User{ID: "anonymous_1"})
+			r = token.SetUserInfo(r, token.User{ID: linkAnonProvider + "_1a"})
 			w := httptest.NewRecorder()
 			a.start(w, r)
 			require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
@@ -553,7 +639,53 @@ func TestLinkAnonymousUser_NonceCookieAttributes(t *testing.T) {
 			assert.Equal(t, linkCookie, cookies[0].Name)
 			assert.True(t, cookies[0].HttpOnly, "page scripts must not read the nonce")
 			assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite, "a cross-site POST to confirm must not carry the nonce")
-			assert.Equal(t, secure, cookies[0].Secure, "the nonce cookie must follow Opts.SecureCookies like the JWT cookie")
+			assert.Equal(t, tt.secure, cookies[0].Secure,
+				"httptest sends plain http, as a handler behind a TLS-terminating proxy sees it, so Secure must come from Opts.SecureCookies")
+			assert.Equal(t, tt.maxAge, cookies[0].MaxAge, "the cookie must live as long as the pending record")
 		})
 	}
+}
+
+func TestLinkAnonymousUser_ClearNonceCookie(t *testing.T) {
+	for _, secure := range []bool{false, true} {
+		t.Run(fmt.Sprintf("SecureCookies=%v", secure), func(t *testing.T) {
+			a := newLinkApp(Opts{SecureCookies: secure}, "password")
+			a.pending["n1"] = &pendingLink{anonID: linkAnonProvider + "_1", provider: "password", shownTo: "password_alice",
+				expires: time.Now().Add(time.Minute)}
+			a.data[linkAnonProvider+"_1"] = []string{"draft"}
+			r := httptest.NewRequest(http.MethodPost, "/link/confirm", strings.NewReader("move_to=password_alice"))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r.AddCookie(&http.Cookie{Name: linkCookie, Value: "n1"})
+			r = token.SetUserInfo(r, token.User{ID: "password_alice"})
+			w := httptest.NewRecorder()
+			a.confirm(w, r)
+			require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+
+			cookies := w.Result().Cookies()
+			require.Len(t, cookies, 1)
+			assert.Equal(t, linkCookie, cookies[0].Name)
+			assert.Negative(t, cookies[0].MaxAge, "a done link clears the nonce cookie")
+			assert.Equal(t, secure, cookies[0].Secure, "the clearing cookie must carry the same Secure as the one set at start")
+		})
+	}
+}
+
+func TestLinkAnonymousUser_ProviderWithUnderscore(t *testing.T) {
+	hash := token.HashID(sha1.New(), "alice") //nolint:gosec
+	p := &pendingLink{provider: "password"}
+	assert.True(t, p.accepts("password_"+hash))
+	assert.False(t, p.accepts("password_backup_"+hash), "a provider named password_backup is another provider")
+	assert.Equal(t, linkAnonProvider, providerOf(linkAnonProvider+"_"+hash))
+	assert.NotEqual(t, linkAnonProvider, providerOf(linkAnonProvider+"_backup_"+hash),
+		"a real provider whose name starts with the anonymous one's is not anonymous")
+	assert.Empty(t, providerOf("nounderscore"))
+
+	a := newLinkApp(Opts{}, "password")
+	r := httptest.NewRequest(http.MethodPost, "/link/start", strings.NewReader("provider=password"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r = token.SetUserInfo(r, token.User{ID: linkAnonProvider + "_backup_" + hash})
+	w := httptest.NewRecorder()
+	a.start(w, r)
+	assert.Equal(t, http.StatusForbidden, w.Code, "only a user of the anonymous provider itself can start a link")
+	assert.Empty(t, a.pending)
 }
