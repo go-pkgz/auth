@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -37,12 +38,29 @@ type linkApp struct {
 	data      map[string][]string     // app records by user id
 }
 
+// pendingLink names who may receive the data: any user of provider until expires, a provider without an
+// address the user is about to log in with, and the user of each email address typed at start until its time
 type pendingLink struct {
-	anonID   string
-	provider string // provider the user is about to log in with, only its users can receive the data
-	address  string // for email, the address typed at start, only its user id can receive the data
-	shownTo  string // user id the confirmation screen named
-	expires  time.Time
+	anonID    string
+	provider  string
+	expires   time.Time
+	addresses map[string]time.Time
+	shownTo   string // user id the confirmation screen named
+}
+
+// live tells whether anything in the link can still receive the data
+func (p *pendingLink) live(now time.Time) bool {
+	return !p.lastExpiry().Before(now)
+}
+
+func (p *pendingLink) lastExpiry() time.Time {
+	last := p.expires
+	for _, exp := range p.addresses {
+		if exp.After(last) {
+			last = exp
+		}
+	}
+	return last
 }
 
 const linkCookie = "link_nonce"
@@ -65,14 +83,19 @@ func providerOf(userID string) string {
 	return userID[:i]
 }
 
-// a pending link has to outlive the login it waits for. The verify provider's confirmation token is
-// valid for 30 minutes (v2/provider/verify.go, not configurable) and is issued after start, so a link
-// with an address lives that long plus time for the confirmation screen; the nonce alone moves nothing
-// there. For a link without an address the nonce alone is enough to move the data to any account of
-// that provider, so it keeps a short window, and a login slower than that leaves the data where it is.
+// a pending link has to outlive the login it waits for, and each login credential runs on its own clock
+// from when it is issued: the verify provider's confirmation token for 30 minutes after the letter is sent
+// (v2/provider/verify.go), a Telegram login request for 10 minutes after the code is requested
+// (v2/provider/telegram.go), neither configurable. So the app calls start again right before every login
+// attempt it can, each letter and each Telegram code included, resends too, and each address or provider
+// lives that window plus time to confirm, counted from its own start. With an address the nonce alone moves
+// nothing, so the link waits for the letter. Without one the nonce alone moves the data to any account of
+// that provider, so the window covers a Telegram login and stays short. An oauth or Apple login replaces
+// the anonymous JWT as soon as it starts, so there is no start after it, and one slower than the window
+// (the handshake allows 30 minutes) leaves the data under an anonymous id nobody can log into again.
 const (
 	linkTTLWithAddress = 30*time.Minute + 15*time.Minute
-	linkTTLNoAddress   = 10 * time.Minute
+	linkTTLNoAddress   = 10*time.Minute + 5*time.Minute
 )
 
 // newLinkApp takes the JWT query and header names and the cookie Secure flag from the Opts passed to
@@ -99,16 +122,19 @@ func (a *linkApp) cookieTokenOnly(r *http.Request) bool {
 	return r.URL.Query().Get(a.jwtQuery) == "" && r.Header.Get(a.jwtHeader) == ""
 }
 
-// accepts tells whether userID may receive the data. The display name is no proof, for email it comes
-// from the user query parameter. An email link binds the exact address typed at start. Any other
+// accepts tells whether userID may receive the data at now. The display name is no proof, for email it
+// comes from the user query parameter. An email link binds the exact addresses typed at start. Any other
 // provider binds only the provider, so its user has to recognize the account on the confirmation screen.
 // The provider is told by the "<provider>_<hash>" id form, which the dev provider, NewCustomServer with its
 // default mapper, a custom MapUserFn, AddCustomHandler and a ClaimsUpd rewriting the id may not keep.
-func (p *pendingLink) accepts(userID string) bool {
-	if p.provider == linkVerifProvider {
-		return userID == linkVerifProvider+"_"+token.HashID(sha1.New(), p.address) //nolint:gosec
+func (p *pendingLink) accepts(userID string, now time.Time) bool {
+	for address, exp := range p.addresses {
+		if userID == linkVerifProvider+"_"+token.HashID(sha1.New(), address) && !now.After(exp) { //nolint:gosec
+			return true
+		}
 	}
-	return providerOf(userID) == p.provider
+	// an email-only link has an empty provider and a zero expires, so it passes no provider here
+	return providerOf(userID) == p.provider && !now.After(p.expires)
 }
 
 // start runs behind the auth middleware, before the frontend sends an anonymous user to a real provider
@@ -129,15 +155,29 @@ func (a *linkApp) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nonce := hex.EncodeToString(b)
-	ttl := linkTTLNoAddress
-	if address != "" {
-		ttl = linkTTLWithAddress
-	}
 	a.mu.Lock()
-	a.pending[nonce] = &pendingLink{anonID: user.ID, provider: prov, address: address, expires: a.now().Add(ttl)}
+	now := a.now()
+	p := &pendingLink{anonID: user.ID, addresses: map[string]time.Time{}}
+	// a new start replaces the link this browser started before. It keeps the addresses of the same anonymous
+	// user, each with its own expiration: a letter sent earlier is still valid and logs into an address the
+	// user typed, and once it has replaced the anonymous JWT there is no start left to make. It never keeps a
+	// provider without an address, any login of that provider, an attacker's too, would pass for it.
+	if c, err := r.Cookie(linkCookie); err == nil {
+		if old, ok := a.pending[c.Value]; ok && old.anonID == user.ID {
+			maps.Copy(p.addresses, old.addresses)
+		}
+		delete(a.pending, c.Value)
+	}
+	if address != "" {
+		p.addresses[address] = now.Add(linkTTLWithAddress)
+	} else {
+		p.provider, p.expires = prov, now.Add(linkTTLNoAddress)
+	}
+	a.pending[nonce] = p
+	maxAge := int(p.lastExpiry().Sub(now) / time.Second)
 	a.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: linkCookie, Value: nonce, Path: "/", HttpOnly: true, Secure: a.secure,
-		SameSite: http.SameSiteLaxMode, MaxAge: int(ttl / time.Second)})
+		SameSite: http.SameSiteLaxMode, MaxAge: maxAge})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -148,7 +188,7 @@ func (a *linkApp) lookup(r *http.Request) (*pendingLink, string) {
 		return nil, ""
 	}
 	p, ok := a.pending[c.Value]
-	if !ok || a.now().After(p.expires) {
+	if !ok || !p.live(a.now()) {
 		return nil, ""
 	}
 	return p, c.Value
@@ -170,7 +210,8 @@ func (a *linkApp) confirm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no pending link", http.StatusConflict)
 		return
 	}
-	if !p.accepts(user.ID) {
+	// a refusal leaves the link in place, so the user can still log in with the account it was started for
+	if !p.accepts(user.ID, a.now()) {
 		http.Error(w, "logged in with another account than the link was started for", http.StatusForbidden)
 		return
 	}
@@ -221,6 +262,9 @@ func newLinkEnv(t *testing.T) *linkEnv {
 	}
 	env := &linkEnv{url: opts.URL, app: newLinkApp(opts, linkVerifProvider, "password"),
 		letter: map[string]string{}}
+	// the app clock stands still until later moves it, so no test depends on how fast the runner is
+	frozen := time.Now()
+	env.app.now = func() time.Time { return frozen }
 	svc := NewService(opts)
 	// anonymous ids carry a random part, so a second user typing the same name gets another id
 	svc.AddDirectProviderWithUserIDFunc(linkAnonProvider,
@@ -459,6 +503,13 @@ func TestLinkAnonymousUser_AttackerConfirmationLink(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, code)
 	assert.Equal(t, []string{"draft"}, env.app.data[anonID], "the data stays with the anonymous user")
 	assert.Empty(t, env.app.data[emailID("attacker@example.com")])
+
+	victim.openEmailLink(victim.requestEmailLink("victim", "victim@example.com"))
+	code, body := victim.do(http.MethodGet, "/link/confirm", nil)
+	require.Equal(t, http.StatusOK, code, "a refusal leaves the link, so the victim's own letter still completes it, "+body)
+	code, body = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {emailID("victim@example.com")}})
+	require.Equal(t, http.StatusNoContent, code, body)
+	assert.Equal(t, []string{"draft"}, env.app.data[emailID("victim@example.com")])
 }
 
 func TestLinkAnonymousUser_LoginWithAnotherProvider(t *testing.T) {
@@ -524,22 +575,188 @@ func TestLinkAnonymousUser_AccountSwitchAfterConfirmScreen(t *testing.T) {
 	assert.Empty(t, env.app.data[mallory])
 }
 
-func TestLinkAnonymousUser_SlowEmailLogin(t *testing.T) {
+func TestLinkAnonymousUser_ResentLetter(t *testing.T) {
 	env := newLinkEnv(t)
 	victim := env.browser(t)
 	anonID := victim.loginAnonymous("guest")
 	env.app.data[anonID] = []string{"draft"}
 	victim.startLink(emailLink("victim@example.com"))
+	victim.requestEmailLink("victim", "victim@example.com")
 
-	env.later(15 * time.Minute)
-	victim.openEmailLink(victim.requestEmailLink("victim", "victim@example.com"))
-	env.later(25 * time.Minute) // the letter was sent at minute 15 and is still valid at minute 40
+	env.later(20 * time.Minute)
+	victim.startLink(emailLink("victim@example.com"))
+	resent := victim.requestEmailLink("victim", "victim@example.com")
+	require.Len(t, env.app.pending, 1, "the second start replaces the first link")
+
+	env.later(29 * time.Minute)
+	victim.openEmailLink(resent)
+	env.later(5 * time.Minute)
 	code, body := victim.do(http.MethodGet, "/link/confirm", nil)
-	require.Equal(t, http.StatusOK, code, "a link with an address must outlive the confirmation letter, "+body)
+	require.Equal(t, http.StatusOK, code,
+		"the start before the resend counts the link from the resent letter, past the end of the first link, "+body)
 	code, body = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {emailID("victim@example.com")}})
 	require.Equal(t, http.StatusNoContent, code, body)
 	assert.Equal(t, []string{"draft"}, env.app.data[emailID("victim@example.com")])
 	assert.Empty(t, env.app.data[anonID])
+}
+
+func TestLinkAnonymousUser_LoginAtEndOfTelegramWindow(t *testing.T) {
+	env := newLinkEnv(t)
+	victim := env.browser(t)
+	anonID := victim.loginAnonymous("guest")
+	env.app.data[anonID] = []string{"draft"}
+	victim.startLink(passwordLink)
+
+	env.later(10 * time.Minute)
+	victim.openPasswordLink("alice")
+	alice := victim.user().ID
+	env.later(time.Minute)
+	code, body := victim.do(http.MethodGet, "/link/confirm", nil)
+	require.Equal(t, http.StatusOK, code,
+		"a Telegram login request lives 10 minutes, a login at its end needs time to confirm; a password login stands in for it, "+body)
+	code, body = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {alice}})
+	require.Equal(t, http.StatusNoContent, code, body)
+	assert.Equal(t, []string{"draft"}, env.app.data[alice])
+}
+
+func TestLinkAnonymousUser_StartAgainReplacesLink(t *testing.T) {
+	env := newLinkEnv(t)
+	victim := env.browser(t)
+	anonID := victim.loginAnonymous("guest")
+	env.app.data[anonID] = []string{"draft"}
+	victim.startLink(passwordLink)
+	first := victim.cookie(linkCookie)
+	require.NotNil(t, first)
+	victim.startLink(passwordLink)
+	require.Len(t, env.app.pending, 1)
+
+	victim.openPasswordLink("alice")
+	victim.setCookie(first)
+	code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
+	assert.Equal(t, http.StatusConflict, code, "the nonce of a replaced link, which anyone who read it could use, finds nothing")
+	assert.Equal(t, []string{"draft"}, env.app.data[anonID])
+}
+
+func TestLinkAnonymousUser_EarlierLetterAfterStartAgain(t *testing.T) {
+	tbl := []struct {
+		name   string
+		second url.Values
+	}{
+		{"another address", emailLink("second@example.com")},
+		{"a provider without an address", passwordLink},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newLinkEnv(t)
+			victim := env.browser(t)
+			anonID := victim.loginAnonymous("guest")
+			env.app.data[anonID] = []string{"draft"}
+			victim.startLink(emailLink("victim@example.com"))
+			letter := victim.requestEmailLink("victim", "victim@example.com")
+			env.later(5 * time.Minute)
+			victim.startLink(tt.second)
+
+			victim.openEmailLink(letter)
+			code, body := victim.do(http.MethodGet, "/link/confirm", nil)
+			require.Equal(t, http.StatusOK, code,
+				"the first letter is still valid and its login leaves no start to make, so the link must still take it, "+body)
+			code, body = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {emailID("victim@example.com")}})
+			require.Equal(t, http.StatusNoContent, code, body)
+			assert.Equal(t, []string{"draft"}, env.app.data[emailID("victim@example.com")])
+		})
+	}
+}
+
+func TestLinkAnonymousUser_EmailStartDropsProvider(t *testing.T) {
+	env := newLinkEnv(t)
+	victim := env.browser(t)
+	anonID := victim.loginAnonymous("guest")
+	env.app.data[anonID] = []string{"draft"}
+	victim.startLink(passwordLink)
+	victim.startLink(emailLink("victim@example.com"))
+
+	victim.openPasswordLink("mallory")
+	code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
+	assert.Equal(t, http.StatusForbidden, code,
+		"a provider without an address must not outlive the start that replaced it, any of its accounts would pass")
+	assert.Equal(t, []string{"draft"}, env.app.data[anonID])
+}
+
+func TestLinkAnonymousUser_CarriedAddressExpires(t *testing.T) {
+	env := newLinkEnv(t)
+	victim := env.browser(t)
+	anonID := victim.loginAnonymous("guest")
+	env.app.data[anonID] = []string{"draft"}
+	victim.startLink(emailLink("victim@example.com"))
+	letter := victim.requestEmailLink("victim", "victim@example.com")
+	env.later(40 * time.Minute)
+	victim.startLink(passwordLink)
+
+	env.later(6 * time.Minute)
+	victim.openEmailLink(letter)
+	code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
+	assert.Equal(t, http.StatusForbidden, code, "a carried address keeps the time of its own start, the new start does not extend it")
+	assert.Equal(t, []string{"draft"}, env.app.data[anonID])
+}
+
+func TestLinkAnonymousUser_ProviderExpiresBeforeCarriedAddress(t *testing.T) {
+	env := newLinkEnv(t)
+	victim := env.browser(t)
+	anonID := victim.loginAnonymous("guest")
+	env.app.data[anonID] = []string{"draft"}
+	victim.startLink(emailLink("victim@example.com"))
+	env.later(5 * time.Minute)
+	victim.startLink(passwordLink)
+
+	env.later(linkTTLNoAddress + time.Second)
+	victim.openPasswordLink("mallory")
+	code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
+	assert.Equal(t, http.StatusForbidden, code,
+		"a provider without an address keeps its short window while a carried address keeps the link alive")
+	assert.Equal(t, []string{"draft"}, env.app.data[anonID])
+}
+
+func TestLinkAnonymousUser_AnotherAnonymousUserInheritsNothing(t *testing.T) {
+	env := newLinkEnv(t)
+	b := env.browser(t)
+	first := b.loginAnonymous("guest")
+	env.app.data[first] = []string{"first draft"}
+	b.startLink(emailLink("victim@example.com"))
+	letter := b.requestEmailLink("victim", "victim@example.com")
+
+	second := b.loginAnonymous("guest")
+	env.app.data[second] = []string{"second draft"}
+	b.startLink(passwordLink)
+	b.openEmailLink(letter)
+	code, _ := b.do(http.MethodGet, "/link/confirm", nil)
+	assert.Equal(t, http.StatusForbidden, code, "an address typed by another anonymous user must not receive this one's data")
+	assert.Equal(t, []string{"second draft"}, env.app.data[second])
+}
+
+func TestLinkAnonymousUser_NonceCookieOutlivesCarriedAddress(t *testing.T) {
+	a := newLinkApp(Opts{}, "password", linkVerifProvider)
+	frozen := time.Now()
+	a.now = func() time.Time { return frozen }
+	startReq := func(form string, cookie *http.Cookie) *http.Cookie {
+		r := httptest.NewRequest(http.MethodPost, "/link/start", strings.NewReader(form))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if cookie != nil {
+			r.AddCookie(cookie)
+		}
+		r = token.SetUserInfo(r, token.User{ID: linkAnonProvider + "_1a"})
+		w := httptest.NewRecorder()
+		a.start(w, r)
+		require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+		require.Len(t, w.Result().Cookies(), 1)
+		return w.Result().Cookies()[0]
+	}
+	c := startReq("provider="+linkVerifProvider+"&address=a%40example.com", nil)
+	a.mu.Lock()
+	frozen = frozen.Add(5 * time.Minute)
+	a.mu.Unlock()
+	c = startReq("provider=password", c)
+	assert.Equal(t, int((linkTTLWithAddress-5*time.Minute)/time.Second), c.MaxAge,
+		"the cookie must live as long as the carried address, not only the provider of the last start")
 }
 
 func TestLinkAnonymousUser_ExpiredLink(t *testing.T) {
@@ -562,10 +779,10 @@ func TestLinkAnonymousUser_ExpiredLink(t *testing.T) {
 			victim.startLink(tt.form)
 			tt.login(victim)
 
-			env.later(tt.ttl - 2*time.Second)
+			env.later(tt.ttl)
 			code, _ := victim.do(http.MethodGet, "/link/confirm", nil)
-			require.Equal(t, http.StatusOK, code, "the link is still alive just before its time")
-			env.later(3 * time.Second)
+			require.Equal(t, http.StatusOK, code, "the link is still alive at the end of its time")
+			env.later(time.Second)
 			code, _ = victim.do(http.MethodGet, "/link/confirm", nil)
 			assert.Equal(t, http.StatusConflict, code, "an expired link offers nothing to move")
 			code, _ = victim.do(http.MethodPost, "/link/confirm", url.Values{"move_to": {victim.user().ID}})
@@ -672,13 +889,16 @@ func TestLinkAnonymousUser_ClearNonceCookie(t *testing.T) {
 
 func TestLinkAnonymousUser_ProviderWithUnderscore(t *testing.T) {
 	hash := token.HashID(sha1.New(), "alice") //nolint:gosec
-	p := &pendingLink{provider: "password"}
-	assert.True(t, p.accepts("password_"+hash))
-	assert.False(t, p.accepts("password_backup_"+hash), "a provider named password_backup is another provider")
+	now := time.Now()
+	p := &pendingLink{provider: "password", expires: now}
+	assert.True(t, p.accepts("password_"+hash, now))
+	assert.False(t, p.accepts("password_backup_"+hash, now), "a provider named password_backup is another provider")
 	assert.Equal(t, linkAnonProvider, providerOf(linkAnonProvider+"_"+hash))
 	assert.NotEqual(t, linkAnonProvider, providerOf(linkAnonProvider+"_backup_"+hash),
 		"a real provider whose name starts with the anonymous one's is not anonymous")
 	assert.Empty(t, providerOf("nounderscore"))
+	email := &pendingLink{addresses: map[string]time.Time{"a@example.com": now}}
+	assert.False(t, email.accepts("nounderscore", now), "an email-only link names no provider, an id without one must not match it")
 
 	a := newLinkApp(Opts{}, "password")
 	r := httptest.NewRequest(http.MethodPost, "/link/start", strings.NewReader("provider=password"))
