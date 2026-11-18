@@ -1259,7 +1259,7 @@ func TestTelegram_APIErrorDoesNotLeakADoubleEncodedToken(t *testing.T) {
 	_, err = tg.BotInfo(context.Background())
 	require.Error(t, err)
 	text := err.Error()
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		assert.NotContains(t, text, token, "the token is recoverable after %d decoding passes", i)
 		next, decErr := url.QueryUnescape(text)
 		if decErr != nil || next == text {
@@ -1343,7 +1343,7 @@ func TestTelegram_APIErrorWithheldWhenEscapingIsMalformed(t *testing.T) {
 	assert.Contains(t, err.Error(), "text withheld", "the upstream text was released undecoded")
 
 	text := err.Error()
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		assert.NotContains(t, text, token, "the token is recoverable after %d decoding passes", i)
 		next, decErr := url.QueryUnescape(text)
 		if decErr != nil || next == text {

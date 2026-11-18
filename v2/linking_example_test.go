@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -274,9 +275,7 @@ func (b *browser) doWithHeader(method, path string, form url.Values, header http
 	b.t.Helper()
 	req, err := http.NewRequest(method, b.env.url+path, strings.NewReader(form.Encode()))
 	require.NoError(b.t, err)
-	for k, v := range header {
-		req.Header[k] = v
-	}
+	maps.Copy(req.Header, header)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	u, err := url.Parse(b.env.url)
 	require.NoError(b.t, err)

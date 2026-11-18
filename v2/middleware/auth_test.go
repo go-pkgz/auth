@@ -174,7 +174,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	server := httptest.NewServer(makeTestMux(t, &a, true))
 	defer server.Close()
 
-	var refreshCount int32
+	var refreshCount atomic.Int32
 	a.RefreshCache = newTestRefreshCache()
 	sendExpired := func() {
 		jar, err := cookiejar.New(nil)
@@ -194,7 +194,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 
 		cookies := resp.Cookies()
 		if len(cookies) == 2 && resp.Cookies()[0].Name == "JWT" && resp.Cookies()[0].Value != testJwtExpired {
-			atomic.AddInt32(&refreshCount, 1)
+			refreshCount.Add(1)
 		}
 	}
 
@@ -211,7 +211,7 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	wg.Wait()
 	assert.Equal(t, int32(1), a.RefreshCache.(*testRefreshCache).misses, "1 cache miss")
 	assert.Equal(t, int32(99), a.RefreshCache.(*testRefreshCache).hits, "99 cache hits")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&refreshCount), "should make one refresh only")
+	assert.Equal(t, int32(1), refreshCount.Load(), "should make one refresh only")
 
 	// make another expired token
 	c, err := a.JWTService.Parse(testJwtExpired)
