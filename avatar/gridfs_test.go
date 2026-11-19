@@ -168,7 +168,7 @@ func TestGridFS_PutConcurrent(t *testing.T) {
 	p := prepGFStore(t)
 	defer p.Close()
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		var wg sync.WaitGroup
 		for _, data := range []string{"first picture data", "second picture data"} {
 			wg.Add(1)

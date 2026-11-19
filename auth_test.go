@@ -353,6 +353,12 @@ func TestIntegrationAvatar(t *testing.T) {
 	assert.False(t, uniformImage(img), "the served avatar is a single flat color")
 }
 
+func TestNewServiceAvatarIdenticonSize(t *testing.T) {
+	svc := NewService(Opts{AvatarStore: avatar.NewNoOp(), AvatarIdenticonSize: 48})
+	require.NotNil(t, svc.avatarProxy)
+	assert.Equal(t, 48, svc.avatarProxy.IdenticonSize, "Opts.AvatarIdenticonSize has to reach the avatar proxy")
+}
+
 func TestIntegrationList(t *testing.T) {
 	_, teardown := prepService(t, func(svc *Service) {
 		svc.AddProvider("github", "cid", "csec")

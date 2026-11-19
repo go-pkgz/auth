@@ -223,6 +223,7 @@ Direct links to avatars won't survive any real-life usage if they linked from a 
         - mongo - `"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1`
     - `AvatarRoutePath` - route prefix for direct links to proxied avatar. For example `/api/v1/avatars` will make full links like this - `http://example.com/api/v1/avatars/1234567890123.image`. The url will be stored in user's token and retrieved by middleware (see "User Info")
     - `AvatarResizeLimit` - size (in pixels) used to resize the avatar. Pls note - resize happens once as a part of `Put` call, i.e. on login. 0 size (default) disables resizing.
+    - `AvatarIdenticonSize` - size (in pixels) of the identicon generated for a user without a picture, 300 by default. Browsers blur the block edges when they scale an identicon by an uneven factor, so for small avatars set it to twice the displayed size: 48 for a 24px avatar is scaled by a whole factor at device pixel ratios 1 and 2. An `AvatarResizeLimit` below it still scales the identicon down. Like resizing, it applies on login, so stored identicons keep their size until the user logs in again.
 
 ### Direct authentication
 

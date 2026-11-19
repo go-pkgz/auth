@@ -9,6 +9,7 @@ import (
 	"image"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -220,6 +221,60 @@ func TestAvatar_PutFailed(t *testing.T) {
 	// same as above: no ResizeLimit on this Proxy, so the generator's 300x300 is what is stored
 	_ = fi
 	assertStoredImage(t, avatarPath, 300)
+}
+
+func TestAvatar_PutIdenticonSize(t *testing.T) {
+	tbl := []struct {
+		name          string
+		identiconSize int
+		resizeLimit   int
+		side          int
+		drawn         bool // stored as drawn by the generator, not resampled afterwards
+	}{
+		{name: "default", side: 300, drawn: true},
+		{name: "set", identiconSize: 48, side: 48, drawn: true},
+		{name: "below the resize limit", identiconSize: 48, resizeLimit: 120, side: 48, drawn: true},
+		{name: "above the resize limit", identiconSize: 48, resizeLimit: 24, side: 24},
+		{name: "smallest grid", identiconSize: 5, side: 5, drawn: true},
+		{name: "too small", identiconSize: 4, side: 300, drawn: true},
+		{name: "negative", identiconSize: -1, side: 300, drawn: true},
+		{name: "too large", identiconSize: 4097, side: 300, drawn: true},
+		{name: "square overflows", identiconSize: math.MaxInt, side: 300, drawn: true},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			p := Proxy{RoutePath: "/avatar", URL: "http://localhost:8080", Store: NewLocalFS(t.TempDir()),
+				ResizeLimit: tt.resizeLimit, IdenticonSize: tt.identiconSize, L: logger.NoOp}
+			res, err := p.Put(token.User{ID: "user1", Name: "user1 name"}, &http.Client{Timeout: time.Second})
+			require.NoError(t, err)
+
+			rd, _, err := p.Store.Get(strings.TrimPrefix(res, "http://localhost:8080/avatar/"))
+			require.NoError(t, err)
+			defer rd.Close() //nolint:errcheck // read-only handle in a test
+			img, _, err := image.Decode(rd)
+			require.NoError(t, err)
+			assert.Equal(t, image.Rect(0, 0, tt.side, tt.side), img.Bounds())
+			assert.False(t, uniformImage(img), "the stored identicon is a single flat color")
+			if tt.drawn {
+				// the identicon has a background and a fill color only; anything scaled after drawing
+				// blends them at the block edges, which is the blur the size option exists to avoid
+				assert.Len(t, imageColors(img), 2, "the stored identicon was resampled after drawing")
+			}
+		})
+	}
+}
+
+// imageColors returns the set of distinct colors in img
+func imageColors(img image.Image) map[[4]uint32]bool {
+	res := map[[4]uint32]bool{}
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := img.At(x, y).RGBA()
+			res[[4]uint32{r, g, bl, a}] = true
+		}
+	}
+	return res
 }
 
 func TestAvatar_PutCapsBodySize(t *testing.T) {
