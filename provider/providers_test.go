@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/go-pkgz/auth/token"
 )
@@ -116,6 +117,89 @@ func TestProviders_NewGithubNumericID(t *testing.T) {
 		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, nil).ID, "nil body")
 		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, []byte(`{"login": "lll"}`)).ID, "no id field")
 		assert.Equal(t, "github_e80b2d2608711cbb3312db7c4727a46fbad9601a", r.mapUser(udata, []byte(`{"id": 0}`)).ID, "zero id")
+	})
+}
+
+func TestProviders_NewGithubEnterprise(t *testing.T) {
+	base := Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"}
+
+	t.Run("default is public github.com", func(t *testing.T) {
+		r := NewGithub(base)
+		assert.Equal(t, "github", r.Name())
+		assert.Equal(t, "https://github.com/login/oauth/authorize", r.endpoint.AuthURL)
+		assert.Equal(t, "https://api.github.com/user", r.infoURL)
+	})
+
+	t.Run("enterprise base url", func(t *testing.T) {
+		r, err := NewGithubEnterprise(base, "https://github.example.com")
+		require.NoError(t, err)
+		assert.Equal(t, "github", r.Name())
+		assert.Equal(t, "https://github.example.com/login/oauth/authorize", r.endpoint.AuthURL)
+		assert.Equal(t, "https://github.example.com/login/oauth/access_token", r.endpoint.TokenURL)
+		assert.Equal(t, "https://github.example.com/api/v3/user", r.infoURL)
+	})
+
+	t.Run("trailing slash trimmed", func(t *testing.T) {
+		r, err := NewGithubEnterprise(base, "https://github.example.com/")
+		require.NoError(t, err)
+		assert.Equal(t, "https://github.example.com/api/v3/user", r.infoURL)
+	})
+
+	t.Run("scheme-less base url treated as https", func(t *testing.T) {
+		r, err := NewGithubEnterprise(base, "github.example.com")
+		require.NoError(t, err)
+		assert.Equal(t, "https://github.example.com/login/oauth/authorize", r.endpoint.AuthURL)
+		assert.Equal(t, "https://github.example.com/login/oauth/access_token", r.endpoint.TokenURL)
+		assert.Equal(t, "https://github.example.com/api/v3/user", r.infoURL)
+	})
+
+	t.Run("custom port kept", func(t *testing.T) {
+		r, err := NewGithubEnterprise(base, "https://github.example.com:8443")
+		require.NoError(t, err)
+		assert.Equal(t, "https://github.example.com:8443/login/oauth/authorize", r.endpoint.AuthURL)
+		assert.Equal(t, "https://github.example.com:8443/api/v3/user", r.infoURL)
+	})
+
+	t.Run("enterprise ids are seeded by instance", func(t *testing.T) {
+		r, err := NewGithubEnterprise(base, "https://github.example.com")
+		require.NoError(t, err)
+		udata := UserData{"login": "lll", "name": "test user", "avatar_url": "http://github.example.com/blah.png"}
+		user := r.mapUser(udata, nil)
+		assert.Equal(t, token.User{Name: "test user", ID: "github_699f98cb49b4f83acafcaec466524efac3d8f6de",
+			Picture: "http://github.example.com/blah.png"}, user, "got %+v", user)
+		// same login on public github.com hashes to a different id, so repointing does not inherit records
+		pub := NewGithub(base)
+		assert.NotEqual(t, pub.mapUser(UserData{"login": "lll"}, nil).ID, user.ID)
+	})
+
+	t.Run("enterprise numeric id is seeded by instance", func(t *testing.T) {
+		r, err := NewGithubEnterprise(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+			GithubNumericID: true}, "https://github.example.com")
+		require.NoError(t, err)
+		user := r.mapUser(UserData{"login": "lll"}, []byte(`{"id": 1345027, "login": "lll"}`))
+		assert.Equal(t, "github_6178076b17e83d66fc463e3dd89c3bf81a26dd83", user.ID)
+		// without a usable numeric id it keeps the enterprise-seeded login, not the public one
+		fallback := r.mapUser(UserData{"login": "lll"}, nil)
+		assert.Equal(t, "github_699f98cb49b4f83acafcaec466524efac3d8f6de", fallback.ID)
+	})
+
+	t.Run("http and https on one host share the realm", func(t *testing.T) {
+		httpsProv, err := NewGithubEnterprise(base, "https://github.example.com")
+		require.NoError(t, err)
+		httpProv, err := NewGithubEnterprise(base, "http://github.example.com")
+		require.NoError(t, err)
+		assert.Equal(t, httpsProv.mapUser(UserData{"login": "lll"}, nil).ID,
+			httpProv.mapUser(UserData{"login": "lll"}, nil).ID)
+	})
+
+	t.Run("invalid base url is a registration error", func(t *testing.T) {
+		for _, bad := range []string{"not a url", "ftp://github.example.com", "/only/path",
+			"https://github.example.com?x=1", "https://github.example.com#frag", "https://user:pw@github.example.com",
+			"https://", "https://github.example.com/api/v3", "https://github.example.com?",
+			"https://:8443", "https://:443"} {
+			_, err := NewGithubEnterprise(base, bad)
+			assert.Error(t, err, "base %q should fail registration", bad)
+		}
 	})
 }
 

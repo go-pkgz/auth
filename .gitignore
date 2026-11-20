@@ -18,3 +18,7 @@ progress-*.txt
 
 # example build artifact, go build -race in _example names it after the dir
 /_example/_example
+
+# local GOCACHE/GOMODCACHE, never commit build caches
+/.gocache/
+/.gomodcache/
