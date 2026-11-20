@@ -1,9 +1,11 @@
 package provider
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/go-pkgz/auth/v2/token"
 )
@@ -210,6 +212,61 @@ func TestProviders_NewTwitter(t *testing.T) {
 		assert.Equal(t, c.expected, got, "got %+v", got)
 	}
 
+}
+
+func TestProviders_NewTwitterV2(t *testing.T) {
+	r := NewTwitterV2(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+	assert.Equal(t, "twitter", r.Name())
+
+	const picture = "https://pbs.twimg.com/profile_images/1/photo_normal.jpg"
+	cases := []struct {
+		name     string
+		body     string
+		expected token.User
+	}{
+		{name: "all fields, username wins over name",
+			body:     `{"data":{"id":"124381237","name":"Robert Downey Jr.","username":"Bob","profile_image_url":"` + picture + `"}}`,
+			expected: token.User{Name: "Bob", ID: "twitter_63a6b20b6e17fb5e17f6c58b6223e3b760ad510e", Picture: picture},
+		},
+		{name: "no username, no picture",
+			body:     `{"data":{"id":"124381237","name":"Robert Downey Jr."}}`,
+			expected: token.User{Name: "Robert Downey Jr.", ID: "twitter_63a6b20b6e17fb5e17f6c58b6223e3b760ad510e"},
+		},
+		{name: "errors without user object",
+			body:     `{"errors":[{"title":"Forbidden","type":"about:blank","status":403}]}`,
+			expected: token.User{},
+		},
+		{name: "user object without id", body: `{"data":{"name":"Robert Downey Jr.","username":"Bob"}}`, expected: token.User{}},
+		{name: "numeric id", body: `{"data":{"id":124381237,"username":"Bob"}}`, expected: token.User{}},
+		{name: "user fields at the top level", body: `{"id":"124381237","username":"Bob"}`, expected: token.User{}},
+		{name: "data is not an object", body: `{"data":"124381237"}`, expected: token.User{}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			udata := UserData{}
+			require.NoError(t, json.Unmarshal([]byte(c.body), &udata))
+			got := r.mapUser(udata, []byte(c.body))
+			assert.Equal(t, c.expected, got, "got %+v", got)
+		})
+	}
+
+	t.Run("same id as the oauth1 provider gives for the account", func(t *testing.T) {
+		udata := UserData{}
+		require.NoError(t, json.Unmarshal([]byte(`{"data":{"id":"124381237","username":"Bob"}}`), &udata))
+		oauth1 := NewTwitter(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
+		assert.Equal(t, oauth1.mapUser(UserData{"id_str": "124381237"}, nil).ID, r.mapUser(udata, nil).ID)
+	})
+
+	t.Run("user attributes are read from the user object", func(t *testing.T) {
+		withAttrs := NewTwitterV2(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+			UserAttributes: map[string]string{"username": "handle"}})
+		udata := UserData{}
+		require.NoError(t, json.Unmarshal([]byte(`{"data":{"id":"124381237","name":"Robert Downey Jr.","username":"Bob"}}`), &udata))
+		user := withAttrs.mapUser(udata, nil)
+		assert.Equal(t, token.User{Name: "Bob", ID: "twitter_63a6b20b6e17fb5e17f6c58b6223e3b760ad510e",
+			Attributes: map[string]any{"handle": "Bob"}}, user, "got %+v", user)
+	})
 }
 
 func TestProviders_NewPatreon(t *testing.T) {

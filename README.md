@@ -939,10 +939,20 @@ For more details refer to [Complete Guide of Battle.net OAuth API and Login Butt
 5.  Take note of the **CLIENT ID** and **CLIENT SECRET**
 
 #### Twitter Auth Provider
-1.	Create a new twitter application https://developer.twitter.com/en/apps
-1.	Fill **App name**  and **Description** and **URL** of your site
-1.	In the field **Callback URLs** enter the correct url of your callback handler e.g. https://example.mysite.com/{route}/twitter/callback
-1.	Under **Key and tokens** take note of the **Consumer API Key** and **Consumer API Secret key**. Those will be used as `cid` and `csecret`
+The `twitter` provider signs users in to X with OAuth 1.0a.
+
+1.	Create a new app in the X Developer Console https://console.x.com
+1.	On the app page, under **User authentication settings**, press **Set up**. In **App permissions** choose **Read**
+1.	In **Callback URI / redirect URL** enter the url of your callback handler e.g. https://example.mysite.com/{route}/twitter/callback and fill in the required **Website URL**. X matches the callback exactly; for local development use `http://127.0.0.1`, not `localhost`
+1.	Under **Keys & Tokens**, in **OAuth 1.0a keys**, take note of the **Consumer Key** and **Consumer Key Secret**; **Regenerate** shows a new pair. Those will be used as `cid` and `csecret`
+
+In v2 of the library X can be used with OAuth 2.0 instead. In the same authentication settings choose **Web app, automated app or bot** as **Type of app** and take note of the **Client ID** and **Client Secret** shown on save; they are also under **Keys & Tokens**, in **OAuth 2.0 keys**. Register the provider with them as `twitter_v2`:
+
+```go
+service.AddProvider("twitter_v2", "<Client ID>", "<Client Secret>")
+```
+
+The provider name stays `twitter`, so the routes and the callback url are the same as with OAuth 1.0a and users keep their ids. Register only one of `twitter` and `twitter_v2`.
 
 ## XSRF Protections
 By default, the XSRF protections will apply to all requests which reach the `middlewares.Auth`,
