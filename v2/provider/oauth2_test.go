@@ -593,6 +593,64 @@ func TestOauth2LoginRejectsFailedUserInfo(t *testing.T) {
 	assert.Empty(t, resp.Cookies(), "no auth cookie on failed login")
 }
 
+func TestOauth2LoginRejectsEmptyUserID(t *testing.T) {
+	// a user mapped without an id would be the same user for everyone mapped that way
+	login := httptest.NewUnstartedServer(nil)
+	defer login.Close()
+	loginURL := "http://" + login.Listener.Addr().String()
+
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
+			http.Redirect(w, r, loginURL+"/callback?code=g0ZGZmNjVmOWI&state="+url.QueryEscape(r.URL.Query().Get("state")),
+				http.StatusFound)
+		case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, err := w.Write([]byte(`{"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3","token_type":"bearer"}`))
+			assert.NoError(t, err)
+		case strings.HasPrefix(r.URL.Path, "/user"):
+			// a successful answer with a name and no identity field
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, err := w.Write([]byte(`{"name":"blah"}`))
+			assert.NoError(t, err)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer oauth.Close()
+
+	prov := Oauth2Handler{
+		name: "mock",
+		endpoint: oauth2.Endpoint{
+			AuthURL:  oauth.URL + "/login/oauth/authorize",
+			TokenURL: oauth.URL + "/login/oauth/access_token",
+		},
+		infoURL: oauth.URL + "/user",
+		mapUser: func(data UserData, _ []byte) token.User {
+			return token.User{ID: data.Value("id"), Name: data.Value("name")}
+		},
+	}
+	jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31})
+	prov = initOauth2Handler(Params{URL: loginURL, Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std}, prov)
+	login.Config.Handler = http.HandlerFunc(Service{Provider: prov}.Handler)
+	login.Start()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	resp, err := client.Get(loginURL + "/login?site=remark")
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, resp.Body.Close()) }()
+	body, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "login must fail, got body %s", string(body))
+	assert.NotContains(t, string(body), "blah", "no user may be mapped without an id")
+	assert.Empty(t, resp.Cookies(), "no auth cookie on failed login")
+}
+
 func TestTwitterV2Login(t *testing.T) {
 	cases := []struct {
 		name        string
