@@ -9,6 +9,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -590,6 +591,209 @@ func TestOauth2LoginRejectsFailedUserInfo(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "login must fail, got body %s", string(body))
 	assert.NotContains(t, string(body), "mock_", "no user may be mapped from a failed user info response")
 	assert.Empty(t, resp.Cookies(), "no auth cookie on failed login")
+}
+
+func TestOauth2LoginRejectsEmptyUserID(t *testing.T) {
+	// a user mapped without an id would be the same user for everyone mapped that way
+	login := httptest.NewUnstartedServer(nil)
+	defer login.Close()
+	loginURL := "http://" + login.Listener.Addr().String()
+
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
+			http.Redirect(w, r, loginURL+"/callback?code=g0ZGZmNjVmOWI&state="+url.QueryEscape(r.URL.Query().Get("state")),
+				http.StatusFound)
+		case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, err := w.Write([]byte(`{"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3","token_type":"bearer"}`))
+			assert.NoError(t, err)
+		case strings.HasPrefix(r.URL.Path, "/user"):
+			// a successful answer with a name and no identity field
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, err := w.Write([]byte(`{"name":"blah"}`))
+			assert.NoError(t, err)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer oauth.Close()
+
+	prov := Oauth2Handler{
+		name: "mock",
+		endpoint: oauth2.Endpoint{
+			AuthURL:  oauth.URL + "/login/oauth/authorize",
+			TokenURL: oauth.URL + "/login/oauth/access_token",
+		},
+		infoURL: oauth.URL + "/user",
+		mapUser: func(data UserData, _ []byte) token.User {
+			return token.User{ID: data.Value("id"), Name: data.Value("name")}
+		},
+	}
+	jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31})
+	prov = initOauth2Handler(Params{URL: loginURL, Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std}, prov)
+	login.Config.Handler = http.HandlerFunc(Service{Provider: prov}.Handler)
+	login.Start()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	resp, err := client.Get(loginURL + "/login?site=remark")
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, resp.Body.Close()) }()
+	body, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "login must fail, got body %s", string(body))
+	assert.NotContains(t, string(body), "blah", "no user may be mapped without an id")
+	assert.Empty(t, resp.Cookies(), "no auth cookie on failed login")
+}
+
+func TestTwitterV2Login(t *testing.T) {
+	cases := []struct {
+		name        string
+		rejectToken bool   // the token endpoint refuses the exchange
+		userInfo    string // the user object of the account when empty
+		wantStatus  int
+	}{
+		{name: "signs in", wantStatus: http.StatusOK},
+		{name: "rejected exchange is not repeated with the secret in the body", rejectToken: true,
+			wantStatus: http.StatusInternalServerError},
+		{name: "answer without user object",
+			userInfo:   `{"errors":[{"title":"Forbidden","type":"about:blank","status":403}]}`,
+			wantStatus: http.StatusServiceUnavailable},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			const code, accessToken = "g0ZGZmNjVmOWI", "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3"
+
+			login := httptest.NewUnstartedServer(nil)
+			defer login.Close()
+			loginURL := "http://" + login.Listener.Addr().String()
+
+			var mu sync.Mutex
+			var challenge string
+			var exchanges int
+			var secretInBody bool
+			refuse := func(w http.ResponseWriter, status int, oauthErr string) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(status)
+				_, err := fmt.Fprintf(w, `{"error":%q}`, oauthErr)
+				assert.NoError(t, err)
+			}
+
+			// the mock keeps to what X documents: pkce with S256, a confidential client known by the basic
+			// header only, a bearer token for the lookup, the user under "data"
+			x := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/i/oauth2/authorize":
+					q := r.URL.Query()
+					scopes := strings.Fields(q.Get("scope"))
+					if q.Get("response_type") != "code" || q.Get("client_id") != "cid" || q.Get("state") == "" ||
+						q.Get("redirect_uri") != loginURL+"/callback" || q.Get("code_challenge") == "" ||
+						q.Get("code_challenge_method") != "S256" ||
+						!slices.Contains(scopes, "users.read") || !slices.Contains(scopes, "tweet.read") {
+						refuse(w, http.StatusBadRequest, "invalid_request")
+						return
+					}
+					mu.Lock()
+					challenge = q.Get("code_challenge")
+					mu.Unlock()
+					http.Redirect(w, r, q.Get("redirect_uri")+"?code="+code+"&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
+				case "/2/oauth2/token":
+					if !assert.NoError(t, r.ParseForm()) {
+						return
+					}
+					mu.Lock()
+					exchanges++
+					secretInBody = secretInBody || r.PostForm.Has("client_secret")
+					wantChallenge := challenge
+					mu.Unlock()
+					if id, secret, ok := r.BasicAuth(); !ok || id != "cid" || secret != "csecret" {
+						refuse(w, http.StatusUnauthorized, "unauthorized_client")
+						return
+					}
+					f := r.PostForm
+					if c.rejectToken || f.Get("grant_type") != "authorization_code" || f.Get("code") != code ||
+						f.Get("redirect_uri") != loginURL+"/callback" ||
+						oauth2.S256ChallengeFromVerifier(f.Get("code_verifier")) != wantChallenge {
+						refuse(w, http.StatusBadRequest, "invalid_request")
+						return
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_, err := fmt.Fprintf(w, `{"token_type":"bearer","expires_in":7200,"access_token":%q,"scope":"users.read tweet.read"}`,
+						accessToken)
+					assert.NoError(t, err)
+				case "/2/users/me":
+					if r.Header.Get("Authorization") != "Bearer "+accessToken {
+						w.WriteHeader(http.StatusUnauthorized)
+						return
+					}
+					body := c.userInfo
+					if body == "" {
+						body = `{"data":{"id":"2244994945","name":"Jane Reader","username":"janereader"}}`
+						// the picture is not among the default fields
+						if strings.Contains(r.URL.Query().Get("user.fields"), "profile_image_url") {
+							body = `{"data":{"id":"2244994945","name":"Jane Reader","username":"janereader",
+								"profile_image_url":"https://pbs.twimg.com/profile_images/1/photo_normal.jpg"}}`
+						}
+					}
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					_, err := w.Write([]byte(body))
+					assert.NoError(t, err)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer x.Close()
+
+			jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+				TokenDuration: time.Hour, CookieDuration: days31})
+			prov := NewTwitterV2(Params{URL: loginURL, Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+				Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std})
+			// keep the paths, the queries and the auth style of the provider, send the requests to the mock
+			toMock := func(rawURL string) string {
+				u, err := url.Parse(rawURL)
+				require.NoError(t, err)
+				return x.URL + u.RequestURI()
+			}
+			prov.endpoint.AuthURL, prov.endpoint.TokenURL = toMock(prov.endpoint.AuthURL), toMock(prov.endpoint.TokenURL)
+			prov.infoURL = toMock(prov.infoURL)
+			prov.conf.Endpoint = prov.endpoint
+			login.Config.Handler = http.HandlerFunc(Service{Provider: prov}.Handler)
+			login.Start()
+
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err)
+			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+			resp, err := client.Get(loginURL + "/login?site=remark")
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, resp.Body.Close()) }()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			assert.Equal(t, c.wantStatus, resp.StatusCode, "got body %s", string(body))
+			mu.Lock()
+			assert.Equal(t, 1, exchanges, "token requests")
+			assert.False(t, secretInBody, "client secret must travel in the basic header only")
+			mu.Unlock()
+
+			if c.wantStatus != http.StatusOK {
+				assert.NotContains(t, string(body), "twitter_", "no user may be mapped from a failed login")
+				assert.Empty(t, resp.Cookies(), "no auth cookie on failed login")
+				return
+			}
+			u := token.User{}
+			require.NoError(t, json.Unmarshal(body, &u))
+			assert.Equal(t, token.User{Name: "janereader", ID: "twitter_5bacdefab92b37af7de1ff347033776d65929df2",
+				Picture: "http://example.com/ava12345.png"}, u)
+			require.Equal(t, 2, len(resp.Cookies()))
+			assert.Equal(t, "JWT", resp.Cookies()[0].Name)
+		})
+	}
 }
 
 func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook, paramOpts ...func(*Params)) func() {
