@@ -236,10 +236,12 @@ func defaultMapUserFn(data UserData, _ []byte) token.User {
 	return userInfo
 }
 
-var defaultLoginTmpl = `
-<html>
+var defaultLoginTmpl = `<!DOCTYPE html>
+<html lang="en">
 	<head>
-		<title>Dev OAuth</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Sign in</title>
 		<style>
 			body {
 				text-align: center;
@@ -291,11 +293,12 @@ var defaultLoginTmpl = `
 				margin: 0;
 				width: 100%;
 				text-align: inherit;
+				box-sizing: border-box;
 			}
 
 			.form-submit {
 				border: none;
-				background: hsl(200, 50%, 50%);
+				background: hsl(200, 50%, 40%);
 				color: white;
 				font: inherit;
 				padding: 0.4em 0.8em 0.3em 0.8em;
@@ -305,11 +308,11 @@ var defaultLoginTmpl = `
 
 			.form-submit:hover,
 			.form-submit:focus {
-				background-color: hsl(200, 50%, 70%);
+				background-color: hsl(200, 50%, 32%);
 			}
 
 			.form-submit:active {
-				background-color: hsl(200, 80%, 70%);
+				background-color: hsl(200, 80%, 25%);
 			}
 
 			.username-label,
@@ -340,6 +343,7 @@ var defaultLoginTmpl = `
 					type="text"
 					name="username"
 					value=""
+					autocomplete="username"
 					autofocus
 				/>
 			</label>
@@ -351,18 +355,18 @@ var defaultLoginTmpl = `
 				type="password"
 				name="password"
 				value=""
-				autofocus
+				autocomplete="current-password"
 			/>
 			</label>
 
 			<input type="submit" class="form-submit" value="Authorize" />
 			<p class="notice"></p>
 		</form>
+		<script>
+			var input = document.querySelector(".username-input");
+			input.focus();
+			input.setSelectionRange(0, input.value.length)
+		</script>
 	</body>
-	<script>
-		var input = document.querySelector(".username-input");
-		input.focus();
-		input.setSelectionRange(0, input.value.length)
-	</script>
 </html>
 `

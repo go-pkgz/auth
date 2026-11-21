@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,6 +91,56 @@ func TestDevProvider(t *testing.T) {
 	assert.Equal(t, image.Rect(0, 0, 300, 300), avatarImg.Bounds())
 	assert.False(t, uniformImage(avatarImg), "the served avatar is a single flat color")
 	t.Logf("headers: %+v", resp.Header)
+}
+
+func TestDevProviderLoginForm(t *testing.T) {
+	params := Params{Cid: "cid", Csecret: "csecret", URL: "http://127.0.0.1:8080", L: logger.Std, Port: 18085}
+	devOauth2Srv := DevAuthServer{Provider: NewDev(params), L: logger.Std}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		devOauth2Srv.Run(ctx)
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	// without Automatic the dev server asks for a username before redirecting back
+	client := &http.Client{Timeout: 5 * time.Second}
+	var body []byte
+	require.Eventually(t, func() bool {
+		resp, err := client.Get("http://127.0.0.1:18085/login/oauth/authorize?state=12345")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return false
+		}
+		body, err = io.ReadAll(resp.Body)
+		return err == nil
+	}, 2*time.Second, 50*time.Millisecond)
+
+	page := string(body)
+	assertLoginPageMarkup(t, page)
+	assert.Contains(t, page, `action="/login/oauth/authorize?state=12345"`)
+}
+
+// assertLoginPageMarkup checks that a built-in login page is a standards-mode HTML document
+// that declares its language and encoding, scales on phones and runs its script inside <body>
+func assertLoginPageMarkup(t *testing.T, page string) {
+	t.Helper()
+	assert.True(t, strings.HasPrefix(page, "<!DOCTYPE html>\n"), "page must start with the doctype, or browsers render it in quirks mode")
+	assert.Contains(t, page, `<html lang="en">`)
+	assert.Contains(t, page, `<meta charset="utf-8">`)
+	assert.Contains(t, page, `<meta name="viewport" content="width=device-width, initial-scale=1">`)
+	scriptAt, bodyEndAt := strings.Index(page, "<script>"), strings.Index(page, "</body>")
+	require.Positive(t, scriptAt, "page has no script")
+	require.Positive(t, bodyEndAt, "page has no </body>")
+	assert.Less(t, scriptAt, bodyEndAt, "script must sit inside <body>")
 }
 
 func TestDevProviderCancel(t *testing.T) {
