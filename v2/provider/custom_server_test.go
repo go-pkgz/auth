@@ -199,6 +199,14 @@ func TestCustomProvider(t *testing.T) {
 	resp, err = client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	page := string(body)
+	assertLoginPageMarkup(t, page)
+	assert.Contains(t, page, "<title>Sign in</title>")
+	assert.Equal(t, 1, strings.Count(page, "autofocus"), "only the username field takes focus")
+	assert.Contains(t, page, `autocomplete="username"`)
+	assert.Contains(t, page, `autocomplete="current-password"`)
 }
 
 func TestCustomProviderCancel(t *testing.T) {
