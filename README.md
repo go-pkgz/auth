@@ -961,6 +961,17 @@ service.AddProvider("twitter_v2", "<Client ID>", "<Client Secret>")
 
 The provider name stays `twitter`, so the routes and the callback url are the same as with OAuth 1.0a and users keep their ids. Register only one of `twitter` and `twitter_v2`.
 
+User ids carry over to `twitter_v2`; the keys of `UserAttributes` have to be checked. The provider reads only `id`, `name`, `username` and `profile_image_url`, and a key is the name of one of those fields inside `data` of the response. `name` is the display name as before. `screen_name` is `username` now, `id_str` is `id` and `profile_image_url_https` is `profile_image_url`. A v1.1 field with no counterpart among the four gives an empty value.
+
+##### X API access
+
+The two providers read the user from different versions of the X API, and X decides per app which requests it answers. When X refuses the request, the callback of either provider returns 503.
+
+- `twitter_v2` calls `GET /2/users/me` of API v2. [Keycloak](https://www.keycloak.org/docs/26.7.0/server_admin/#_twitter) documents that it needs a paid API v2 plan, such as pay-per-use, and that with an app on the original Free plan the authorization completes and X then refuses the user request with 403. For that error [xurl](https://github.com/xdevplatform/xurl#x-platform-enrollment-troubleshooting) recommends moving the app to the **Pay-per-use** package and the **Production** environment.
+- `twitter` calls `account/verify_credentials` of API v1.1, which X lists as [limited support](https://docs.x.com/x-api/getting-started/about-x-api). Its current access requirements are not known: the check below succeeded with a new app in a Pay-per-use project, and in 2022 X refused apps without Elevated access ([#111](https://github.com/go-pkgz/auth/issues/111)).
+
+Both providers were checked on 20 November 2026 with one new app in a Pay-per-use project and no credits bought, and the sign-in completed with each. The account that signed in owned the app, and X [charges](https://docs.x.com/x-api/getting-started/pricing) for user reads, so the check does not show whether other accounts can sign in before credits are bought. An app on the legacy Free plan was not checked with either provider.
+
 ## XSRF Protections
 By default, the XSRF protections will apply to all requests which reach the `middlewares.Auth`,
 `middlewares.Admin` or `middlewares.RBAC` middlewares. This will require setting a request header 
