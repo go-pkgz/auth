@@ -445,7 +445,7 @@ In order to add a new oauth2 provider following input is required:
 	* `Client` - ID and secret of client
 	* `Endpoint` - auth URL and token URL. This information could be obtained from auth2 provider page
 	* `InfoURL` - oauth2 provider API method to read information of logged in user. This method could be found in documentation of oauth2 provider (e.g. for bitbucket https://developer.atlassian.com/bitbucket/api/2/reference/resource/user)
-	* `MapUserFn` - function to convert the response from `InfoURL` to `token.User` (s. example below)
+	* `MapUserFn` - function to convert the response from `InfoURL` to `token.User` (s. example below). It must return an empty `ID` when the response has no user id: the callback then answers 503 and issues no session. Check the id before hashing it, because a prefix plus `token.HashID` of an empty value is not an empty `ID` and maps every such login to the same user
 	* `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
 	```go
 	c := auth.Client{
@@ -460,9 +460,12 @@ In order to add a new oauth2 provider following input is required:
 		},
 		InfoURL: "https://api.bitbucket.org/2.0/user/",
 		MapUserFn: func(data provider.UserData, _ []byte) token.User {
+			username := data.Value("username")
+			if username == "" {
+				return token.User{} // no id in the response, the login is refused
+			}
 			userInfo := token.User{
-				ID: "bitbucket_" + token.HashID(sha1.New(),
-					data.Value("username")),
+				ID:   "bitbucket_" + token.HashID(sha1.New(), username),
 				Name: data.Value("nickname"),
 			}
 			return userInfo
@@ -764,8 +767,12 @@ service.AddCustomProvider("google", c, provider.CustomHandlerOpt{
 		"https://www.googleapis.com/auth/userinfo.email",
 	},
 	MapUserFn: func(data provider.UserData, _ []byte) token.User {
+		sub := data.Value("sub")
+		if sub == "" {
+			return token.User{} // no id in the response, the login is refused
+		}
 		u := token.User{
-			ID:      "google_" + token.HashID(sha1.New(), data.Value("sub")),
+			ID:      "google_" + token.HashID(sha1.New(), sub),
 			Name:    data.Value("name"),
 			Picture: data.Value("picture"),
 		}

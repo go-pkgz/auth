@@ -172,9 +172,12 @@ func main() {
 		},
 		InfoURL: "https://api.bitbucket.org/2.0/user/",
 		MapUserFn: func(data provider.UserData, _ []byte) token.User {
+			username := data.Value("username")
+			if username == "" {
+				return token.User{} // no id in the response, the login is refused
+			}
 			userInfo := token.User{
-				ID: "bitbucket_" + token.HashID(sha1.New(),
-					data.Value("username")),
+				ID:   "bitbucket_" + token.HashID(sha1.New(), username),
 				Name: data.Value("nickname"),
 			}
 			return userInfo
