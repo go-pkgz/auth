@@ -523,73 +523,100 @@ func TestMakeRedirURL(t *testing.T) {
 }
 
 func TestOauth2LoginRejectsFailedUserInfo(t *testing.T) {
-	// a non-2xx user info response carries no identity fields, mapping it would sign everyone
-	// in under the same empty-value id
-	loginPort, authPort := 8995, 8996
-	prov := Oauth2Handler{
-		name: "mock",
-		endpoint: oauth2.Endpoint{
-			AuthURL:  fmt.Sprintf("http://localhost:%d/login/oauth/authorize", authPort),
-			TokenURL: fmt.Sprintf("http://localhost:%d/login/oauth/access_token", authPort),
-		},
-		scopes:  []string{"user:email"},
-		infoURL: fmt.Sprintf("http://localhost:%d/user", authPort),
-		mapUser: func(data UserData, _ []byte) token.User {
-			return token.User{ID: "mock_" + data.Value("id"), Name: data.Value("name")}
-		},
+	tbl := []struct {
+		name     string
+		status   int
+		body     string
+		wantCode int
+		wantLog  string
+	}{
+		// revoked token, rate limit or outage: valid json, no identity fields, mapping it would sign
+		// everyone in under the same empty-value id
+		{name: "non-2xx response", status: http.StatusUnauthorized, body: `{"message":"Bad credentials"}`,
+			wantCode: http.StatusServiceUnavailable, wantLog: "status 401 Unauthorized"},
+		// a login failed on unparsable user info must log the parse error as its cause
+		{name: "2xx response with non-json body", status: http.StatusOK, body: `<html>rate limited</html>`,
+			wantCode: http.StatusInternalServerError, wantLog: "invalid character '<'"},
 	}
 
-	jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
-		TokenDuration: time.Hour, CookieDuration: days31})
-	prov = initOauth2Handler(Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
-		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: logger.Std}, prov)
-	svc := Service{Provider: prov}
-
-	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)} //nolint:gosec
-	oauth := &http.Server{                                                                          //nolint:gosec
-		Addr: fmt.Sprintf(":%d", authPort),
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch {
-			case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
-				w.Header().Add("Location", fmt.Sprintf("http://localhost:%d/callback?code=g0ZGZmNjVmOWI&state=%s",
-					loginPort, r.URL.Query().Get("state")))
-				w.WriteHeader(302)
-			case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				_, err := w.Write([]byte(`{"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3","token_type":"bearer"}`))
-				assert.NoError(t, err)
-			case strings.HasPrefix(r.URL.Path, "/user"):
-				// revoked token, rate limit or outage: valid json, no identity fields
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				w.WriteHeader(http.StatusUnauthorized)
-				_, err := w.Write([]byte(`{"message":"Bad credentials"}`))
-				assert.NoError(t, err)
-			default:
-				t.Fatalf("unexpected oauth request %s %s", r.Method, r.URL)
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			loginPort, authPort := 8995, 8996
+			prov := Oauth2Handler{
+				name: "mock",
+				endpoint: oauth2.Endpoint{
+					AuthURL:  fmt.Sprintf("http://localhost:%d/login/oauth/authorize", authPort),
+					TokenURL: fmt.Sprintf("http://localhost:%d/login/oauth/access_token", authPort),
+				},
+				scopes:  []string{"user:email"},
+				infoURL: fmt.Sprintf("http://localhost:%d/user", authPort),
+				mapUser: func(data UserData, _ []byte) token.User {
+					return token.User{ID: "mock_" + data.Value("id"), Name: data.Value("name")}
+				},
 			}
-		}),
+
+			var logMu sync.Mutex
+			logBuf := strings.Builder{}
+			captureLog := logger.Func(func(format string, args ...any) {
+				logMu.Lock()
+				defer logMu.Unlock()
+				fmt.Fprintf(&logBuf, format, args...)
+			})
+
+			jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+				TokenDuration: time.Hour, CookieDuration: days31})
+			prov = initOauth2Handler(Params{URL: "url", Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+				Issuer: "remark42", AvatarSaver: &mockAvatarSaver{}, L: captureLog}, prov)
+			svc := Service{Provider: prov}
+
+			ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)} //nolint:gosec
+			oauth := &http.Server{                                                                          //nolint:gosec
+				Addr: fmt.Sprintf(":%d", authPort),
+				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch {
+					case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
+						w.Header().Add("Location", fmt.Sprintf("http://localhost:%d/callback?code=g0ZGZmNjVmOWI&state=%s",
+							loginPort, r.URL.Query().Get("state")))
+						w.WriteHeader(302)
+					case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
+						w.Header().Set("Content-Type", "application/json; charset=utf-8")
+						_, err := w.Write([]byte(`{"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3","token_type":"bearer"}`))
+						assert.NoError(t, err)
+					case strings.HasPrefix(r.URL.Path, "/user"):
+						w.WriteHeader(tt.status)
+						_, err := w.Write([]byte(tt.body))
+						assert.NoError(t, err)
+					default:
+						t.Fatalf("unexpected oauth request %s %s", r.Method, r.URL)
+					}
+				}),
+			}
+
+			startServer(t, oauth)
+			startServer(t, ts)
+			defer func() {
+				assert.NoError(t, ts.Close())
+				assert.NoError(t, oauth.Close())
+			}()
+
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err)
+			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+			resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark", loginPort))
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, resp.Body.Close()) }()
+			body, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+
+			assert.Equal(t, tt.wantCode, resp.StatusCode, "login must fail, got body %s", string(body))
+			assert.NotContains(t, string(body), "mock_", "no user may be mapped from a failed user info response")
+			assert.Empty(t, resp.Cookies(), "no auth cookie on failed login")
+			logMu.Lock()
+			defer logMu.Unlock()
+			assert.Contains(t, logBuf.String(), tt.wantLog)
+		})
 	}
-
-	startServer(t, oauth)
-	startServer(t, ts)
-	defer func() {
-		assert.NoError(t, ts.Close())
-		assert.NoError(t, oauth.Close())
-	}()
-
-	jar, err := cookiejar.New(nil)
-	require.NoError(t, err)
-	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark", loginPort))
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, resp.Body.Close()) }()
-	body, err := io.ReadAll(resp.Body)
-	assert.NoError(t, err)
-
-	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "login must fail, got body %s", string(body))
-	assert.NotContains(t, string(body), "mock_", "no user may be mapped from a failed user info response")
-	assert.Empty(t, resp.Cookies(), "no auth cookie on failed login")
 }
 
 func prepOauth2Test(t *testing.T, loginPort, authPort int, btHook BearerTokenHook, paramOpts ...func(*Params)) func() {

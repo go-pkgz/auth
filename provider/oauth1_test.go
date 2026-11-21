@@ -340,6 +340,78 @@ func TestOauth1LoginDoesNotLogUserProfile(t *testing.T) {
 	assert.NotContains(t, logged, "oauth-sensitive@example.com")
 }
 
+func TestOauth1LoginLogsUnparsableUserInfo(t *testing.T) {
+	// a login failed on unparsable user info must log the parse error as its cause
+	loginPort, authPort := 8973, 8974
+	var logMu sync.Mutex
+	logBuf := strings.Builder{}
+	prov := initOauth1Handler(Params{URL: "url", Cid: "aFdj12348sdja", Csecret: "Dwehsq2387akss",
+		JwtService: token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+			TokenDuration: time.Hour, CookieDuration: days31}),
+		Issuer: "remark42", AvatarSaver: &mockAvatarSaver{},
+		L: logger.Func(func(format string, args ...any) {
+			logMu.Lock()
+			defer logMu.Unlock()
+			fmt.Fprintf(&logBuf, format, args...)
+		})},
+		Oauth1Handler{
+			name: "mock",
+			conf: oauth1.Config{Endpoint: oauth1.Endpoint{
+				RequestTokenURL: fmt.Sprintf("http://localhost:%d/login/oauth/request_token", authPort),
+				AuthorizeURL:    fmt.Sprintf("http://localhost:%d/login/oauth/authorize", authPort),
+				AccessTokenURL:  fmt.Sprintf("http://localhost:%d/login/oauth/access_token", authPort),
+			}},
+			infoURL: fmt.Sprintf("http://localhost:%d/user", authPort),
+			mapUser: func(data UserData, _ []byte) token.User { return token.User{ID: "mock_" + data.Value("id")} },
+		})
+	svc := Service{Provider: prov}
+
+	ts := &http.Server{Addr: fmt.Sprintf(":%d", loginPort), Handler: http.HandlerFunc(svc.Handler)} //nolint:gosec
+	oauth := &http.Server{                                                                          //nolint:gosec
+		Addr: fmt.Sprintf(":%d", authPort),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.HasPrefix(r.URL.Path, "/login/oauth/request_token"):
+				w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+				_, err := w.Write([]byte("oauth_token=rtok&oauth_token_secret=rsec&oauth_callback_confirmed=true"))
+				assert.NoError(t, err)
+			case strings.HasPrefix(r.URL.Path, "/login/oauth/authorize"):
+				w.Header().Add("Location", fmt.Sprintf("http://localhost:%d/callback?oauth_token=rtok&oauth_verifier=ver",
+					loginPort))
+				w.WriteHeader(302)
+			case strings.HasPrefix(r.URL.Path, "/login/oauth/access_token"):
+				w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+				_, err := w.Write([]byte("oauth_token=atok&oauth_token_secret=asec"))
+				assert.NoError(t, err)
+			case strings.HasPrefix(r.URL.Path, "/user"):
+				_, err := w.Write([]byte("<html>rate limited</html>"))
+				assert.NoError(t, err)
+			default:
+				t.Fatalf("unexpected oauth request %s %s", r.Method, r.URL)
+			}
+		}),
+	}
+	startServer(t, oauth)
+	startServer(t, ts)
+	defer func() {
+		assert.NoError(t, ts.Close())
+		assert.NoError(t, oauth.Close())
+	}()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: timeout * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?site=remark", loginPort))
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, resp.Body.Close()) }()
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Empty(t, resp.Cookies())
+	logMu.Lock()
+	defer logMu.Unlock()
+	assert.Contains(t, logBuf.String(), "invalid character '<'")
+}
+
 func prepOauth1Test(t *testing.T, loginPort, authPort int, paramOpts ...func(*Params)) func() { //nolint
 
 	provider := Oauth1Handler{
