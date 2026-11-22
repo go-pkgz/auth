@@ -142,6 +142,11 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Logf("[DEBUG] got raw user info %s", userDataLogSummary(jData))
 	u := h.mapUser(jData, data)
+	// a user without id is the same user for everyone mapped this way
+	if u.ID == "" {
+		rest.SendErrorJSON(w, r, h.L, http.StatusServiceUnavailable, fmt.Errorf("no user id"), "failed to get user info")
+		return
+	}
 	u, err = setAvatar(h.AvatarSaver, u, &http.Client{Timeout: 5 * time.Second})
 	if err != nil {
 		rest.SendErrorJSON(w, r, h.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
