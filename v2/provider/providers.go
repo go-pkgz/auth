@@ -31,9 +31,13 @@ func NewGoogle(p Params) Oauth2Handler {
 		scopes:   []string{"https://www.googleapis.com/auth/userinfo.profile"},
 		infoURL:  "https://www.googleapis.com/oauth2/v3/userinfo",
 		mapUser: func(data UserData, _ []byte) token.User {
+			id := data.Value("sub")
+			if id == "" {
+				return token.User{} // the callback refuses a user without an id
+			}
 			userInfo := token.User{
 				// encode email with provider name to avoid collision if same id returned by other provider
-				ID:      "google_" + token.HashID(sha1.New(), data.Value("sub")),
+				ID:      "google_" + token.HashID(sha1.New(), id),
 				Name:    data.Value("name"),
 				Picture: data.Value("picture"),
 			}
@@ -60,9 +64,11 @@ func NewGithub(p Params) Oauth2Handler {
 		infoURL:  "https://api.github.com/user",
 		mapUser: func(data UserData, bdata []byte) token.User {
 			userInfo := token.User{
-				ID:      "github_" + token.HashID(sha1.New(), data.Value("login")),
 				Name:    data.Value("name"),
 				Picture: data.Value("avatar_url"),
+			}
+			if login := data.Value("login"); login != "" {
+				userInfo.ID = "github_" + token.HashID(sha1.New(), login)
 			}
 			if p.GithubNumericID {
 				// data.Value is not usable here, json numbers decode to float64 and format as "1.345027e+06".
@@ -76,6 +82,9 @@ func NewGithub(p Params) Oauth2Handler {
 					// keep the login-based value, matching the default derivation and its recycling caveat
 					p.Logf("[WARN] github numeric id not available, keeping login-based id")
 				}
+			}
+			if userInfo.ID == "" {
+				return token.User{} // neither login nor numeric id, the callback refuses a user without an id
 			}
 			// github may have no user name, use login in this case
 			if userInfo.Name == "" {
@@ -109,8 +118,12 @@ func NewFacebook(p Params) Oauth2Handler {
 		scopes:   []string{"public_profile"},
 		infoURL:  "https://graph.facebook.com/me?fields=id,name,picture",
 		mapUser: func(data UserData, bdata []byte) token.User {
+			id := data.Value("id")
+			if id == "" {
+				return token.User{} // the callback refuses a user without an id
+			}
 			userInfo := token.User{
-				ID:   "facebook_" + token.HashID(sha1.New(), data.Value("id")),
+				ID:   "facebook_" + token.HashID(sha1.New(), id),
 				Name: data.Value("name"),
 			}
 			if userInfo.Name == "" {
@@ -138,8 +151,12 @@ func NewYandex(p Params) Oauth2Handler {
 		// See https://tech.yandex.com/passport/doc/dg/reference/response-docpage/
 		infoURL: "https://login.yandex.ru/info?format=json",
 		mapUser: func(data UserData, _ []byte) token.User {
+			id := data.Value("id")
+			if id == "" {
+				return token.User{} // the callback refuses a user without an id
+			}
 			userInfo := token.User{
-				ID:   "yandex_" + token.HashID(sha1.New(), data.Value("id")),
+				ID:   "yandex_" + token.HashID(sha1.New(), id),
 				Name: data.Value("display_name"), // using Display Name by default
 			}
 			if userInfo.Name == "" {
@@ -169,8 +186,12 @@ func NewTwitter(p Params) Oauth1Handler {
 		},
 		infoURL: "https://api.twitter.com/1.1/account/verify_credentials.json",
 		mapUser: func(data UserData, _ []byte) token.User {
+			id := data.Value("id_str")
+			if id == "" {
+				return token.User{} // the callback refuses a user without an id
+			}
 			userInfo := token.User{
-				ID:      "twitter_" + token.HashID(sha1.New(), data.Value("id_str")),
+				ID:      "twitter_" + token.HashID(sha1.New(), id),
 				Name:    data.Value("screen_name"),
 				Picture: data.Value("profile_image_url_https"),
 			}
@@ -237,8 +258,12 @@ func NewBattlenet(p Params) Oauth2Handler {
 		scopes:  []string{},
 		infoURL: "https://eu.battle.net/oauth/userinfo",
 		mapUser: func(data UserData, _ []byte) token.User {
+			id := data.Value("id")
+			if id == "" {
+				return token.User{} // the callback refuses a user without an id
+			}
 			userInfo := token.User{
-				ID:   "battlenet_" + token.HashID(sha1.New(), data.Value("id")),
+				ID:   "battlenet_" + token.HashID(sha1.New(), id),
 				Name: data.Value("battletag"),
 			}
 			for k, v := range p.UserAttributes {
@@ -263,8 +288,12 @@ func NewMicrosoft(p Params) Oauth2Handler {
 		// non-beta doesn't provide photo for consumers yet
 		// see https://github.com/microsoftgraph/microsoft-graph-docs/issues/3990
 		mapUser: func(data UserData, _ []byte) token.User {
+			id := data.Value("id")
+			if id == "" {
+				return token.User{} // the callback refuses a user without an id
+			}
 			userInfo := token.User{
-				ID:      "microsoft_" + token.HashID(sha1.New(), data.Value("id")),
+				ID:      "microsoft_" + token.HashID(sha1.New(), id),
 				Name:    data.Value("displayName"),
 				Picture: "https://graph.microsoft.com/beta/me/photo/$value",
 			}
@@ -308,18 +337,19 @@ func NewPatreon(p Params) Oauth2Handler {
 		infoURL: "https://www.patreon.com/api/oauth2/api/current_user",
 
 		mapUser: func(data UserData, bdata []byte) token.User {
-			userInfo := token.User{}
-
 			uinfoJSON := uinfo{}
-			if err := json.Unmarshal(bdata, &uinfoJSON); err == nil {
-				userInfo.ID = "patreon_" + token.HashID(sha1.New(), uinfoJSON.Data.ID)
-				userInfo.Name = uinfoJSON.Data.Attributes.FullName
-				userInfo.Picture = uinfoJSON.Data.Attributes.ImageURL
+			if err := json.Unmarshal(bdata, &uinfoJSON); err != nil || uinfoJSON.Data.ID == "" {
+				return token.User{} // the callback refuses a user without an id
+			}
+			userInfo := token.User{
+				ID:      "patreon_" + token.HashID(sha1.New(), uinfoJSON.Data.ID),
+				Name:    uinfoJSON.Data.Attributes.FullName,
+				Picture: uinfoJSON.Data.Attributes.ImageURL,
+			}
 
-				// check if the user is your subscriber
-				if len(uinfoJSON.Data.Relationships.Pledges.Data) > 0 {
-					userInfo.SetPaidSub(true)
-				}
+			// check if the user is your subscriber
+			if len(uinfoJSON.Data.Relationships.Pledges.Data) > 0 {
+				userInfo.SetPaidSub(true)
 			}
 			for k, v := range p.UserAttributes {
 				userInfo.SetStrAttr(v, data.Value(k))
@@ -341,8 +371,12 @@ func NewDiscord(p Params) Oauth2Handler {
 		infoURL: "https://discord.com/api/v10/users/@me",
 		scopes:  []string{"identify"},
 		mapUser: func(data UserData, _ []byte) token.User {
+			id := data.Value("id")
+			if id == "" {
+				return token.User{} // the callback refuses a user without an id
+			}
 			userInfo := token.User{
-				ID:      "discord_" + token.HashID(sha1.New(), data.Value("id")),
+				ID:      "discord_" + token.HashID(sha1.New(), id),
 				Name:    data.Value("username"),
 				Picture: fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.webp", data.Value("id"), data.Value("avatar")),
 			}
