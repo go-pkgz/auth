@@ -95,6 +95,25 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, "telegramBotMySiteCom", chp.Name())
 }
 
+func TestService_AddTwitterV2Provider(t *testing.T) {
+	svc := NewService(Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:          "http://127.0.0.1:8089",
+		Logger:       logger.Std,
+	})
+	svc.AddProviderWithUserAttributes("twitter_v2", "cid", "csecret", provider.UserAttributes{"username": "handle"})
+
+	// the oauth2 provider takes the place of the oauth1 one, under the same name
+	p, err := svc.Provider("twitter")
+	require.NoError(t, err)
+	op, ok := p.Provider.(provider.Oauth2Handler)
+	require.True(t, ok, "oauth2 handler expected, got %T", p.Provider)
+	assert.Equal(t, "twitter", op.Name())
+	assert.Equal(t, "cid", op.Cid)
+	assert.Equal(t, "csecret", op.Csecret)
+	assert.Equal(t, provider.UserAttributes{"username": "handle"}, op.UserAttributes)
+}
+
 func TestService_AddMicrosoftProvider(t *testing.T) {
 	options := Opts{
 		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),

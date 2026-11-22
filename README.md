@@ -445,7 +445,7 @@ In order to add a new oauth2 provider following input is required:
 	* `Client` - ID and secret of client
 	* `Endpoint` - auth URL and token URL. This information could be obtained from auth2 provider page
 	* `InfoURL` - oauth2 provider API method to read information of logged in user. This method could be found in documentation of oauth2 provider (e.g. for bitbucket https://developer.atlassian.com/bitbucket/api/2/reference/resource/user)
-	* `MapUserFn` - function to convert the response from `InfoURL` to `token.User` (s. example below)
+	* `MapUserFn` - function to convert the response from `InfoURL` to `token.User` (s. example below). It must return an empty `ID` when the response has no user id: the callback then answers 503 and issues no session. Check the id before hashing it, because a prefix plus `token.HashID` of an empty value is not an empty `ID` and maps every such login to the same user
 	* `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
 	```go
 	c := auth.Client{
@@ -460,9 +460,12 @@ In order to add a new oauth2 provider following input is required:
 		},
 		InfoURL: "https://api.bitbucket.org/2.0/user/",
 		MapUserFn: func(data provider.UserData, _ []byte) token.User {
+			username := data.Value("username")
+			if username == "" {
+				return token.User{} // no id in the response, the login is refused
+			}
 			userInfo := token.User{
-				ID: "bitbucket_" + token.HashID(sha1.New(),
-					data.Value("username")),
+				ID:   "bitbucket_" + token.HashID(sha1.New(), username),
 				Name: data.Value("nickname"),
 			}
 			return userInfo
@@ -764,8 +767,12 @@ service.AddCustomProvider("google", c, provider.CustomHandlerOpt{
 		"https://www.googleapis.com/auth/userinfo.email",
 	},
 	MapUserFn: func(data provider.UserData, _ []byte) token.User {
+		sub := data.Value("sub")
+		if sub == "" {
+			return token.User{} // no id in the response, the login is refused
+		}
 		u := token.User{
-			ID:      "google_" + token.HashID(sha1.New(), data.Value("sub")),
+			ID:      "google_" + token.HashID(sha1.New(), sub),
 			Name:    data.Value("name"),
 			Picture: data.Value("picture"),
 		}
@@ -939,10 +946,31 @@ For more details refer to [Complete Guide of Battle.net OAuth API and Login Butt
 5.  Take note of the **CLIENT ID** and **CLIENT SECRET**
 
 #### Twitter Auth Provider
-1.	Create a new twitter application https://developer.twitter.com/en/apps
-1.	Fill **App name**  and **Description** and **URL** of your site
-1.	In the field **Callback URLs** enter the correct url of your callback handler e.g. https://example.mysite.com/{route}/twitter/callback
-1.	Under **Key and tokens** take note of the **Consumer API Key** and **Consumer API Secret key**. Those will be used as `cid` and `csecret`
+The `twitter` provider signs users in to X with OAuth 1.0a.
+
+1.	Create a new app in the X Developer Console https://console.x.com
+1.	On the app page, under **User authentication settings**, press **Set up**. In **App permissions** choose **Read**
+1.	In **Callback URI / redirect URL** enter the url of your callback handler e.g. https://example.mysite.com/{route}/twitter/callback and fill in the required **Website URL**. X matches the callback exactly; for local development use `http://127.0.0.1`, not `localhost`
+1.	Under **Keys & Tokens**, in **OAuth 1.0a keys**, take note of the **Consumer Key** and **Consumer Key Secret**; **Regenerate** shows a new pair. Those will be used as `cid` and `csecret`
+
+In v2 of the library X can be used with OAuth 2.0 instead. In the same authentication settings choose **Web app, automated app or bot** as **Type of app** and take note of the **Client ID** and **Client Secret** shown on save; they are also under **Keys & Tokens**, in **OAuth 2.0 keys**. Register the provider with them as `twitter_v2`:
+
+```go
+service.AddProvider("twitter_v2", "<Client ID>", "<Client Secret>")
+```
+
+The provider name stays `twitter`, so the routes and the callback url are the same as with OAuth 1.0a and users keep their ids. Register only one of `twitter` and `twitter_v2`.
+
+User ids carry over to `twitter_v2`; the keys of `UserAttributes` have to be checked. The provider reads only `id`, `name`, `username` and `profile_image_url`, and a key is the name of one of those fields inside `data` of the response. `name` is the display name as before. `screen_name` is `username` now, `id_str` is `id` and `profile_image_url_https` is `profile_image_url`. A v1.1 field with no counterpart among the four gives an empty value.
+
+##### X API access
+
+The two providers read the user from different versions of the X API, and X decides per app which requests it answers. When X refuses the request, the callback of either provider returns 503.
+
+- `twitter_v2` calls `GET /2/users/me` of API v2. [Keycloak](https://www.keycloak.org/docs/26.7.0/server_admin/#_twitter) documents that it needs a paid API v2 plan, such as pay-per-use, and that with an app on the original Free plan the authorization completes and X then refuses the user request with 403. For that error [xurl](https://github.com/xdevplatform/xurl#x-platform-enrollment-troubleshooting) recommends moving the app to the **Pay-per-use** package and the **Production** environment.
+- `twitter` calls `account/verify_credentials` of API v1.1, which X lists as [limited support](https://docs.x.com/x-api/getting-started/about-x-api). Its current access requirements are not known: the check below succeeded with a new app in a Pay-per-use project, and in 2022 X refused apps without Elevated access ([#111](https://github.com/go-pkgz/auth/issues/111)).
+
+Both providers were checked on 20 November 2026 with one new app in a Pay-per-use project and no credits bought, and the sign-in completed with each. The account that signed in owned the app, and X [charges](https://docs.x.com/x-api/getting-started/pricing) for user reads, so the check does not show whether other accounts can sign in before credits are bought. An app on the legacy Free plan was not checked with either provider.
 
 ## XSRF Protections
 By default, the XSRF protections will apply to all requests which reach the `middlewares.Auth`,

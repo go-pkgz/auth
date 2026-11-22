@@ -22,8 +22,11 @@ import (
 
 // CustomHandlerOpt are options to initialize a handler for oauth2 server
 type CustomHandlerOpt struct {
-	Endpoint          oauth2.Endpoint
-	InfoURL           string
+	Endpoint oauth2.Endpoint
+	InfoURL  string
+	// MapUserFn converts the response from InfoURL to a user. It has to return an empty ID when the response
+	// has no user id, such a login is refused. Check the id before hashing it: a prefix plus a hash of
+	// an empty value is not an empty ID and maps every such login to the same user.
 	MapUserFn         func(UserData, []byte) token.User
 	BearerTokenHookFn BearerTokenHook
 	Scopes            []string

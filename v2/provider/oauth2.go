@@ -230,6 +230,11 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	p.Logf("[DEBUG] got raw user info %s", userDataLogSummary(jData))
 	u := p.mapUser(jData, data)
+	// a user without id is the same user for everyone mapped this way
+	if u.ID == "" {
+		rest.SendErrorJSON(w, r, p.L, http.StatusServiceUnavailable, fmt.Errorf("no user id"), "failed to get user info")
+		return
+	}
 	if oauthClaims.NoAva {
 		u.Picture = "" // reset picture on no avatar request
 	}

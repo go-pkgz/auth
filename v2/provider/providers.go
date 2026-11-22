@@ -185,6 +185,46 @@ func NewTwitter(p Params) Oauth1Handler {
 	})
 }
 
+// NewTwitterV2 makes twitter (X) oauth2 provider, it uses X API v2 where NewTwitter uses oauth1 and API v1.1.
+// The provider name and the user id derivation are the same as in NewTwitter, register only one of the two.
+func NewTwitterV2(p Params) Oauth2Handler {
+	return initOauth2Handler(p, Oauth2Handler{
+		name: "twitter",
+		// see https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
+		endpoint: oauth2.Endpoint{ //nolint:gosec // G101 false positive, oauth endpoint urls are not credentials
+			AuthURL:  "https://x.com/i/oauth2/authorize",
+			TokenURL: "https://api.x.com/2/oauth2/token",
+			// a confidential client authenticates with the basic header, without this oauth2 retries
+			// a rejected exchange with the secret in the request body
+			AuthStyle: oauth2.AuthStyleInHeader,
+		},
+		scopes:  []string{"users.read", "tweet.read"},
+		infoURL: "https://api.x.com/2/users/me?user.fields=profile_image_url",
+		mapUser: func(data UserData, _ []byte) token.User {
+			// the user object is nested under "data". A response without it, or with an id which is not
+			// a string, maps to a user with no id and the callback refuses it
+			nested, _ := data["data"].(map[string]any)
+			user := UserData(nested)
+			id, _ := nested["id"].(string)
+			if id == "" {
+				return token.User{}
+			}
+			userInfo := token.User{
+				ID:      "twitter_" + token.HashID(sha1.New(), id),
+				Name:    user.Value("username"),
+				Picture: user.Value("profile_image_url"),
+			}
+			if userInfo.Name == "" {
+				userInfo.Name = user.Value("name")
+			}
+			for k, v := range p.UserAttributes {
+				userInfo.SetStrAttr(v, user.Value(k))
+			}
+			return userInfo
+		},
+	})
+}
+
 // NewBattlenet makes Battle.net oauth2 provider
 func NewBattlenet(p Params) Oauth2Handler {
 	return initOauth2Handler(p, Oauth2Handler{
