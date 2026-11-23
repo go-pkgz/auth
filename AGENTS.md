@@ -38,6 +38,10 @@
 - Verify-provider confirmation tokens are one-shot within one `Service` by default: nil `VerifConfirmationStore` makes `AddVerifProvider` install an in-memory store for that service. They are one-shot across services and instances only with a shared `VerifConfirmationStore`.
 - Avatar handling is security-sensitive: keep content-type validation, image dimension/size caps, and bot-token URL redaction intact in both root and v2.
 
+## Releases
+
+- When v1 and v2 are released together, publish the v1 release first and the v2 release second, so that the v2 release is marked "Latest"; if v1 still shows as "Latest", set v2 as the latest release by hand.
+
 ## Testing Gotchas
 
 - Run root and v2 tests separately; `go test ./...` from the root does not test the separate `v2` module.
