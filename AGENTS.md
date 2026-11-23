@@ -10,7 +10,7 @@
 | `cd v2 && go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...` | v2-module CI test command from `.github/workflows/ci-v2.yml`. |
 | `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --max-issues-per-linter=0 --max-same-issues=0` | Reproduce root-module CI lint locally. |
 | `cd v2 && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --config ../.golangci.yml --max-issues-per-linter=0 --max-same-issues=0` | Reproduce v2-module CI lint locally. |
-| `~/.claude/format.sh` | Format Go code when available; it runs gofmt/goimports. |
+| `gofmt -w <files>` and `goimports -w <files>` | Format Go code. |
 
 ## Architecture
 
@@ -35,12 +35,12 @@
 - Preserve backward compatibility for public auth flows and documented query parameters. For example, direct login still supports `passwd` in the URL, so sensitive-query fixes must redact rather than remove that input path.
 - Avoid logging raw user profiles, mapped `token.User` values, JWTs, OAuth tokens, confirmation tokens, or credential-bearing URLs. Use redacted request copies when passing URLs with secrets to `rest.SendErrorJSON`.
 - `AllowedRedirectHosts` hardening is opt-in. Nil keeps legacy permissive `from` redirects; a non-nil getter enables host validation.
-- Verify-provider confirmation tokens are one-shot only when `VerifConfirmationStore` is configured; nil installs an in-memory store via `AddVerifProvider`, suitable only for single-instance deployments.
+- Verify-provider confirmation tokens are one-shot within one `Service` by default: nil `VerifConfirmationStore` makes `AddVerifProvider` install an in-memory store for that service. They are one-shot across services and instances only with a shared `VerifConfirmationStore`.
 - Avatar handling is security-sensitive: keep content-type validation, image dimension/size caps, and bot-token URL redaction intact in both root and v2.
 
 ## Testing Gotchas
 
 - Run root and v2 tests separately; `go test ./...` from the root does not test the separate `v2` module.
 - When reproducing CI lint, use the pinned `v2.15.0` command above, not the globally installed `golangci-lint` binary unless its version matches CI.
-- Many tests bind fixed localhost ports in the 898x/899x range; use `-p 1` for package test runs to reduce port-collision risk.
+- Many tests bind fixed localhost ports: 8089 and 18084 (dev provider) in `auth_test.go`, and ports from 8691-8696 and 8961-8998 in the `provider/` packages. `-p 1` serialises the packages of one `go test` run only; these tests still fail while another process holds one of those ports. The dev and custom server provider tests take their ports from the kernel.
 - `go test ./...` in the root includes Mongo tests only when `ENABLE_MONGO_TESTS=true`; without it, CI-only Mongo coverage may not run locally.

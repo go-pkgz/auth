@@ -45,7 +45,7 @@ function login(prov) {
     const url = window.location.href + "?close=true";
     const eurl = encodeURIComponent(url);
     const win = window.open(
-      "/auth/" + prov + "/login?id=auth-example&from=" + eurl
+      "/auth/" + prov + "/login?site=auth-example&from=" + eurl
     );
     const interval = setInterval(() => {
       try {
@@ -73,13 +73,13 @@ function login(prov) {
 
 function loginAnonymously(username) {
   return fetch(
-    `/auth/anonymous/login?id=auth-example&user=${encodeURIComponent(username)}`
+    `/auth/anonymous/login?aud=auth-example&user=${encodeURIComponent(username)}`
   );
 }
 
 function sendEmailAuthData(username, email) {
   return req(
-    `/auth/email/login?id=auth-example&user=${encodeURIComponent(
+    `/auth/email/login?site=auth-example&user=${encodeURIComponent(
       username
     )}&address=${encodeURIComponent(email)}`
   );
@@ -286,7 +286,7 @@ async function getTelegramLoginForm() {
     }
 
     // Poll login endpoint until user confirms login request
-    fetch(`/auth/telegram/login?token=${token}`)
+    fetch(`/auth/telegram/login?token=${token}&site=auth-example`)
       .then(resp => {
         if (resp.status == 200) {
           // Success

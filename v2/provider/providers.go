@@ -177,7 +177,7 @@ func NewYandex(p Params) Oauth2Handler {
 	})
 }
 
-// NewTwitter makes twitter oauth2 provider
+// NewTwitter makes twitter (X) oauth1 provider
 func NewTwitter(p Params) Oauth1Handler {
 	return initOauth1Handler(p, Oauth1Handler{
 		name: "twitter",
