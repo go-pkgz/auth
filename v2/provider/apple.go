@@ -344,7 +344,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	// get token claims for extract uid (and email or name if they exist in scope).
 	// the signature is verified with Apple public keys (JWK), served from the handler cache,
 	// while jwt v5 parser options enforce iss == https://appleid.apple.com and
-	// aud == ClientID inline so we don't need a separate validate pass.
+	// aud == ClientID inline. sub has no such option and is checked after parsing.
 	tokenClaims := jwt.MapClaims{}
 	_, err = jwt.ParseWithClaims(resp.IDToken, tokenClaims, ah.jwkKeyFunc(r.Context()),
 		jwt.WithIssuer(appleIDTokenIssuer),
@@ -360,6 +360,12 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		ah.Logf("[ERROR] failed to get claims: " + err.Error())
 		rest.SendErrorJSON(w, r, ah.L, http.StatusInternalServerError, nil, fmt.Sprintf("failed to token validation, key is invalid: %s", resp.Error))
+		return
+	}
+
+	if err = validateAppleIDSubject(tokenClaims); err != nil {
+		ah.Logf("[WARN] apple id_token rejected: %s", err.Error())
+		rest.SendErrorJSON(w, r, ah.L, http.StatusForbidden, nil, "invalid id_token")
 		return
 	}
 
@@ -582,3 +588,12 @@ func presence(s string) string {
 // appleIDTokenIssuer is the issuer Apple sets on every id_token issued by Sign in with Apple.
 // see https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api/verifying_a_user
 const appleIDTokenIssuer = "https://appleid.apple.com" // #nosec G101 -- public Apple issuer URL, not a credential
+
+// validateAppleIDSubject checks that sub, the id_token claim the user id is built
+// from, is a non-empty string. Issuer and audience are enforced by the parser options.
+func validateAppleIDSubject(claims jwt.MapClaims) error {
+	if sub, ok := claims["sub"].(string); !ok || sub == "" {
+		return errors.New("invalid id_token subject")
+	}
+	return nil
+}

@@ -179,6 +179,30 @@ func TestAppleHandlerCreateClientSecret(t *testing.T) {
 	assert.Equal(t, "auth.example.com", testClaims["sub"])
 }
 
+func TestValidateAppleIDSubject(t *testing.T) {
+	tests := []struct {
+		name    string
+		claims  jwt.MapClaims
+		wantErr bool
+	}{
+		{name: "string subject accepted", claims: jwt.MapClaims{"sub": "u1"}},
+		{name: "missing subject rejected", claims: jwt.MapClaims{}, wantErr: true},
+		{name: "null subject rejected", claims: jwt.MapClaims{"sub": nil}, wantErr: true},
+		{name: "numeric subject rejected", claims: jwt.MapClaims{"sub": float64(12345)}, wantErr: true},
+		{name: "empty subject rejected", claims: jwt.MapClaims{"sub": ""}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAppleIDSubject(tt.claims)
+			if !tt.wantErr {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, "invalid id_token subject")
+		})
+	}
+}
+
 func TestAppleParseUserData(t *testing.T) {
 
 	ah := AppleHandler{Params: Params{L: logger.NoOp}}
@@ -430,6 +454,44 @@ func TestAppleHandler_LoginHandler_RejectsWrongAudience(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "invalid id_token")
+}
+
+// TestAppleHandler_LoginHandler_RejectsUnusableSubject drives the login flow with
+// a correctly signed id_token whose sub is missing, null, not a string or empty.
+// The user id is built from sub, so each of them must end in 403 with no auth cookie set.
+func TestAppleHandler_LoginHandler_RejectsUnusableSubject(t *testing.T) {
+	tests := []struct {
+		name      string
+		loginPort int
+		authPort  int
+		mutate    func(claims jwt.MapClaims)
+	}{
+		{name: "missing sub", loginPort: 8967, authPort: 8968, mutate: func(claims jwt.MapClaims) { delete(claims, "sub") }},
+		{name: "null sub", loginPort: 8969, authPort: 8970, mutate: func(claims jwt.MapClaims) { claims["sub"] = nil }},
+		{name: "numeric sub", loginPort: 8975, authPort: 8976, mutate: func(claims jwt.MapClaims) { claims["sub"] = 12345 }},
+		{name: "empty sub", loginPort: 8977, authPort: 8978, mutate: func(claims jwt.MapClaims) { claims["sub"] = "" }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			teardown := prepareAppleOauthTest(t, tt.loginPort, tt.authPort, nil, testIDTokenOverride{mutate: tt.mutate})
+			defer teardown()
+
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err)
+			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+			loginURL := fmt.Sprintf("http://localhost:%d/login?site=remark", tt.loginPort)
+			resp, err := client.Get(loginURL)
+			require.NoError(t, err, "the callback must answer, a panic in it drops the connection")
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusForbidden, resp.StatusCode, "id_token without a usable sub must be rejected")
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Contains(t, string(body), "invalid id_token")
+			assert.Empty(t, resp.Cookies(), "no auth cookie for a rejected id_token")
+		})
+	}
 }
 
 func TestAppleHandler_LogoutHandler(t *testing.T) {
@@ -739,7 +801,7 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 	require.NoError(t, err)
 
 	// create self-signed JWT
-	testResponseToken, err := createTestResponseTokenWith(signKey, override.issOrDefault(), override.audOrDefault())
+	testResponseToken, err := createTestResponseTokenWith(signKey, override.issOrDefault(), override.audOrDefault(), override.mutate)
 	require.NoError(t, err)
 	require.NotEmpty(t, testResponseToken)
 	if testToken != nil {
@@ -878,8 +940,9 @@ func prepareAppleOauthTest(t *testing.T, loginPort, authPort int, testToken *str
 // with the canonical Apple issuer and the test ClientID, exercising the
 // happy path through the jwt.WithIssuer / jwt.WithAudience parser options.
 type testIDTokenOverride struct {
-	iss string
-	aud string
+	iss    string
+	aud    string
+	mutate func(claims jwt.MapClaims) // changes the claims before signing, nil keeps them as they are
 }
 
 func (o testIDTokenOverride) issOrDefault() string {
@@ -896,14 +959,17 @@ func (o testIDTokenOverride) audOrDefault() string {
 	return o.aud
 }
 
-func createTestResponseTokenWith(privKey any, iss, aud string) (string, error) {
-	claims := &jwt.MapClaims{
+func createTestResponseTokenWith(privKey any, iss, aud string, mutate func(claims jwt.MapClaims)) (string, error) {
+	claims := jwt.MapClaims{
 		"iss":   iss,
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Second * 30).Unix(),
 		"aud":   aud,
 		"sub":   "userid1",
 		"email": "test@example.go",
+	}
+	if mutate != nil {
+		mutate(claims)
 	}
 
 	tkn := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
