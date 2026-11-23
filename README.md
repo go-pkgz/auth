@@ -279,7 +279,9 @@ Message template may use the follow elements:
 - `{{.Address}}` - user address, for example email
 - `{{.User}}` - user name
 - `{{.Token}}` - confirmation token
+- `{{.LinkToken}}` - a second confirmation token for the same sign-in, meant for a link in the message. Both tokens are accepted by the login endpoint and each works once, so using one leaves the other valid. The link token carries `provider.VerifLinkTokenState` as its handshake state, which lets an application serving the link refuse any other token
 - `{{.Site}}` - site ID
+- `{{.URL}}` - the service URL from `Opts.URL`, without a trailing slash
 
 Sender should be provided by end-user and implements a single function interface
 

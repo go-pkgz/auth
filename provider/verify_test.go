@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -97,6 +98,78 @@ func TestVerifyHandler_LoginSendConfirm(t *testing.T) {
 	assert.True(t, tkn.ExpiresAt > tkn.NotBefore)
 
 	assert.Equal(t, "test", e.Name())
+}
+
+// TestVerifyHandler_LoginSendConfirmLinkToken covers the two tokens one message can carry: each
+// signs in, each only once, and using one leaves the other working
+func TestVerifyHandler_LoginSendConfirmLinkToken(t *testing.T) {
+	emailer := mockSender{}
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:            "iss-test",
+		L:                 logger.Std,
+		Sender:            SenderFunc(emailer.Send),
+		URL:               "https://remark42.example.com/",
+		Template:          "link:{{.URL}}/login.html?tkn={{.LinkToken}} token:{{.Token}}",
+		ConfirmationStore: NewInMemoryVerifStore(),
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/login?address=blah@user.com&user=test123&site=remark42", http.NoBody)
+	e.LoginHandler(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+
+	m := regexp.MustCompile(`^link:https://remark42\.example\.com/login\.html\?tkn=(\S+) token:(\S+)$`).FindStringSubmatch(emailer.text)
+	require.Len(t, m, 3, "message: %q", emailer.text)
+	linkTkn, tkn := m[1], m[2]
+	require.NotEqual(t, tkn, linkTkn)
+
+	linkClaims, err := e.TokenService.Parse(linkTkn)
+	require.NoError(t, err)
+	assert.Equal(t, VerifLinkTokenState, linkClaims.Handshake.State)
+	assert.Equal(t, "test123::blah@user.com", linkClaims.Handshake.ID)
+	assert.Equal(t, "test", linkClaims.AuthProvider.Name)
+	assert.Equal(t, "remark42", linkClaims.Audience)
+	claims, err := e.TokenService.Parse(tkn)
+	require.NoError(t, err)
+	assert.Empty(t, claims.Handshake.State, "the token to paste carries no mark")
+
+	redeem := func(t *testing.T, tkn string) int {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		e.LoginHandler(rr, httptest.NewRequest("GET", "/login?token="+tkn, http.NoBody))
+		return rr.Code
+	}
+	assert.Equal(t, http.StatusOK, redeem(t, linkTkn), "the link token signs in")
+	assert.Equal(t, http.StatusForbidden, redeem(t, linkTkn), "the link token works once")
+	assert.Equal(t, http.StatusOK, redeem(t, tkn), "the token to paste still signs in after the link was used")
+	assert.Equal(t, http.StatusForbidden, redeem(t, tkn), "the token to paste works once")
+}
+
+// TestVerifyHandler_LoginSendConfirmOldTemplate checks a template written before the link fields
+// existed renders as it did
+func TestVerifyHandler_LoginSendConfirmOldTemplate(t *testing.T) {
+	emailer := mockSender{}
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		}),
+		L:        logger.Std,
+		Sender:   SenderFunc(emailer.Send),
+		URL:      "https://remark42.example.com",
+		Template: "{{.User}} {{.Address}} {{.Site}} token:{{.Token}}",
+	}
+
+	rr := httptest.NewRecorder()
+	e.LoginHandler(rr, httptest.NewRequest("GET", "/login?address=blah@user.com&user=test123&site=remark42", http.NoBody))
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+	assert.Regexp(t, `^test123 blah@user\.com remark42 token:[\w-]+\.[\w-]+\.[\w-]+$`, emailer.text)
 }
 
 func TestVerifyHandler_LoginSendConfirmEscapesBadInput(t *testing.T) {
