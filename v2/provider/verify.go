@@ -198,6 +198,13 @@ type VerifTokenService interface {
 	Reset(w http.ResponseWriter)
 }
 
+// VerifLinkTokenState marks the confirmation token a message template gets as {{.LinkToken}}, in the
+// handshake state. It signs in like {{.Token}} and is redeemed apart from it, so a message can carry
+// one token in a link and the other to be typed or pasted, and opening the link in some other browser
+// does not use up the one the reader still has. An application serving the link can refuse every
+// other token by this mark.
+const VerifLinkTokenState = "link"
+
 // Name of the handler
 func (e VerifyHandler) Name() string { return e.ProviderName }
 
@@ -376,6 +383,18 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// a token for a link differs from the first only by its mark, which is enough for it to be
+	// redeemed apart, since the confirmation store keys on the whole token
+	linkClaims := claims
+	linkHandshake := *claims.Handshake
+	linkHandshake.State = VerifLinkTokenState
+	linkClaims.Handshake = &linkHandshake
+	linkTkn, err := e.TokenService.Token(linkClaims)
+	if err != nil {
+		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, err, "failed to make login token")
+		return
+	}
+
 	tmpl := msgTemplate
 	if e.Template != "" {
 		tmpl = e.Template
@@ -387,15 +406,19 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 	}
 
 	tmplData := struct {
-		User    string
-		Address string
-		Token   string
-		Site    string
+		User      string
+		Address   string
+		Token     string
+		LinkToken string
+		Site      string
+		URL       string
 	}{
-		User:    trim(user),
-		Address: trim(address),
-		Token:   tkn,
-		Site:    site,
+		User:      trim(user),
+		Address:   trim(address),
+		Token:     tkn,
+		LinkToken: linkTkn,
+		Site:      site,
+		URL:       strings.TrimSuffix(e.URL, "/"),
 	}
 	buf := bytes.Buffer{}
 	if err = emailTmpl.Execute(&buf, tmplData); err != nil {
