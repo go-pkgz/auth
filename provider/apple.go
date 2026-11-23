@@ -578,15 +578,20 @@ func presence(s string) string {
 const appleIDTokenIssuer = "https://appleid.apple.com" // #nosec G101 -- public Apple issuer URL, not a credential
 
 // validateAppleIDClaims checks that the id_token claims have the expected Apple
-// issuer and that the audience matches the relying party's client ID. The signature
-// must already have been verified by the caller; this only catches confused-deputy
-// cases where another Apple-signed token is replayed against the wrong audience.
+// issuer, that the audience matches the relying party's client ID and that sub,
+// the claim the user id is built from, is a non-empty string. The signature must
+// already have been verified by the caller; the issuer and audience checks catch
+// confused-deputy cases where another Apple-signed token is replayed against the
+// wrong audience.
 func validateAppleIDClaims(claims jwt.MapClaims, expectedAud string) error {
 	if !claims.VerifyIssuer(appleIDTokenIssuer, true) {
 		return errors.New("invalid id_token issuer")
 	}
 	if !claims.VerifyAudience(expectedAud, true) {
 		return errors.New("invalid id_token audience")
+	}
+	if sub, ok := claims["sub"].(string); !ok || sub == "" {
+		return errors.New("invalid id_token subject")
 	}
 	return nil
 }
