@@ -81,6 +81,47 @@ func TestOauth1Login(t *testing.T) {
 
 }
 
+func TestOauth1LoginAudAndNoAva(t *testing.T) {
+	loginPort, authPort := freePort(t), freePort(t)
+	teardown := prepOauth1Test(t, loginPort, authPort)
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: timeout * time.Second}
+
+	// aud is the alias of site, noava drops the provider's picture
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?aud=remark&noava=1", loginPort))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	u := token.User{}
+	require.NoError(t, json.Unmarshal(body, &u))
+	assert.Equal(t, "mock_myuser1", u.ID)
+
+	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31})
+	claims, err := jwtSvc.Parse(resp.Cookies()[0].Value)
+	require.NoError(t, err)
+
+	// the second mock user has a picture the claims updater keeps; the avatar saver must get none
+	resp2, err := client.Get(fmt.Sprintf("http://localhost:%d/login?aud=remark&noava=1", loginPort))
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	require.Equal(t, http.StatusOK, resp2.StatusCode)
+	body, err = io.ReadAll(resp2.Body)
+	require.NoError(t, err)
+	u = token.User{}
+	require.NoError(t, json.Unmarshal(body, &u))
+	assert.Equal(t, "mock_myuser2", u.ID)
+	assert.Equal(t, "http://example.com/fake.png", u.Picture, "the saver got no picture and made an identicon")
+	assert.Equal(t, "remark", claims.Audience[0])
+	assert.True(t, claims.NoAva)
+}
+
 func TestOauth1LoginSessionOnly(t *testing.T) {
 
 	teardown := prepOauth1Test(t, loginPort, authPort)

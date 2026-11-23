@@ -196,6 +196,33 @@ func NewService(opts Opts) (res *Service) {
 // Handlers gets http.Handler for all providers and avatars
 func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 
+	// user and status report what the Auth middleware accepts: they run the same checks through Trace,
+	// so a user rejected by the Validator, or from a provider no longer registered, is not logged in.
+	// Only a user Trace itself put into the request counts, not one set by a middleware in front of it
+	traced := func(next func(w http.ResponseWriter, user token.User, ok bool)) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, outer *http.Request) {
+			// Trace passes the same request on when it sets no user, and a new one when it does
+			s.authMiddleware.Trace(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				user, err := token.GetUserInfo(r)
+				next(w, user, err == nil && r != outer)
+			})).ServeHTTP(w, outer)
+		})
+	}
+	userHandler := traced(func(w http.ResponseWriter, user token.User, ok bool) {
+		if !ok {
+			_ = rest.EncodeJSON(w, http.StatusUnauthorized, rest.JSON{"error": "unauthorized"})
+			return
+		}
+		rest.RenderJSON(w, user)
+	})
+	statusHandler := traced(func(w http.ResponseWriter, user token.User, ok bool) {
+		if !ok {
+			rest.RenderJSON(w, rest.JSON{"status": "not logged in"})
+			return
+		}
+		rest.RenderJSON(w, rest.JSON{"status": "logged in", "user": user.Name})
+	})
+
 	ah := func(w http.ResponseWriter, r *http.Request) {
 		elems := strings.Split(r.URL.Path, "/")
 		if len(elems) < 2 {
@@ -225,27 +252,13 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 
 		// show user info
 		if elems[len(elems)-1] == "user" {
-			claims, _, err := s.jwtService.Get(r)
-			if err != nil || claims.User == nil {
-				msg := "user is nil"
-				if err != nil {
-					msg = err.Error()
-				}
-				_ = rest.EncodeJSON(w, http.StatusUnauthorized, rest.JSON{"error": msg})
-				return
-			}
-			rest.RenderJSON(w, claims.User)
+			userHandler.ServeHTTP(w, r)
 			return
 		}
 
 		// status of logged-in user
 		if elems[len(elems)-1] == "status" {
-			claims, _, err := s.jwtService.Get(r)
-			if err != nil || claims.User == nil {
-				rest.RenderJSON(w, rest.JSON{"status": "not logged in"})
-				return
-			}
-			rest.RenderJSON(w, rest.JSON{"status": "logged in", "user": claims.User.Name})
+			statusHandler.ServeHTTP(w, r)
 			return
 		}
 
@@ -332,6 +345,8 @@ func (s *Service) addProviderByName(name string, p provider.Params) {
 	case "dev":
 		prov = provider.NewDev(p)
 	default:
+		// apple, telegram and custom providers have their own registration methods
+		s.logger.Logf("[ERROR] unknown provider %q, nothing registered", name)
 		return
 	}
 

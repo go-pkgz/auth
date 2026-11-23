@@ -282,9 +282,11 @@ func TestPrepareLoginURL(t *testing.T) {
 }
 
 func TestPrepareLoginURLWithCustomResponseMode(t *testing.T) {
-	ah, err := prepareAppleHandlerTest("query", []string{})
+	ah, err := prepareAppleHandlerTest("", []string{})
 	assert.NoError(t, err)
 	assert.IsType(t, &AppleHandler{}, ah)
+	// NewApple accepts form_post only, so the mode and the empty scope that allows it are set directly
+	ah.conf.ResponseMode = "query"
 	ah.conf.scopes = []string{""}
 	lURL, err := ah.prepareLoginURL("1112233", "apple-test/login")
 	assert.NoError(t, err)
@@ -320,13 +322,28 @@ func TestAppleVerificationResponseLogSummary(t *testing.T) {
 }
 
 func TestThrowsWhenNotEmptyScopeAndWrongResponseMode(t *testing.T) {
-	ah, err := prepareAppleHandlerTest("query", []string{"email"})
+	ah, err := prepareAppleHandlerTest("", []string{"email"})
 	assert.NoError(t, err)
 	assert.IsType(t, &AppleHandler{}, ah)
+	ah.conf.ResponseMode = "query"
 
 	lURL, err := ah.prepareLoginURL("1112233", "apple-test/login")
 	assert.Equal(t, "", lURL)
 	assert.Error(t, err)
+}
+
+func TestNewAppleResponseMode(t *testing.T) {
+	for _, mode := range []string{"", "form_post"} {
+		ah, err := prepareAppleHandlerTest(mode, []string{})
+		require.NoError(t, err, "mode %q", mode)
+		assert.Equal(t, "form_post", ah.conf.ResponseMode)
+	}
+
+	for _, mode := range []string{"query", "fragment", "Form_Post"} {
+		ah, err := prepareAppleHandlerTest(mode, []string{})
+		require.EqualError(t, err, fmt.Sprintf(`response mode %q is not supported, only "form_post" works with the name scope`, mode))
+		assert.Nil(t, ah)
+	}
 }
 
 func TestAppleHandlerMakeRedirURL(t *testing.T) {
@@ -500,6 +517,30 @@ func TestAppleHandler_LoginHandler_RejectsUnusableSubject(t *testing.T) {
 
 // TestAppleHandler_LoginHandlerFromRejectsExternalHost is the regression
 // test for the redirect validator on the apple login path.
+func TestAppleHandler_LoginHandlerAudAndNoAva(t *testing.T) {
+	loginPort, authPort := freePort(t), freePort(t)
+	teardown := prepareAppleOauthTest(t, loginPort, authPort, nil, testIDTokenOverride{})
+	defer teardown()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	// aud is the alias of site, and noava is carried into the token as the oauth2 providers do
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/login?aud=remark&noava=1", loginPort))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	jwtSvc := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+		TokenDuration: time.Hour, CookieDuration: days31})
+	claims, err := jwtSvc.Parse(resp.Cookies()[0].Value)
+	require.NoError(t, err)
+	assert.Equal(t, "remark", claims.Audience)
+	assert.True(t, claims.NoAva)
+	assert.Empty(t, claims.User.Picture)
+}
+
 func TestAppleHandler_LoginHandlerFromRejectsExternalHost(t *testing.T) {
 	enablePolicy := func(p *Params) {
 		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })

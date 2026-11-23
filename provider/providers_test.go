@@ -2,11 +2,14 @@ package provider
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -320,9 +323,30 @@ func TestProviders_NewMicrosoft(t *testing.T) {
 
 	t.Run("invalid tenant falls back to common", func(t *testing.T) {
 		for _, tenant := range []string{"ten/ant", "ten..ant", "ten?ant", "ten#ant", "ten ant"} {
+			var warnings []string
+			lg := logger.Func(func(format string, args ...any) {
+				if msg := fmt.Sprintf(format, args...); strings.HasPrefix(msg, "[WARN]") {
+					warnings = append(warnings, msg)
+				}
+			})
 			r := NewMicrosoft(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
-				MicrosoftTenant: tenant})
+				MicrosoftTenant: tenant, L: lg})
 			assert.Contains(t, r.endpoint.AuthURL, "/common/", "tenant %q should fall back to common", tenant)
+			assert.Equal(t, []string{fmt.Sprintf("[WARN] invalid microsoft tenant %q, using the common endpoint", tenant)},
+				warnings, "the fallback for %q must be logged", tenant)
+		}
+	})
+
+	t.Run("valid and empty tenants log no warning", func(t *testing.T) {
+		for _, tenant := range []string{"", "my-tenant-id", "contoso.onmicrosoft.com"} {
+			var warnings []string
+			lg := logger.Func(func(format string, args ...any) {
+				if msg := fmt.Sprintf(format, args...); strings.HasPrefix(msg, "[WARN]") {
+					warnings = append(warnings, msg)
+				}
+			})
+			NewMicrosoft(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs", MicrosoftTenant: tenant, L: lg})
+			assert.Empty(t, warnings, "tenant %q", tenant)
 		}
 	})
 }

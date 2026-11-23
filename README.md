@@ -33,7 +33,7 @@ The v2 version of this library is now the actively developed version, and we rec
     - `Claims.NotBefore` changed from `int64` to `*jwt.NumericDate`
     - `Claims.IssuedAt` changed from `int64` to `*jwt.NumericDate`
     - `ID` field renamed from `Id`
-    - `Audience` changed from `string` to `[]string`
+    - `Audience` changed from `string` to `[]string`; a token with a single audience still carries `aud` as a string, as v1 tokens do, without changing the `jwt.MarshalSingleStringAsArray` setting of the process
 - RefreshCache interface signatures updated to use strongly typed values:
     - `Get(key string) (value token.Claims, ok bool)`
     - `Set(key string, value token.Claims)`
@@ -182,12 +182,12 @@ Generally, adding support of `auth` includes a few relatively simple steps:
 
 For the example above authentication handlers wired as `/auth` and provides:
 
-- `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. redirect_url is the url to redirect after successful login. When `Opts.AllowedRedirectHosts` is set, only targets whose host matches `Opts.URL` or appears in the allowlist are honoured; others fall back to the user-info JSON response. With the default (nil) allowlist any non-empty `from` is honoured — see "Allowed redirect hosts" below for the opt-in details.
+- `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. The oauth2, oauth1 and Apple providers also accept `aud=<site_id>` in place of `site`, and `noava=1`, which drops the provider's picture, so a configured avatar proxy generates an identicon instead. redirect_url is the url to redirect after successful login. When `Opts.AllowedRedirectHosts` is set, only targets whose host matches `Opts.URL` or appears in the allowlist are honoured; others fall back to the user-info JSON response. With the default (nil) allowlist any non-empty `from` is honoured — see "Allowed redirect hosts" below for the opt-in details.
 - `/avatar/<avatar_id>` - returns the avatar (image). Links to those pictures added into user info automatically, for details see "Avatar proxy"
 - `/auth/<provider>/logout` and `/auth/logout` - invalidate "session" by removing JWT cookie
 - `/auth/list` - gives a json list of active providers
-- `/auth/user` - returns `token.User` (json)
-- `/auth/status` - returns status of logged in user (json)
+- `/auth/user` - returns `token.User` (json) of a request the `Auth` middleware accepts, which includes the `Validator` and the check that the user's provider is still registered; 401 otherwise
+- `/auth/status` - returns status of logged in user (json), by the same checks as `/auth/user`
 
 ### User info
 
@@ -718,6 +718,8 @@ By default, this library doesn't print anything to stdout/stderr, however user c
 
 Authentication handled by external providers. You should setup oauth2 for all (or some) of them to allow users to authenticate. It is not mandatory to have all of them, but at least one should be correctly configured.
 
+`AddProvider` and `AddProviderWithUserAttributes` accept these names, in any letter case: `github`, `google`, `facebook`, `yandex`, `battlenet`, `microsoft`, `twitter`, `twitter_v2` (v2 only), `patreon`, `discord` and `dev`. Any other name registers nothing and logs an `[ERROR]` line. Apple, Telegram and custom providers are registered with their own methods: `AddAppleProvider`, `AddCustomHandler` and `AddCustomProvider`.
+
 Every oauth2 login through the shared oauth2 handler, which serves the built-in oauth2 providers except Apple and every `AddCustomProvider` registration, uses PKCE ([RFC 7636](https://www.rfc-editor.org/rfc/rfc7636)) with the `S256` method: the login sends a code challenge, and the callback sends the matching verifier, kept in the handshake token, to the token endpoint. Servers without PKCE support ignore both, so no configuration is needed.
 
 The oauth2, oauth1 and Apple callbacks read the handshake token only from the JWT cookie set by the login step. A handshake token passed in the JWT query parameter or header (`token` and `X-JWT` by default) is ignored on the callback, so the callback requires the handshake cookie from the login step. Login handlers give the handshake a 30-minute expiry, and the callback rejects a handshake whose expiry has passed, so a user who leaves the provider's consent page open longer has to start the login again. A handshake without an expiry is still accepted.
@@ -808,7 +810,7 @@ For single-tenant Entra ID (Azure AD) applications, or for an application limite
 service.AddMicrosoftProvider("<Client ID>", "<Client Secret>", "<Tenant ID>")
 ```
 
-The tenant value can be a tenant ID (GUID), domain name, or one of the well-known values: `common`, `organizations`, `consumers`.
+The tenant value can be a tenant ID (GUID), domain name, or one of the well-known values: `common`, `organizations`, `consumers`. A value containing `/`, `?`, `#`, a space, a tab, a line break or `..` is not a valid tenant: the provider uses `common` instead and logs a warning.
 
 #### GitHub Auth Provider
 
@@ -862,7 +864,7 @@ After completing the previous steps, you can proceed with configuring the Apple 
 - _ClientID_ (**required**) - Service ID (or App ID) which is used for Sign with Apple
 - _TeamID_ (**required**) - Identifier a developer account (use as prefix for all App ID)
 - _KeyID_ (**required**) - Identifier a generated key for Sign with Apple
-- _ResponseMode_  - Response Mode, please see [documentation](https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168) for reference, default is `form_post`
+- _ResponseMode_  - Response Mode, please see [documentation](https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168) for reference, default is `form_post`. It is also the only value accepted: the provider requests the `name` scope, which Apple allows with `form_post` only, so `AddAppleProvider` returns an error for any other value
 
 ```go
     // apple config parameters

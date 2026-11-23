@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -93,6 +94,30 @@ func TestProvider(t *testing.T) {
 	assert.NoError(t, err)
 	chp := ch.Provider
 	assert.Equal(t, "telegramBotMySiteCom", chp.Name())
+}
+
+func TestService_AddProviderUnknownName(t *testing.T) {
+	var logged []string
+	svc := NewService(Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:          "http://127.0.0.1:8089",
+		Logger: logger.Func(func(format string, args ...any) {
+			if msg := fmt.Sprintf(format, args...); strings.HasPrefix(msg, "[ERROR]") {
+				logged = append(logged, msg)
+			}
+		}),
+	})
+
+	svc.AddProvider("GitHub", "cid", "csecret")
+	require.Len(t, svc.Providers(), 1, "names are matched case-insensitively")
+	assert.Empty(t, logged, "a known name logs no error")
+
+	for _, name := range []string{"apple", "telegram", "gitlab", "twitter-v2"} {
+		logged = nil
+		svc.AddProvider(name, "cid", "csecret")
+		assert.Equal(t, []string{fmt.Sprintf("[ERROR] unknown provider %q, nothing registered", name)}, logged)
+	}
+	assert.Len(t, svc.Providers(), 1, "an unknown name registers nothing")
 }
 
 func TestService_AddMicrosoftProvider(t *testing.T) {
@@ -686,6 +711,107 @@ func TestVerifProvider(t *testing.T) {
 	assert.Equal(t, 86400, resp.Cookies()[0].MaxAge)
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
+}
+
+func TestUserAndStatusRunAuthChecks(t *testing.T) {
+	svc := NewService(Opts{
+		SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		URL:          "http://127.0.0.1:8089",
+		Logger:       logger.Std,
+		Validator:    token.ValidatorFunc(func(_ string, claims token.Claims) bool { return claims.User.Name != "blocked" }),
+	})
+	svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(string, string) (bool, error) { return true, nil }))
+	authRoute, _ := svc.Handlers()
+
+	tbl := []struct {
+		name, userName, userID, provider string
+		loggedIn                         bool
+	}{
+		{name: "accepted", userName: "alice", userID: "direct_1", provider: "direct", loggedIn: true},
+		{name: "rejected by validator", userName: "blocked", userID: "direct_2", provider: "direct"},
+		{name: "provider not registered", userName: "bob", userID: "gone_3", provider: "gone"},
+	}
+
+	issue := func(name, id, prov, xsrf string) string {
+		tkn, err := svc.TokenService().Token(token.Claims{
+			User:           &token.User{Name: name, ID: id},
+			AuthProvider:   &token.AuthProvider{Name: prov},
+			StandardClaims: jwt.StandardClaims{Audience: "site1", Id: xsrf, ExpiresAt: time.Now().Add(time.Hour).Unix()},
+		})
+		require.NoError(t, err)
+		return tkn
+	}
+	// a valid session of another user, sent as the cookie next to a rejected token in the query
+	session := issue("carol", "direct_9", "direct", "xsrf-carol")
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			tkn := issue(tt.userName, tt.userID, tt.provider, "xsrf-"+tt.userName)
+
+			// the token is the request's session cookie, as a browser sends it
+			call := func(path string) *httptest.ResponseRecorder {
+				rr := httptest.NewRecorder()
+				req := httptest.NewRequest("GET", path, http.NoBody)
+				req.AddCookie(&http.Cookie{Name: "JWT", Value: tkn})
+				req.Header.Set("X-XSRF-TOKEN", "xsrf-"+tt.userName)
+				authRoute.ServeHTTP(rr, req)
+				return rr
+			}
+			expired := func(rr *httptest.ResponseRecorder) bool {
+				for _, c := range rr.Result().Cookies() {
+					if c.Name == "JWT" && c.MaxAge < 0 {
+						return true
+					}
+				}
+				return false
+			}
+
+			user, status := call("/auth/user"), call("/auth/status")
+			if tt.loggedIn {
+				assert.Equal(t, http.StatusOK, user.Code)
+				u := token.User{}
+				require.NoError(t, json.Unmarshal(user.Body.Bytes(), &u))
+				assert.Equal(t, tt.userID, u.ID)
+				assert.JSONEq(t, `{"status":"logged in","user":"alice"}`, status.Body.String())
+				return
+			}
+			assert.Equal(t, http.StatusUnauthorized, user.Code)
+			assert.JSONEq(t, `{"error":"unauthorized"}`, user.Body.String())
+			assert.Equal(t, http.StatusOK, status.Code)
+			assert.JSONEq(t, `{"status":"not logged in"}`, status.Body.String())
+			assert.True(t, expired(user), "the rejected token cookie is cleared by /auth/user")
+			assert.True(t, expired(status), "the rejected token cookie is cleared by /auth/status")
+
+			// the rejected token in the query next to another user's session cookie: refused, and that
+			// session's cookies stay
+			for _, tc := range []struct{ path, body string }{
+				{path: "/auth/user", body: `{"error":"unauthorized"}`},
+				{path: "/auth/status", body: `{"status":"not logged in"}`},
+			} {
+				rr := httptest.NewRecorder()
+				req := httptest.NewRequest("GET", tc.path+"?token="+tkn, http.NoBody)
+				req.AddCookie(&http.Cookie{Name: "JWT", Value: session})
+				req.Header.Set("X-XSRF-TOKEN", "xsrf-carol")
+				authRoute.ServeHTTP(rr, req)
+				wantCode := http.StatusOK
+				if tc.path == "/auth/user" {
+					wantCode = http.StatusUnauthorized
+				}
+				assert.Equal(t, wantCode, rr.Code, tc.path)
+				assert.JSONEq(t, tc.body, rr.Body.String(), tc.path)
+				assert.Empty(t, rr.Result().Header.Values("Set-Cookie"), "%s must leave the session cookie alone", tc.path)
+			}
+
+			// a user put into the request by a middleware in front of the routes does not count
+			for _, path := range []string{"/auth/user", "/auth/status"} {
+				rr := httptest.NewRecorder()
+				req := token.SetUserInfo(httptest.NewRequest("GET", path, http.NoBody), token.User{ID: "outer", Name: "outer"})
+				req.Header.Set("X-JWT", tkn)
+				authRoute.ServeHTTP(rr, req)
+				assert.NotContains(t, rr.Body.String(), "outer", path)
+			}
+		})
+	}
 }
 
 func TestStatus(t *testing.T) {

@@ -277,7 +277,13 @@ func NewBattlenet(p Params) Oauth2Handler {
 // NewMicrosoft makes microsoft azure oauth2 provider
 func NewMicrosoft(p Params) Oauth2Handler {
 	tenant := p.MicrosoftTenant
-	if tenant == "" || strings.ContainsAny(tenant, "/?# \t\n\r") || strings.Contains(tenant, "..") {
+	if tenant != "" && (strings.ContainsAny(tenant, "/?# \t\n\r") || strings.Contains(tenant, "..")) {
+		if p.L != nil {
+			p.Logf("[WARN] invalid microsoft tenant %q, using the common endpoint", tenant)
+		}
+		tenant = ""
+	}
+	if tenant == "" {
 		tenant = "common"
 	}
 	return initOauth2Handler(p, Oauth2Handler{

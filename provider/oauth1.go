@@ -29,7 +29,7 @@ type Oauth1Handler struct {
 // Name returns provider name
 func (h Oauth1Handler) Name() string { return h.name }
 
-// LoginHandler - GET /login?from=redirect-back-url&site=siteID&session=1
+// LoginHandler - GET /login?from=redirect-back-url&[site|aud]=siteID&session=1&noava=1
 func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	h.Logf("[DEBUG] login with %s", h.Name())
 
@@ -50,6 +50,11 @@ func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	aud := r.URL.Query().Get("site") // legacy, for back compat
+	if aud == "" {
+		aud = r.URL.Query().Get("aud")
+	}
+
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: requestSecret,
@@ -58,10 +63,11 @@ func (h Oauth1Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		SessionOnly: sessionOnlyFromRequest(r),
 		StandardClaims: jwt.StandardClaims{
 			Id:        cid,
-			Audience:  r.URL.Query().Get("site"),
+			Audience:  aud,
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},
+		NoAva: r.URL.Query().Get("noava") == "1",
 		AuthProvider: &token.AuthProvider{
 			Name: h.name,
 		},
@@ -147,6 +153,9 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 		rest.SendErrorJSON(w, r, h.L, http.StatusServiceUnavailable, fmt.Errorf("no user id"), "failed to get user info")
 		return
 	}
+	if oauthClaims.NoAva {
+		u.Picture = "" // reset picture on no avatar request
+	}
 	u, err = setAvatar(h.AvatarSaver, u, &http.Client{Timeout: 5 * time.Second})
 	if err != nil {
 		rest.SendErrorJSON(w, r, h.L, http.StatusInternalServerError, err, "failed to save avatar to proxy")
@@ -166,6 +175,7 @@ func (h Oauth1Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 			Audience: oauthClaims.Audience,
 		},
 		SessionOnly: oauthClaims.SessionOnly,
+		NoAva:       oauthClaims.NoAva,
 		AuthProvider: &token.AuthProvider{
 			Name: h.name,
 		},
