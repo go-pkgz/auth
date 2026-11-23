@@ -1019,14 +1019,26 @@ a reader's browser at an auth route on the same origin. The browser sends the se
 with that GET, and `http.CrossOriginProtection` allows it. Two behaviours of the library matter
 then:
 
-- **The login and logout handlers answer a plain GET.** Every logout path, `/auth/logout` and
-  `/auth/<provider>/logout` alike, is served by the provider that was added first. The logout of
-  a direct, verified or Telegram provider resets the cookies without looking at the request. A
-  direct provider issues a new session for the `user` and `passwd` in the query when its
-  `CredChecker` accepts them, which for an anonymous provider is any name. An image whose address
-  is one of those routes signs the viewer out, or signs them in as the user those credentials
-  belong to. Refuse requests that the browser marks as an embedded resource before they reach the
-  auth handler that `Service.Handlers()` returns:
+- **The login and logout handlers answer a plain GET.** An image whose address is one of these
+  routes changes the viewer's session:
+
+  - Every logout path, `/auth/logout` and `/auth/<provider>/logout` alike, is served by the
+    provider that was added first. The logout of a direct, verified or Telegram provider resets
+    the cookies without looking at the request. The logout of an oauth2, oauth1 or Apple provider
+    asks for the XSRF header, and takes the session cookie alone when `DisableXSRF` is set or
+    `GET` is in `XSRFIgnoreMethods`.
+  - The login of an oauth2, oauth1 or Apple provider puts its handshake token in place of the
+    session cookie, so the viewer is signed out.
+  - The login of a direct provider issues a new session for the `user` and `passwd` in the query
+    when its `CredChecker` accepts them, which for an anonymous provider is any name.
+  - The verified and Telegram logins issue a session for the owner of the confirmation token in
+    their `token` parameter, so an image with a commenter's own token can sign a viewer in to the
+    commenter's account.
+
+  A login route is served by the provider named in its path, so these apply whichever provider
+  was added first, and an application with oauth2 providers alone needs the check as well. Refuse
+  requests that the browser marks as an embedded resource before they reach the auth handler that
+  `Service.Handlers()` returns:
 
   ```go
   func rejectEmbedded(next http.Handler) http.Handler {
@@ -1047,18 +1059,25 @@ then:
 
   Browsers send `Sec-Fetch-Dest` only to https and loopback addresses, and Safari only since
   version 16.4. A request without the header is served, so the check does nothing on other plain
-  http sites or in older browsers.
+  http sites or in older browsers. It stops embedded resources only: a link in user content that
+  navigates the top-level page arrives as `document` and is served.
+
+  The handler also refuses a navigation inside a frame (`Sec-Fetch-Dest: iframe`). An application
+  shown in a frame gets 403 when it opens a verified login link with a confirmation token in that
+  frame, and has to complete that login with a fetch from inside the frame. Serving `iframe` as
+  well would let `<iframe src="/auth/logout">` in user content through again.
 
 - **A token in the query is read first and is not XSRF-checked.** `token.Service.Get` takes the
   parameter named by `Opts.JWTQuery` (`token` by default) ahead of the header and the cookie. The
-  logout of an OAuth provider, which otherwise asks for the XSRF header, accepts a valid token
-  there in place of the session. When `Opts.Validator` or the provider check rejects the token,
-  the auth middleware resets the cookies of whoever sent the request. It does so after the
-  response is written, so the reset reaches the browser only when an outer handler buffers the
-  response, as `http.TimeoutHandler` does. If the application does not need a session token in
-  the URL, remove that parameter from the request before the auth middleware and the logout
-  handler see it. Leave it on the login routes while `JWTQuery` is `token`: the verified and
-  Telegram logins read a `token` parameter of their own.
+  logout of an oauth2, oauth1 or Apple provider accepts a valid token there in place of the
+  session cookie and its XSRF header. When `Opts.Validator` or the provider check rejects the
+  token, the auth middleware resets the cookies of whoever sent the request. It does so after the
+  request is handled, so the reset reaches the browser only when nothing has been written by then,
+  or when an outer handler buffers the response, as `http.TimeoutHandler` does. If the application
+  does not need a session token in the URL, remove that parameter from the request before the auth
+  middleware and the logout handler see it. Leave it on the login routes while `JWTQuery` is
+  `token`: the verified and Telegram logins read their confirmation token from a `token` parameter
+  of their own.
 
 ## Status
 
