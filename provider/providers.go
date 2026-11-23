@@ -311,8 +311,16 @@ func NewPatreon(p Params) Oauth2Handler {
 			if len(uinfoJSON.Data.Relationships.Pledges.Data) > 0 {
 				userInfo.SetPaidSub(true)
 			}
+			// the user object is nested as data.attributes, with the id in data; a key is looked up
+			// in attributes first, then in data
+			nested, _ := data["data"].(map[string]any)
+			attrs, _ := nested["attributes"].(map[string]any)
 			for k, v := range p.UserAttributes {
-				userInfo.SetStrAttr(v, data.Value(k))
+				if _, ok := attrs[k]; ok {
+					userInfo.SetStrAttr(v, UserData(attrs).Value(k))
+					continue
+				}
+				userInfo.SetStrAttr(v, UserData(nested).Value(k))
 			}
 			return userInfo
 		},
@@ -336,9 +344,11 @@ func NewDiscord(p Params) Oauth2Handler {
 				return token.User{} // the callback refuses a user without an id
 			}
 			userInfo := token.User{
-				ID:      "discord_" + token.HashID(sha1.New(), id),
-				Name:    data.Value("username"),
-				Picture: fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.webp", data.Value("id"), data.Value("avatar")),
+				ID:   "discord_" + token.HashID(sha1.New(), id),
+				Name: data.Value("username"),
+			}
+			if data.Value("avatar") != "" { // a user without an avatar has none to link to
+				userInfo.Picture = fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.webp", id, data.Value("avatar"))
 			}
 
 			for k, v := range p.UserAttributes {

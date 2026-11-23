@@ -62,10 +62,13 @@ func TestCustomServer_Run_BadURLDoesNotDeadlockShutdown(t *testing.T) {
 }
 
 func TestCustomProvider(t *testing.T) {
-	srv := initGoauth2Srv(t)
+	router := http.NewServeMux()
+	authURL := serveLocal(t, router)
+	oauthURL := fmt.Sprintf("http://127.0.0.1:%d", freePort(t))
+	srv := initGoauth2Srv(t, authURL)
 
 	params := Params{
-		URL: "http://127.0.0.1:8080",
+		URL: authURL,
 		JwtService: token.NewService(token.Opts{
 			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
 			TokenDuration:  time.Hour,
@@ -82,12 +85,12 @@ func TestCustomProvider(t *testing.T) {
 	var capturedUser token.User
 
 	sopts := CustomServerOpt{
-		URL:           "http://127.0.0.1:9096",
+		URL:           oauthURL,
 		L:             logger.Std,
 		WithLoginPage: true,
 		LoginPageHandler: func(w http.ResponseWriter, r *http.Request) {
 			// // simulate POST from login page
-			u, err := url.Parse("http://127.0.0.1:9096/authorize?" + r.URL.RawQuery)
+			u, err := url.Parse(oauthURL + "/authorize?" + r.URL.RawQuery)
 			if err != nil {
 				assert.Fail(t, "failed to parse url")
 			}
@@ -134,19 +137,12 @@ func TestCustomProvider(t *testing.T) {
 	h := NewCustom("myprov", params, prov.HandlerOpt)
 	s := Service{Provider: h}
 
-	router := http.NewServeMux()
 	router.Handle("/auth/customprov/", http.HandlerFunc(s.Handler))
-	ts := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", 8080), Handler: router} //nolint:gosec
 
 	ctx := t.Context()
 
 	go prov.Run(ctx)
-	startServer(t, ts)
-
-	defer func() {
-		prov.Shutdown()
-		_ = ts.Shutdown(context.TODO())
-	}()
+	defer prov.Shutdown()
 
 	time.Sleep(400 * time.Millisecond)
 
@@ -156,7 +152,7 @@ func TestCustomProvider(t *testing.T) {
 
 	// check non-admin, permanent
 	loginUsername = "admin"
-	resp, err := client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
+	resp, err := client.Get(authURL + "/auth/customprov/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
@@ -164,10 +160,10 @@ func TestCustomProvider(t *testing.T) {
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 	assert.Equal(t, token.User{Name: "admin", ID: "admin",
-		Picture: "http://127.0.0.1:9096/avatar?user=admin", IP: ""}, capturedUser)
+		Picture: oauthURL + "/avatar?user=admin", IP: ""}, capturedUser)
 
 	// check avatar
-	resp, err = client.Get("http://127.0.0.1:9096/avatar?user=dev_user")
+	resp, err = client.Get(oauthURL + "/avatar?user=dev_user")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
@@ -184,7 +180,7 @@ func TestCustomProvider(t *testing.T) {
 
 	// check malicious user ID
 	loginUsername = "attack"
-	resp, err = client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
+	resp, err = client.Get(authURL + "/auth/customprov/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
@@ -192,11 +188,11 @@ func TestCustomProvider(t *testing.T) {
 	t.Logf("resp %s", string(body))
 	t.Logf("headers: %+v", resp.Header)
 	// user ID in picture URL is encoded
-	assert.Equal(t, "http://127.0.0.1:9096/avatar?user=none%26attack%3Dvalue%22%3E%3Cscript%3Enasty+stuff%3C%2Fscript%3E", capturedUser.Picture)
+	assert.Equal(t, oauthURL+"/avatar?user=none%26attack%3Dvalue%22%3E%3Cscript%3Enasty+stuff%3C%2Fscript%3E", capturedUser.Picture)
 
 	// check default login page
 	prov.LoginPageHandler = nil
-	resp, err = client.Get("http://127.0.0.1:8080/auth/customprov/login?site=my-test-site")
+	resp, err = client.Get(authURL + "/auth/customprov/login?site=my-test-site")
 	require.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
@@ -210,10 +206,10 @@ func TestCustomProvider(t *testing.T) {
 }
 
 func TestCustomProviderCancel(t *testing.T) {
-	srv := initGoauth2Srv(t)
+	srv := initGoauth2Srv(t, "http://127.0.0.1:8080")
 	prov := CustomServer{
 		OauthServer:   srv,
-		URL:           "http://127.0.0.1:9096",
+		URL:           fmt.Sprintf("http://127.0.0.1:%d", freePort(t)),
 		L:             logger.Std,
 		WithLoginPage: true,
 	}
@@ -233,7 +229,7 @@ func TestCustomProviderCancel(t *testing.T) {
 	}
 }
 
-func initGoauth2Srv(t *testing.T) *goauth2.Server {
+func initGoauth2Srv(t *testing.T, clientDomain string) *goauth2.Server {
 	manager := manage.NewDefaultManager()
 	manager.SetAuthorizeCodeTokenCfg(manage.DefaultAuthorizeCodeTokenCfg)
 
@@ -248,7 +244,7 @@ func initGoauth2Srv(t *testing.T) *goauth2.Server {
 	err := clientStore.Set("cid", &models.Client{
 		ID:     "cid",
 		Secret: "csecret",
-		Domain: "http://127.0.0.1:8080",
+		Domain: clientDomain,
 	})
 	if err != nil {
 		assert.Fail(t, "failed to set up a client store for go-oauth2/oauth2 server, %s", err)

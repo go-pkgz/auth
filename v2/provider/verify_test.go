@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -267,6 +269,68 @@ func TestVerifyHandler_LoginAcceptConfirm(t *testing.T) {
 	assert.True(t, claims.ExpiresAt.After(time.Now()))
 	assert.Equal(t, "test123", claims.User.Name)
 	assert.Equal(t, true, claims.SessionOnly)
+}
+
+func TestVerifyHandler_LoginUserNameWithSeparator(t *testing.T) {
+	emailer := mockSender{}
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:   "iss-test",
+		L:        logger.Std,
+		Sender:   SenderFunc(emailer.Send),
+		Template: "token:{{.Token}}",
+	}
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/login?address=blah@user.com&user=a::b&site=remark42", http.NoBody)
+	require.NoError(t, err)
+	e.LoginHandler(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	tkn := strings.TrimPrefix(emailer.text, "token:")
+
+	rr = httptest.NewRecorder()
+	req, err = http.NewRequest("GET", "/login?token="+tkn, http.NoBody)
+	require.NoError(t, err)
+	e.LoginHandler(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+
+	u := token.User{}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &u))
+	assert.Equal(t, "a::b", u.Name)
+	assert.Equal(t, "test_"+token.HashID(sha1.New(), "blah@user.com"), u.ID, "id is derived from the address alone")
+
+	// an address that would move the split is refused before anything is sent
+	for _, address := range []string{"a@[IPv6:2001:db8::1]", ":blah@user.com", ":"} {
+		emailer.text = ""
+		rr = httptest.NewRecorder()
+		req, err = http.NewRequest("GET", "/login?address="+url.QueryEscape(address)+"&user=bob&site=remark42", http.NoBody)
+		require.NoError(t, err)
+		e.LoginHandler(rr, req)
+		assert.Equal(t, http.StatusBadRequest, rr.Code, address)
+		assert.Equal(t, `{"error":"invalid address"}`+"\n", rr.Body.String(), address)
+		assert.Empty(t, emailer.text, "nothing sent to %q", address)
+	}
+
+	// a user name ending with a colon still splits right
+	rr = httptest.NewRecorder()
+	req, err = http.NewRequest("GET", "/login?address=blah@user.com&user=bob:&site=remark42", http.NoBody)
+	require.NoError(t, err)
+	e.LoginHandler(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	rr = httptest.NewRecorder()
+	req, err = http.NewRequest("GET", "/login?token="+strings.TrimPrefix(emailer.text, "token:"), http.NoBody)
+	require.NoError(t, err)
+	e.LoginHandler(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+	u = token.User{}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &u))
+	assert.Equal(t, "bob:", u.Name)
+	assert.Equal(t, "test_"+token.HashID(sha1.New(), "blah@user.com"), u.ID)
 }
 
 // TestVerifyHandler_LoginRejectsTokensItDidNotIssue covers tokens signed with the same secret that

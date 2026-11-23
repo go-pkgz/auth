@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -502,6 +503,56 @@ func TestTelegramProcessUpdates_BotTokenNeverInUserPicture(t *testing.T) {
 	assert.NotContains(t, logged, botToken, "no log line must contain the bot token")
 }
 
+func TestTelegramProcessUpdates_RequestOutcome(t *testing.T) {
+	tbl := []struct {
+		name      string
+		expires   time.Duration
+		avatarErr error
+		confirmed bool
+		sent      string
+	}{
+		{name: "live request", expires: time.Hour, confirmed: true, sent: "ok"},
+		{name: "avatar lookup fails", expires: time.Hour, avatarErr: errors.New("getUserProfilePhotos failed"),
+			confirmed: true, sent: "ok"},
+		{name: "expired request", expires: -time.Minute, confirmed: false, sent: "failed"},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			var sent []string
+			m := &TelegramAPIMock{
+				AvatarFunc: func(context.Context, int) (string, error) {
+					if tt.avatarErr != nil {
+						return "", tt.avatarErr
+					}
+					return "", nil
+				},
+				SendFunc: func(_ context.Context, _ int, msg string) error {
+					sent = append(sent, msg)
+					return nil
+				},
+			}
+
+			const tok = "registered-token"
+			th := &TelegramHandler{ProviderName: "telegram", Telegram: m, L: logger.NoOp, SuccessMsg: "ok", ErrorMsg: "failed"}
+			th.requests.data = map[string]tgAuthRequest{tok: {expires: time.Now().Add(tt.expires)}}
+
+			updates := &telegramUpdate{}
+			require.NoError(t, json.Unmarshal(fmt.Appendf(nil, getUpdatesResp, tok), updates))
+			th.processUpdates(context.Background(), updates)
+
+			assert.Equal(t, []string{tt.sent}, sent)
+			got := th.requests.data[tok]
+			assert.Equal(t, tt.confirmed, got.confirmed)
+			if tt.confirmed {
+				require.NotNil(t, got.user)
+				assert.Equal(t, "Joe", got.user.Name)
+				assert.Empty(t, got.user.Picture)
+			}
+		})
+	}
+}
+
 func TestTelegramProcessUpdates_ChatIDAttribute(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -901,15 +952,19 @@ const sendMessageResp = `{
 }`
 
 func TestTgAPI_Send(t *testing.T) {
-	tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "123", r.URL.Query().Get("chat_id"))
-		assert.Equal(t, "hello there", r.URL.Query().Get("text"))
-		_, _ = w.Write([]byte(sendMessageResp))
-	}))
-	defer cleanup()
+	for _, msg := range []string{"hello there", "Welcome to Tom & Jerry's site + more, 100% ok? a=b #1"} {
+		t.Run(msg, func(t *testing.T) {
+			tg, cleanup := prepareTgAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "123", r.URL.Query().Get("chat_id"))
+				assert.Equal(t, msg, r.URL.Query().Get("text"))
+				_, _ = w.Write([]byte(sendMessageResp))
+			}))
+			defer cleanup()
 
-	err := tg.Send(context.Background(), 123, "hello there")
-	assert.NoError(t, err)
+			err := tg.Send(context.Background(), 123, msg)
+			assert.NoError(t, err)
+		})
+	}
 }
 
 const profilePhotosResp = `{

@@ -319,6 +319,23 @@ func TestProviders_NewPatreon(t *testing.T) {
 // distinct Patreon accounts must produce distinct local user IDs.
 // the previous implementation hashed the uninitialized userInfo.ID, so every
 // Patreon user collapsed into the same identity.
+func TestProviders_NewPatreonUserAttributes(t *testing.T) {
+	r := NewPatreon(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
+		UserAttributes: UserAttributes{"email": "email_attr", "id": "patreon_id", "vanity": "vanity_attr", "unknown": "unknown_attr"}})
+
+	body := []byte(`{"data":{"attributes":{"email":"corgi@example.com","full_name":"Corgi The Dev","vanity":null},` +
+		`"id":"0000000","type":"user"},"links":{"self":"https://www.patreon.com/api/oauth2/v2/user/0000000"}}`)
+	udata := UserData{}
+	require.NoError(t, json.Unmarshal(body, &udata))
+
+	user := r.mapUser(udata, body)
+	assert.Equal(t, "Corgi The Dev", user.Name)
+	assert.Equal(t, "corgi@example.com", user.StrAttr("email_attr"), "key inside data.attributes")
+	assert.Equal(t, "0000000", user.StrAttr("patreon_id"), "key inside data")
+	assert.Empty(t, user.StrAttr("vanity_attr"), "null value")
+	assert.Empty(t, user.StrAttr("unknown_attr"), "missing key")
+}
+
 func TestProviders_NewPatreon_DistinctIDs(t *testing.T) {
 	r := NewPatreon(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
 
@@ -374,6 +391,16 @@ func TestProviders_NewDiscord(t *testing.T) {
 		user := r.mapUser(udata, nil)
 		assert.Equal(t, token.User{Name: "test_user", ID: "discord_9b472605c1318483fb4b88f9acf22cdd4219f9a0",
 			Picture: "https://cdn.discordapp.com/avatars/248533295981532/374384984773.webp"}, user, "got %+v", user)
+	})
+
+	t.Run("Without avatar", func(t *testing.T) {
+		for _, udata := range []UserData{
+			{"id": "248533295981532", "username": "test_user", "avatar": nil},
+			{"id": "248533295981532", "username": "test_user"},
+		} {
+			user := r.mapUser(udata, nil)
+			assert.Equal(t, token.User{Name: "test_user", ID: "discord_9b472605c1318483fb4b88f9acf22cdd4219f9a0"}, user, "got %+v", user)
+		}
 	})
 
 }

@@ -691,6 +691,19 @@ func TestAudience(t *testing.T) {
 	assert.NoError(t, err, `au1 allowed`)
 }
 
+func TestJWT_TokenWithoutAudience(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), TokenDuration: time.Hour, CookieDuration: days31})
+	claims := Claims{User: &User{ID: "id1", Name: "name1"}}
+
+	_, err := j.Token(claims)
+	require.EqualError(t, err, "aud rejected: no audience provided")
+
+	rr := httptest.NewRecorder()
+	_, err = j.Set(rr, claims)
+	require.EqualError(t, err, "failed to make token token: aud rejected: no audience provided")
+	assert.Empty(t, rr.Result().Cookies(), "no cookie set for a rejected token")
+}
+
 func TestAudReader(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), SecureCookies: false,
 		TokenDuration: time.Hour, CookieDuration: days31, AudSecrets: true,

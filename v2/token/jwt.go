@@ -164,6 +164,10 @@ func (j *Service) Token(claims Claims) (string, error) {
 		return "", fmt.Errorf("aud rejected: %w", err)
 	}
 
+	if len(claims.Audience) == 0 {
+		return "", fmt.Errorf("aud rejected: no audience provided")
+	}
+
 	secret, err := j.SecretReader.Get(claims.Audience[0]) // get secret via consumer defined SecretReader
 	if err != nil {
 		return "", fmt.Errorf("can't get secret: %w", err)

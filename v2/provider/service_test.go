@@ -242,3 +242,27 @@ func startServer(t *testing.T, srv *http.Server) {
 	})
 	go func() { _ = srv.Serve(ln) }()
 }
+
+// serveLocal serves h on a port the kernel picks and returns the server's base URL
+func serveLocal(t *testing.T, h http.Handler) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err, "can't bind test server")
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second}
+	t.Cleanup(func() {
+		_ = srv.Close()
+		_ = ln.Close()
+	})
+	go func() { _ = srv.Serve(ln) }()
+	return "http://" + ln.Addr().String()
+}
+
+// freePort returns a port the kernel has just reported free, for servers that bind by number themselves
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err, "can't get a free port")
+	port := ln.Addr().(*net.TCPAddr).Port
+	require.NoError(t, ln.Close())
+	return port
+}
