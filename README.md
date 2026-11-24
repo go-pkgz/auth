@@ -1074,14 +1074,13 @@ then:
 - **A token in the query is read first and is not XSRF-checked.** `token.Service.Get` takes the
   parameter named by `Opts.JWTQuery` (`token` by default) ahead of the header and the cookie. The
   logout of an oauth2, oauth1 or Apple provider accepts a valid token there in place of the
-  session cookie and its XSRF header. When `Opts.Validator` or the provider check rejects the
-  token, the auth middleware resets the cookies of whoever sent the request. It does so after the
-  request is handled, so the reset reaches the browser only when nothing has been written by then,
-  or when an outer handler buffers the response, as `http.TimeoutHandler` does. If the application
-  does not need a session token in the URL, remove that parameter from the request before the auth
-  middleware and the logout handler see it. Leave it on the login routes while `JWTQuery` is
-  `token`: the verified and Telegram logins read their confirmation token from a `token` parameter
-  of their own.
+  session cookie and its XSRF header. A token there that `Opts.Validator` or the provider check
+  rejects leaves the cookies of the request alone: the auth middleware expires the cookies only
+  when the rejected token is the request's own session cookie, so a link carrying a blocked token
+  does not sign out whoever opens it. If the application does not need a session token in the URL,
+  remove that parameter from the request before the auth middleware and the logout handler see it.
+  Leave it on the login routes while `JWTQuery` is `token`: the verified and Telegram logins read
+  their confirmation token from a `token` parameter of their own.
 
 ## Status
 
