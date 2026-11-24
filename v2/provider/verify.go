@@ -246,6 +246,13 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// IsExpired reports only an exp in the past, and a token without one would stay redeemable each
+	// time its one-minute replay marker lapsed
+	if confClaims.ExpiresAt == nil {
+		rest.SendErrorJSON(w, scrubTokenFromRequest(r), e.L, http.StatusForbidden, fmt.Errorf("no expiry"), "failed to verify confirmation token")
+		return
+	}
+
 	// only a handshake token carrying this provider's name may sign someone in. Other tokens are
 	// signed with the same secret, including handshake tokens of the same user::address shape that
 	// an application mails for its own purposes, and none of them prove the holder received this
@@ -267,10 +274,8 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if store != nil {
 		ttl := time.Minute
-		if confClaims.ExpiresAt != nil {
-			if remaining := time.Until(confClaims.ExpiresAt.Time); remaining > 0 {
-				ttl = remaining
-			}
+		if remaining := time.Until(confClaims.ExpiresAt.Time); remaining > 0 {
+			ttl = remaining
 		}
 		alreadyUsed, markErr := store.MarkUsed(confirmationKey(tkn), ttl)
 		if markErr != nil {

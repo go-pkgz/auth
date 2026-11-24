@@ -684,6 +684,34 @@ func TestConfirmationKey(t *testing.T) {
 	}
 }
 
+// a token whose exp a claims updater dropped passed the expiry check and was redeemable each minute
+func TestVerifyHandler_LoginAcceptConfirm_RejectsTokenWithoutExpiry(t *testing.T) {
+	svc := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		TokenDuration:  time.Hour,
+		CookieDuration: time.Hour,
+		ClaimsUpd: token.ClaimsUpdFunc(func(c token.Claims) token.Claims {
+			c.ExpiresAt = nil
+			return c
+		}),
+	})
+	e := VerifyHandler{ProviderName: "test", TokenService: svc, Issuer: "iss-test", L: logger.Std,
+		ConfirmationStore: NewInMemoryVerifStore()}
+
+	tkn, err := svc.Token(token.Claims{
+		AuthProvider: &token.AuthProvider{Name: "test"},
+		Handshake:    &token.Handshake{ID: "test123::blah@user.com"},
+		RegisteredClaims: jwt.RegisteredClaims{Audience: jwt.ClaimStrings{"remark42"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * time.Minute))},
+	})
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	e.LoginHandler(rr, httptest.NewRequest("GET", "/login?token="+url.QueryEscape(tkn), http.NoBody))
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+	assert.Contains(t, rr.Body.String(), "failed to verify confirmation token")
+}
+
 func TestVerifyHandler_LoginAcceptConfirmFromRejectsExternalHost(t *testing.T) {
 	jwtSvc := token.NewService(token.Opts{
 		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),

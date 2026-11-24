@@ -765,6 +765,34 @@ func TestConfirmationKey(t *testing.T) {
 	}
 }
 
+// the marker ended at the start of the exp second while jwt accepts the token through its end
+func TestVerifyHandler_LoginAcceptConfirm_MarkerCoversLastSecond(t *testing.T) {
+	svc := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+		TokenDuration:  time.Hour,
+		CookieDuration: time.Hour,
+	})
+	var ttl time.Duration
+	e := VerifyHandler{ProviderName: "test", TokenService: svc, Issuer: "iss-test", L: logger.Std,
+		ConfirmationStore: VerifConfirmationStoreFunc(func(_ string, d time.Duration) (bool, error) {
+			ttl = d
+			return false, nil
+		})}
+
+	exp := time.Now().Add(30 * time.Minute).Unix()
+	tkn, err := svc.Token(token.Claims{
+		AuthProvider:   &token.AuthProvider{Name: "test"},
+		Handshake:      &token.Handshake{ID: "test123::blah@user.com"},
+		StandardClaims: jwt.StandardClaims{Audience: "remark42", ExpiresAt: exp},
+	})
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	e.LoginHandler(rr, httptest.NewRequest("GET", "/login?token="+url.QueryEscape(tkn), http.NoBody))
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+	assert.False(t, time.Now().Add(ttl).Before(time.Unix(exp+1, 0)), "marker must outlive the last accepted second, ttl %v", ttl)
+}
+
 func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 	e := VerifyHandler{
 		ProviderName: "test",

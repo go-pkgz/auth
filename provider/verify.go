@@ -266,7 +266,8 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		store = nil
 	}
 	if store != nil {
-		ttl := time.Until(time.Unix(confClaims.ExpiresAt, 0))
+		// jwt accepts the token through the whole exp second, so the marker has to outlive it
+		ttl := time.Until(time.Unix(confClaims.ExpiresAt+1, 0))
 		if ttl <= 0 {
 			ttl = time.Minute
 		}
