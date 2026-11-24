@@ -201,8 +201,9 @@ type VerifTokenService interface {
 // VerifLinkTokenState marks the confirmation token a message template gets as {{.LinkToken}}, in the
 // handshake state. It signs in like {{.Token}} and is redeemed apart from it, so a message can carry
 // one token in a link and the other to be typed or pasted, and opening the link in some other browser
-// does not use up the one the reader still has. An application serving the link can refuse every
-// other token by this mark.
+// does not use up the one the reader still has. Each is one-shot on its own, so a message carrying
+// both allows a second sign-in until the unused one expires. An application serving the link can
+// refuse every other token by this mark.
 const VerifLinkTokenState = "link"
 
 // Name of the handler

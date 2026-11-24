@@ -279,7 +279,7 @@ Message template may use the follow elements:
 - `{{.Address}}` - user address, for example email
 - `{{.User}}` - user name
 - `{{.Token}}` - confirmation token
-- `{{.LinkToken}}` - a second confirmation token for the same sign-in, meant for a link in the message. Both tokens are accepted by the login endpoint and each works once, so using one leaves the other valid. The link token carries `provider.VerifLinkTokenState` as its handshake state, which lets an application serving the link refuse any other token
+- `{{.LinkToken}}` - a second confirmation token for the same sign-in, meant for a link in the message. Both tokens are accepted by the login endpoint and each works once on its own, so using one leaves the other valid until it expires. The link token carries `provider.VerifLinkTokenState` as its handshake state, which lets an application serving the link refuse any other token
 - `{{.Site}}` - site ID
 - `{{.URL}}` - the service URL from `Opts.URL`, without a trailing slash
 
@@ -305,7 +305,7 @@ Only a signed handshake token that carries this provider's name is accepted for 
 
 #### Confirmation token replay protection
 
-Confirmation tokens are one-shot: a token redeemed once cannot be redeemed again within its TTL. This stops anyone with read access to the email link (forwarded mail, mail-gateway logs, mailbox archive) from independently consuming it after the user has.
+Confirmation tokens are one-shot: a token redeemed once cannot be redeemed again within its TTL. This stops anyone with read access to the email link (forwarded mail, mail-gateway logs, mailbox archive) from independently consuming it after the user has. The protection is per token: a message whose template carries both `{{.Token}}` and `{{.LinkToken}}` lets a reader of the message sign in once more with whichever token the user did not use, until it expires. A template that needs the full guarantee carries only one of them.
 
 By default the library installs an in-memory store on first call to `AddVerifProvider`. This is correct for **single-instance** deployments.
 
