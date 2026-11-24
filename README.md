@@ -1010,7 +1010,8 @@ log.Fatal(http.ListenAndServe(":8080", csrf.Handler(mux)))
 
 This is the algorithm recommended by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
 as a primary CSRF defence. Unlike `SameSite=Lax`, it distinguishes _same-origin_ from
-_same-site_, so subdomain attacks are blocked. It composes with the JWT XSRF: the new
+_same-site_, so subdomain attacks with unsafe methods such as POST are blocked; it lets GET,
+HEAD and OPTIONS through from any origin. It composes with the JWT XSRF: the new
 middleware covers browser flows, the JWT XSRF still covers API clients sending the
 JWT-derived header.
 
@@ -1018,8 +1019,9 @@ JWT-derived header.
 
 An application that renders HTML its users wrote, such as a comment with an image, lets them point
 a reader's browser at an auth route on the same origin. The browser sends the session cookies
-with that GET, and `http.CrossOriginProtection` allows it. Two behaviours of the library matter
-then:
+with that GET, and `http.CrossOriginProtection` allows it. User content on another origin of the
+same site, such as a sibling subdomain, gets the same cookies and the same answers, and the check
+below covers it while that content cannot run script. Two behaviours of the library matter then:
 
 - **The login and logout handlers answer a plain GET.** An image whose address is one of these
   routes changes the viewer's session:
@@ -1062,7 +1064,9 @@ then:
   Browsers send `Sec-Fetch-Dest` only to https and loopback addresses, and Safari only since
   version 16.4. A request without the header is served, so the check does nothing on other plain
   http sites or in older browsers. It stops embedded resources only: a link in user content that
-  navigates the top-level page arrives as `document` and is served.
+  navigates the top-level page arrives as `document` and is served. A page that prefetches its
+  links, with speculation rules or a prefetch script, requests a link in user content without a
+  click, so keep the auth routes out of that prefetching.
 
   The handler also refuses a navigation inside a frame (`Sec-Fetch-Dest: iframe`). An application
   shown in a frame gets 403 when it opens a verified login link with a confirmation token in that
