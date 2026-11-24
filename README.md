@@ -275,11 +275,11 @@ Another non-oauth2 provider allowing user-confirmed authentication, for example 
 done by adding confirmed provider with `auth.AddVerifProvider`.
 
 ```go
-    msgTemplate := `<p>Confirm your login: <a href="https://example.com/auth/email/login?token={{.Token}}">log in</a></p>`
+    msgTemplate := `<p>Confirm your login: <a href="{{.URL}}/auth/email/login?token={{.LinkToken}}">log in</a></p>`
 	service.AddVerifProvider("email", msgTemplate, sender)
 ```
 
-The template receives the bare token, so the confirmation link, `<Opts.URL>/auth/<name>/login?token=<token>`, has to be written into the template itself.
+The template receives the tokens, not a link, so the confirmation link, `<Opts.URL>/auth/<name>/login?token=<token>`, is written into the template itself, as above. A link made with `{{.LinkToken}}` leaves `{{.Token}}` valid, so the message can also show it for pasting.
 
 Message template may use the following elements:
 
@@ -290,7 +290,7 @@ Message template may use the following elements:
 - `{{.Site}}` - site ID
 - `{{.URL}}` - the service URL from `Opts.URL`, without a trailing slash
 
-The template is an `html/template`, meant for HTML mail (set `ContentType: "text/html"` for the email sender below): every value is HTML-escaped, so in a plain-text message `O'Brien` arrives as `O&#39;Brien`. The template's `User` and `Address` values are stripped of line breaks and surrounding spaces and cut to 128 bytes; the token and the `Sender` get the values as sent. An empty template selects a built-in plain one with the user, the address, the site and the token.
+The template is an `html/template`, meant for HTML mail (set `ContentType: "text/html"` for the email sender below): every value is HTML-escaped, so in a plain-text message `O'Brien` arrives as `O&#39;Brien`. The template's `User` and `Address` values are stripped of line breaks and surrounding spaces and cut to 128 bytes; the tokens and the `Sender` get the values as sent. An empty template selects a built-in plain one with the user, the address, the site and the token.
 
 Sender should be provided by end-user and implements a single function interface
 
