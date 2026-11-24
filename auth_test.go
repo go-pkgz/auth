@@ -814,6 +814,89 @@ func TestUserAndStatusRunAuthChecks(t *testing.T) {
 	}
 }
 
+func TestUserAndStatusBasicAuthAndRefresh(t *testing.T) {
+	newSvc := func(opts Opts) (*Service, http.Handler) {
+		opts.SecretReader = token.SecretFunc(func(string) (string, error) { return "secret", nil })
+		opts.URL = "http://127.0.0.1:8089"
+		opts.Logger = logger.Std
+		svc := NewService(opts)
+		svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(string, string) (bool, error) { return true, nil }))
+		authRoute, _ := svc.Handlers()
+		return svc, authRoute
+	}
+	issue := func(t *testing.T, svc *Service, exp time.Time) string {
+		t.Helper()
+		xsrf := "xsrf-alice"
+		tkn, err := svc.TokenService().Token(token.Claims{
+			User:           &token.User{Name: "alice", ID: "direct_1"},
+			AuthProvider:   &token.AuthProvider{Name: "direct"},
+			StandardClaims: jwt.StandardClaims{Audience: "site1", Id: xsrf, ExpiresAt: exp.Unix()},
+		})
+		require.NoError(t, err)
+		return tkn
+	}
+	call := func(h http.Handler, path, cookie string, basic func(r *http.Request)) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", path, http.NoBody)
+		req.AddCookie(&http.Cookie{Name: "JWT", Value: cookie})
+		req.Header.Set("X-XSRF-TOKEN", "xsrf-alice")
+		if basic != nil {
+			basic(req)
+		}
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+
+	// a basic auth identity is checked before the token, so it wins over a valid session cookie
+	t.Run("admin password", func(t *testing.T) {
+		svc, h := newSvc(Opts{AdminPasswd: "admin-pw"})
+		session := issue(t, svc, time.Now().Add(time.Hour))
+		basic := func(r *http.Request) { r.SetBasicAuth("admin", "admin-pw") }
+		user := call(h, "/auth/user", session, basic)
+		assert.Equal(t, http.StatusOK, user.Code)
+		u := token.User{}
+		require.NoError(t, json.Unmarshal(user.Body.Bytes(), &u))
+		assert.Equal(t, "admin", u.ID)
+		assert.JSONEq(t, `{"status":"logged in","user":"admin"}`, call(h, "/auth/status", session, basic).Body.String())
+	})
+
+	t.Run("basic auth checker", func(t *testing.T) {
+		checker := func(user, passwd string) (bool, token.User, error) {
+			return user == "dave" && passwd == "dave-pw", token.User{ID: "basic_dave", Name: "dave"}, nil
+		}
+		svc, h := newSvc(Opts{BasicAuthChecker: checker})
+		session := issue(t, svc, time.Now().Add(time.Hour))
+		basic := func(r *http.Request) { r.SetBasicAuth("dave", "dave-pw") }
+		user := call(h, "/auth/user", session, basic)
+		assert.Equal(t, http.StatusOK, user.Code)
+		u := token.User{}
+		require.NoError(t, json.Unmarshal(user.Body.Bytes(), &u))
+		assert.Equal(t, "basic_dave", u.ID)
+		assert.JSONEq(t, `{"status":"logged in","user":"dave"}`, call(h, "/auth/status", session, basic).Body.String())
+	})
+
+	// an expired session cookie is refreshed, as on any route behind Auth
+	t.Run("expired session cookie", func(t *testing.T) {
+		svc, h := newSvc(Opts{})
+		expired := issue(t, svc, time.Now().Add(-time.Hour))
+		for _, path := range []string{"/auth/user", "/auth/status"} {
+			rr := call(h, path, expired, nil)
+			assert.Equal(t, http.StatusOK, rr.Code, path)
+			assert.Contains(t, rr.Body.String(), "alice", path)
+			fresh := map[string]bool{}
+			for _, c := range rr.Result().Cookies() {
+				fresh[c.Name] = c.MaxAge > 0 && c.Value != "" && c.Value != expired
+				if c.Name == "JWT" {
+					claims, err := svc.TokenService().Parse(c.Value)
+					require.NoError(t, err)
+					assert.Greater(t, claims.ExpiresAt, time.Now().Unix(), "%s: the new token is not expired", path)
+				}
+			}
+			assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, fresh, path)
+		}
+	})
+}
+
 func TestStatus(t *testing.T) {
 
 	svc, teardown := prepService(t)

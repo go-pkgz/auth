@@ -515,8 +515,6 @@ func TestAppleHandler_LoginHandler_RejectsUnusableSubject(t *testing.T) {
 	}
 }
 
-// TestAppleHandler_LoginHandlerFromRejectsExternalHost is the regression
-// test for the redirect validator on the apple login path.
 func TestAppleHandler_LoginHandlerAudAndNoAva(t *testing.T) {
 	loginPort, authPort := freePort(t), freePort(t)
 	teardown := prepareAppleOauthTest(t, loginPort, authPort, nil, testIDTokenOverride{})
@@ -541,6 +539,8 @@ func TestAppleHandler_LoginHandlerAudAndNoAva(t *testing.T) {
 	assert.Empty(t, claims.User.Picture)
 }
 
+// TestAppleHandler_LoginHandlerFromRejectsExternalHost is the regression
+// test for the redirect validator on the apple login path.
 func TestAppleHandler_LoginHandlerFromRejectsExternalHost(t *testing.T) {
 	enablePolicy := func(p *Params) {
 		p.AllowedRedirectHosts = token.AllowedHostsFunc(func() ([]string, error) { return nil, nil })

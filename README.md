@@ -33,7 +33,7 @@ The v2 version of this library is now the actively developed version, and we rec
     - `Claims.NotBefore` changed from `int64` to `*jwt.NumericDate`
     - `Claims.IssuedAt` changed from `int64` to `*jwt.NumericDate`
     - `ID` field renamed from `Id`
-    - `Audience` changed from `string` to `[]string`; a token with a single audience still carries `aud` as a string, as v1 tokens do, without changing the `jwt.MarshalSingleStringAsArray` setting of the process
+    - `Audience` changed from `string` to `[]string`. Tokens issued by the library still encode a single audience as a string, as v1 tokens do. Earlier v2 releases had `token.NewService` set `jwt.MarshalSingleStringAsArray` to `false` for the whole process; it now leaves the setting unchanged. With the golang-jwt default (`true`), tokens an application signs itself with `jwt.ClaimStrings` and direct JSON encoding of `token.Claims` encode a single audience as an array. An application can set the variable to `false` itself to keep its previous encoding
 - RefreshCache interface signatures updated to use strongly typed values:
     - `Get(key string) (value token.Claims, ok bool)`
     - `Set(key string, value token.Claims)`

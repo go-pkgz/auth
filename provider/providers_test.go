@@ -264,9 +264,6 @@ func TestProviders_NewPatreon(t *testing.T) {
 	)
 }
 
-// distinct Patreon accounts must produce distinct local user IDs.
-// the previous implementation hashed the uninitialized userInfo.ID, so every
-// Patreon user collapsed into the same identity.
 func TestProviders_NewPatreonUserAttributes(t *testing.T) {
 	r := NewPatreon(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs",
 		UserAttributes: UserAttributes{"email": "email_attr", "id": "patreon_id", "vanity": "vanity_attr", "unknown": "unknown_attr"}})
@@ -284,6 +281,9 @@ func TestProviders_NewPatreonUserAttributes(t *testing.T) {
 	assert.Empty(t, user.StrAttr("unknown_attr"), "missing key")
 }
 
+// distinct Patreon accounts must produce distinct local user IDs.
+// the previous implementation hashed the uninitialized userInfo.ID, so every
+// Patreon user collapsed into the same identity.
 func TestProviders_NewPatreon_DistinctIDs(t *testing.T) {
 	r := NewPatreon(Params{URL: "http://demo.remark42.com", Cid: "cid", Csecret: "cs"})
 
