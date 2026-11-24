@@ -8,7 +8,7 @@
 
 ## parameters
 
-No command line parameters needed. Each provider below is enabled by its environment variables:
+No command line parameters needed. The environment variables below configure each provider's credentials:
 
 | Provider  | Environment variables                                                                         |
 |-----------|-----------------------------------------------------------------------------------------------|
@@ -22,5 +22,7 @@ No command line parameters needed. Each provider below is enabled by its environ
 | telegram  | `TELEGRAM_TOKEN` (bot token; the provider is registered only when it is set)                  |
 
 `dev` (a fake oauth2 server on :8084) and `custom123` (a local go-oauth2 server on 127.0.0.1:9096, log in as `admin` with password `admin`) work without any variables, and so do `anonymous` and `email`, which prints the confirmation to stdout. Dev users reach `/private_data` with a name starting with `dev_`.
+
+Apple and X cannot complete a login at the example's `http://localhost:8080`. Apple accepts only https return URLs without `localhost`, and its `form_post` callback needs `SameSiteCookie: http.SameSiteNoneMode` with `SecureCookies`. X rejects a `localhost` callback, see "Twitter Auth Provider" in the main README.
 
 _see https://github.com/go-pkgz/auth#github-auth-provider_

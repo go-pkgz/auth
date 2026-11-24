@@ -10,6 +10,7 @@
 | `cd v2 && go test -timeout=60s -v -race -p 1 -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...` | v2-module CI test command from `.github/workflows/ci-v2.yml`. |
 | `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --max-issues-per-linter=0 --max-same-issues=0` | Reproduce root-module CI lint locally. |
 | `cd v2 && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --config ../.golangci.yml --max-issues-per-linter=0 --max-same-issues=0` | Reproduce v2-module CI lint locally. |
+| `~/.claude/format.sh` | Format Go code when available; it runs gofmt/goimports. |
 | `gofmt -w <files>` and `goimports -w <files>` | Format Go code. |
 
 ## Architecture

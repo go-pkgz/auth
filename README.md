@@ -171,7 +171,7 @@ Generally, adding support of `auth` includes a few relatively simple steps:
 
 1. Setup `auth.Opts` structure with all parameters. Each of them [documented](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Opts) and most of parameters are optional and have sane defaults.
 2. [Create](https://pkg.go.dev/github.com/go-pkgz/auth/v2#NewService) the new `auth.Service` with provided options.
-3. [Add all](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Service.AddProvider) desirable authentication providers. The middleware accepts tokens only from providers registered on this service, so a service that only verifies tokens issued elsewhere must register the same provider names.
+3. [Add all](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Service.AddProvider) desirable authentication providers. The middleware accepts a token when its provider is registered on this service, matched by the provider name signed into the token or by the part of the user id before the first `_` (the whole id when it has none). A service registering only `bitbucket` therefore also accepts tokens of a provider named `bitbucket_dev`. A service that only verifies tokens issued elsewhere must register the same provider names.
 4. Retrieve [middleware](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Service.Middleware) and [http handlers](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Service.Handlers) from `auth.Service`
 5. Wire auth and avatar handlers into http router as sub–routes.
 
@@ -614,7 +614,7 @@ opts := auth.Opts{
 }
 ```
 
-A non-nil reader enables the check on token creation (a token for an alien `aud` is not issued) and on every read of a token, `Auth` middleware included; a reader returning an empty list rejects all tokens. The token's first `aud` is compared with the list case-insensitively.
+A non-nil reader enables the check on token creation (a token for an alien `aud` is not issued) and on every read of a token, `Auth` middleware included; a reader returning an empty list rejects all tokens. The token's first `aud` is compared with the list case-insensitively. The list is one allowlist for the whole service, so a `site1` token passes on `site2` routes too; a route that serves one tenant has to compare `User.Audience` with the tenant the request names.
 
 ### Allowed redirect hosts
 
@@ -715,7 +715,7 @@ A future change is likely to add a separate bind option (`CustomServerOpt.BindAd
 
 ### Token lifetime
 
-`Opts.TokenDuration` is the lifetime of the JWT, 15 minutes by default, and `Opts.CookieDuration` is the lifetime of the cookie that carries it, 31 days by default. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
+`Opts.TokenDuration` is the lifetime of a JWT issued without an explicit expiry, 15 minutes by default; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
 
 ### Other ways to authenticate
 
