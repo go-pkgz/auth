@@ -107,11 +107,7 @@ func (d *DevAuthServer) Run(ctx context.Context) { // nolint (gocyclo)
 				if d.GetEmailFn != nil {
 					info["email"] = d.GetEmailFn(d.username)
 				}
-				res, e := json.Marshal(info)
-				if e != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
+				res, _ := json.Marshal(info) // a map of strings always marshals
 
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				if _, err = w.Write(res); err != nil {

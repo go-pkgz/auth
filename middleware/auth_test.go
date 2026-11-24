@@ -415,6 +415,36 @@ func TestAuthRejectionKeepsCookiesOfAnotherToken(t *testing.T) {
 	}
 }
 
+func TestTraceRejectionKeepsContentTypeSetBefore(t *testing.T) {
+	a := makeTestAuth(t)
+	a.Validator = token.ValidatorFunc(func(string, token.Claims) bool { return false })
+	// a middleware in front of Trace sets the type, the handler only writes the body
+	feed := a.Trace(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<feed></feed>"))
+	}))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		feed.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL, http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/"})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/xml; charset=utf-8", resp.Header.Get("Content-Type"))
+	expired := map[string]bool{}
+	for _, c := range resp.Cookies() {
+		expired[c.Name] = c.MaxAge < 0
+	}
+	assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, expired)
+}
+
 func TestTraceRejectionKeepsHandlerContentType(t *testing.T) {
 	a := makeTestAuth(t)
 	a.Validator = token.ValidatorFunc(func(string, token.Claims) bool { return false })
