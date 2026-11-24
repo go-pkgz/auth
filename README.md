@@ -320,7 +320,7 @@ type VerifConfirmationStore interface {
 }
 ```
 
-The store key is the SHA-256 of the raw confirmation token, so existing tokens issued before this protection landed are de-dup'd correctly without changing the wire format. Consumption is final: a transient downstream failure after the mark burns the token; the user must request a new confirmation email rather than retry the same link.
+The store key is the SHA-256 of the token's signed header and payload, without the signature segment, so tokens need no extra id claim and the wire format is unchanged. The signature is left out because the same signature can be spelled in several ways that all verify, such as with a line break inserted, and each spelling would otherwise get a key of its own and sign in again. Consumption is final: a transient downstream failure after the mark burns the token; the user must request a new confirmation email rather than retry the same link.
 
 #### Email-as-identity caveat
 
