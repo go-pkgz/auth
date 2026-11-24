@@ -696,6 +696,56 @@ func TestVerifyHandler_LoginAcceptConfirm_RejectsReplay(t *testing.T) {
 	assert.Contains(t, rr2.Body.String(), "already")
 }
 
+// regression: a re-encoded signature parsed as the same token but got a new store key, so it replayed
+func TestVerifyHandler_LoginAcceptConfirm_RejectsReencodedReplay(t *testing.T) {
+	const b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	sigStart := strings.LastIndexByte(testConfirmedToken, '.') + 1
+	last := testConfirmedToken[len(testConfirmedToken)-1]
+	tbl := []struct {
+		name   string
+		replay string
+	}{
+		{name: "same token", replay: testConfirmedToken},
+		{name: "newline in signature", replay: testConfirmedToken[:sigStart+5] + "\n" + testConfirmedToken[sigStart+5:]},
+		{name: "trailing newline", replay: testConfirmedToken + "\n"},
+		{name: "spare bit of last signature char flipped",
+			replay: testConfirmedToken[:len(testConfirmedToken)-1] + string(b64[strings.IndexByte(b64, last)^1])},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			e := VerifyHandler{
+				ProviderName: "test",
+				TokenService: token.NewService(token.Opts{
+					SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+					TokenDuration:  time.Hour,
+					CookieDuration: time.Hour * 24 * 31,
+				}),
+				Issuer:            "iss-test",
+				L:                 logger.Std,
+				ConfirmationStore: NewInMemoryVerifStore(),
+			}
+			handler := http.HandlerFunc(e.LoginHandler)
+
+			_, err := e.TokenService.Parse(tt.replay)
+			require.NoError(t, err, "the re-encoded token must still pass signature checking")
+
+			rr1 := httptest.NewRecorder()
+			req1, err := http.NewRequest("GET", "/login?token="+url.QueryEscape(testConfirmedToken), http.NoBody)
+			require.NoError(t, err)
+			handler.ServeHTTP(rr1, req1)
+			require.Equal(t, 200, rr1.Code)
+
+			rr2 := httptest.NewRecorder()
+			req2, err := http.NewRequest("GET", "/login?token="+url.QueryEscape(tt.replay), http.NoBody)
+			require.NoError(t, err)
+			handler.ServeHTTP(rr2, req2)
+			assert.Equal(t, 403, rr2.Code)
+			assert.Contains(t, rr2.Body.String(), "already")
+		})
+	}
+}
+
 func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 	e := VerifyHandler{
 		ProviderName: "test",

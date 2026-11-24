@@ -138,11 +138,16 @@ func (s *inMemoryVerifStore) MarkUsed(key string, ttl time.Duration) (bool, erro
 	return false, nil
 }
 
-// confirmationKey hashes the raw token so the store key length is bounded
-// regardless of token size, and so the in-memory map doesn't retain the
-// signed token itself.
+// confirmationKey hashes the signed header.payload part of a parsed token, so the store key length
+// is bounded and the map doesn't retain the token itself. The signature segment is left out: the
+// base64 decoder ignores line breaks and the spare bits of the last character, so many spellings
+// of one signature verify, while the signed part has to match byte for byte.
 func confirmationKey(rawToken string) string {
-	sum := sha256.Sum256([]byte(rawToken))
+	signed := rawToken
+	if i := strings.LastIndexByte(rawToken, '.'); i >= 0 {
+		signed = rawToken[:i]
+	}
+	sum := sha256.Sum256([]byte(signed))
 	return hex.EncodeToString(sum[:])
 }
 
