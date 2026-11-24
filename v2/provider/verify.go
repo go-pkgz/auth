@@ -141,11 +141,13 @@ func (s *inMemoryVerifStore) MarkUsed(key string, ttl time.Duration) (bool, erro
 // confirmationKey hashes the signed header.payload part of a parsed token, so the store key length
 // is bounded and the map doesn't retain the token itself. The signature segment is left out: the
 // base64 decoder ignores line breaks and the spare bits of the last character, so many spellings
-// of one signature verify, while the signed part has to match byte for byte.
+// of one signature verify, while the signed part has to match byte for byte. Only a token of three
+// segments is cut: a custom VerifTokenService may issue dotted tokens of another shape, and those
+// would share a key whenever they differ only after the last dot.
 func confirmationKey(rawToken string) string {
 	signed := rawToken
-	if i := strings.LastIndexByte(rawToken, '.'); i >= 0 {
-		signed = rawToken[:i]
+	if strings.Count(rawToken, ".") == 2 {
+		signed = rawToken[:strings.LastIndexByte(rawToken, '.')]
 	}
 	sum := sha256.Sum256([]byte(signed))
 	return hex.EncodeToString(sum[:])

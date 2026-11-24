@@ -746,6 +746,25 @@ func TestVerifyHandler_LoginAcceptConfirm_RejectsReencodedReplay(t *testing.T) {
 	}
 }
 
+// custom dotted tokens differing only after the last dot shared a key and the second was refused
+func TestConfirmationKey(t *testing.T) {
+	tbl := []struct {
+		name string
+		a, b string
+		same bool
+	}{
+		{name: "jwt keyed on its signed part", a: "head.body.sig1", b: "head.body.sig2", same: true},
+		{name: "two-segment custom token", a: "receipt.AB", b: "receipt.XY", same: false},
+		{name: "four-segment custom token", a: "a.b.c.d1", b: "a.b.c.d2", same: false},
+		{name: "token without a dot", a: "opaque1", b: "opaque2", same: false},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.same, confirmationKey(tt.a) == confirmationKey(tt.b))
+		})
+	}
+}
+
 func TestVerifyHandler_LoginAcceptConfirmWithAvatar(t *testing.T) {
 	e := VerifyHandler{
 		ProviderName: "test",
