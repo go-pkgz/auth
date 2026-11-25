@@ -5,7 +5,7 @@ This library provides "social login" with Github, Google, Facebook, Microsoft, T
 
 - Multiple oauth2 providers can be used at the same time
 - Special `dev` provider allows local testing and development
-- JWT stored in a secure cookie with XSRF protection. Cookies can be session-only
+- JWT stored in an HttpOnly cookie (Secure with `SecureCookies`) with XSRF protection. Cookies can be session-only
 - Minimal scopes with user name, id and picture (avatar) only
 - Direct authentication with user's provided credential checker
 - Verified authentication with user's provided sender (email, im, etc)
@@ -24,7 +24,11 @@ This library provides "social login" with Github, Google, Facebook, Microsoft, T
 
 ## v1 vs v2 Differences
 
-The v2 version of this library is now the actively developed version, and we recommend using it for new projects. Key differences include:
+The v2 version of this library is now the actively developed version, and we recommend using it for new projects.
+
+Version 1 gets security fixes where its dependencies allow. It still depends on `github.com/golang-jwt/jwt` v3, which has [GO-2025-3553](https://pkg.go.dev/vuln/GO-2025-3553) (excessive memory allocation during header parsing), and no v3 release fixes it. v2 uses `github.com/golang-jwt/jwt/v5` and is not affected, so v1 users should move to v2.
+
+Key differences include:
 
 - JWT library updated to use `github.com/golang-jwt/jwt/v5` (from v3)
 - JWT token claims use modern structures from jwt/v5:
@@ -38,6 +42,7 @@ The v2 version of this library is now the actively developed version, and we rec
     - `Get(key string) (value token.Claims, ok bool)`
     - `Set(key string, value token.Claims)`
 - Improved type safety for various interfaces and functions
+- `Opts.ErrorHandler` and `middleware.ErrorHandlerFunc` exist in v2 only; v1 always answers with the plain text "Unauthorized" (401) or "Access denied" (403)
 
 To migrate from v1 to v2:
 
@@ -78,14 +83,10 @@ func main() {
 			return "secret", nil
 		}),
 		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
-		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
+		CookieDuration: time.Hour * 24,  // cookie expires 1 day after it was last issued and will enforce re-login
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
-		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
-			// allow only dev_* names
-			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_")
-		}),
 	}
 
 	// create auth service with providers
@@ -124,14 +125,10 @@ func main() {
 			return "secret", nil
 		}),
 		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
-		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
+		CookieDuration: time.Hour * 24,  // cookie expires 1 day after it was last issued and will enforce re-login
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
-		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
-			// allow only dev_* names
-			return claims.User != nil && strings.HasPrefix(claims.User.Name, "dev_")
-		}),
 	}
 
 	// create auth service with providers
@@ -159,23 +156,23 @@ func main() {
 
 ## Middleware
 
-`github.com/go-pkgz/auth/middleware` provides ready-to-use middleware.
+`service.Middleware()` returns a `middleware.Authenticator` (`github.com/go-pkgz/auth/v2/middleware`) with ready-to-use middleware methods:
 
-- `middleware.Auth` - requires authenticated user
-- `middleware.Admin` - requires authenticated admin user
-- `middleware.Trace` - doesn't require authenticated user, but adds user info to request
-- `middleware.RBAC` - requires authenticated user with passed role(s)
+- `Auth` - requires authenticated user
+- `AdminOnly` - requires authenticated admin user
+- `Trace` - doesn't require authenticated user, but adds user info to request
+- `RBAC(roles...)` - requires authenticated user with passed role(s)
 
-Also, there is a special middleware `middleware.UpdateUser` for population and modifying UserInfo in every request. See "Customization" for more details.
+Also, there is a special middleware method `UpdateUser` for population and modifying UserInfo in every request. See "Customization" for more details.
 
 ## Details
 
 Generally, adding support of `auth` includes a few relatively simple steps:
 
-1. Setup `auth.Opts` structure with all parameters. Each of them [documented](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L40) and most of parameters are optional and have sane defaults.
-2. [Create](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L80) the new `auth.Service` with provided options.
-3. [Add all](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L312) desirable authentication providers.
-4. Retrieve [middleware](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L225) and [http handlers](https://github.com/go-pkgz/auth/blob/master/v2/auth.go#L153) from `auth.Service`
+1. Setup `auth.Opts` structure with all parameters. Each of them [documented](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Opts) and most of parameters are optional and have sane defaults.
+2. [Create](https://pkg.go.dev/github.com/go-pkgz/auth/v2#NewService) the new `auth.Service` with provided options.
+3. [Add all](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Service.AddProvider) desirable authentication providers. The middleware accepts a token when its provider is registered on this service, matched by the provider name signed into the token or by the part of the user id before the first `_` (the whole id when it has none). A service registering only `bitbucket` therefore also accepts tokens of a provider named `bitbucket_dev`. A service that only verifies tokens issued elsewhere must register the same provider names.
+4. Retrieve [middleware](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Service.Middleware) and [http handlers](https://pkg.go.dev/github.com/go-pkgz/auth/v2#Service.Handlers) from `auth.Service`
 5. Wire auth and avatar handlers into http router as sub–routes.
 
 ### API
@@ -184,10 +181,12 @@ For the example above authentication handlers wired as `/auth` and provides:
 
 - `/auth/<provider>/login?site=<site_id>&from=<redirect_url>` - site_id used as `aud` claim for the token and can be processed by `SecretReader` to load/retrieve/define different secrets. The oauth2, oauth1 and Apple providers also accept `aud=<site_id>` in place of `site`, and `noava=1`, which drops the provider's picture, so a configured avatar proxy generates an identicon instead. redirect_url is the url to redirect after successful login. When `Opts.AllowedRedirectHosts` is set, only targets whose host matches `Opts.URL` or appears in the allowlist are honoured; others fall back to the user-info JSON response. With the default (nil) allowlist any non-empty `from` is honoured — see "Allowed redirect hosts" below for the opt-in details.
 - `/avatar/<avatar_id>` - returns the avatar (image). Links to those pictures added into user info automatically, for details see "Avatar proxy"
-- `/auth/<provider>/logout` and `/auth/logout` - invalidate "session" by removing JWT cookie
+- `/auth/<provider>/logout` and `/auth/logout` - invalidate "session" by removing the JWT and XSRF cookies. Every path ending in `logout` is served by the provider added first, whatever provider name it carries
 - `/auth/list` - gives a json list of active providers
 - `/auth/user` - returns `token.User` (json) of a request the `Auth` middleware accepts, which includes the `Validator` and the check that the user's provider is still registered; 401 otherwise
 - `/auth/status` - returns status of logged in user (json), by the same checks as `/auth/user`
+
+`/auth/user` and `/auth/status` report the identity `Auth` would accept, so a token from the cookie needs the `X-XSRF-TOKEN` header (`Opts.XSRFHeaderKey`) carrying the value of the `XSRF-TOKEN` cookie, and basic credentials accepted by `AdminPasswd` or `BasicAuthChecker` count as well. With such an identity they answer the `token.User` JSON and `{"status":"logged in","user":"<name>"}`; otherwise `/auth/user` answers 401 `{"error":"unauthorized"}` and `/auth/status` answers `{"status":"not logged in"}`. The logout applies the same XSRF rule when the provider added first is an oauth2, oauth1 or Apple provider: without a valid token it answers 403 `{"error":"logout not allowed"}` and keeps the cookies.
 
 ### User info
 
@@ -195,35 +194,39 @@ Middleware populates `token.User` to request's context. It can be loaded with `t
 
 `token.User` object includes all fields retrieved from oauth2 provider:
 - `Name` - user name
-- `ID` - hash of user id
-- `Picture` - full link to proxied avatar (see "Avatar proxy")
+- `ID` - user id; the built-in providers other than `dev` set it to `<provider>_<hash of the user id>`, the form the linking flow below relies on
+- `Picture` - full link to proxied avatar (see "Avatar proxy"); without an `AvatarStore`, the provider's own picture URL, or empty for Telegram, whose picture URL carries the bot token
+- `Audience` - the token's `aud`, filled in on every read of the token
 
 It also has placeholders for fields application can populate with custom `token.ClaimsUpdater` (see "Customization")
 
 - `IP`  - hash of user's IP address
 - `Email` - user's email
-- `Attributes` - map of string:any-value. To simplify management of this map some setters and getters provided, for example `users.StrAttr`, `user.SetBoolAttr` and so on. See [user.go](https://github.com/go-pkgz/auth/blob/master/token/user.go) for more details.
+- `Attributes` - map of string:any-value. To simplify management of this map some setters and getters provided, for example `user.StrAttr`, `user.SetBoolAttr` and so on. See [user.go](https://github.com/go-pkgz/auth/blob/master/v2/token/user.go) for more details.
+- `Role` - user's role, set with `SetRole`; `RBAC` compares it with the allowed roles case-insensitively
+
+In JSON (the token, `/auth/user` and the login responses) the keys are `name`, `id`, `picture`, `aud`, `ip`, `email`, `attrs` and `role`.
 
 ### Avatar proxy
 
 Direct links to avatars won't survive any real-life usage if they linked from a public page. For example, page [like this](https://remark42.com/demo/) may have hundreds of avatars and, most likely, will trigger throttling on provider's side. To eliminate such restriction `auth` library provides an automatic proxy
 
-- On each login the proxy will retrieve user's picture and save it to `AvatarStore`
+- On each login the proxy will retrieve user's picture and save it to `AvatarStore`. Pictures that fail to load, exceed 10 MiB or 16 megapixels, or are not PNG, JPEG, GIF or WebP are replaced by the identicon
 - Local (proxied) link to avatar included in user's info (jwt token)
 - API for avatar removal provided as a part of `AvatarStore`
 - User can leverage one of the provided stores:
     - `avatar.LocalFS` - file system, each avatar in a separate file
     - `avatar.BoltDB`  - single [boltdb](https://go.etcd.io/bbolt) file (embedded KV store).
     - `avatar.GridFS` - external [GridFS](https://docs.mongodb.com/manual/core/gridfs/) (mongo db).
-- In case of need custom implementations of other stores can be passed in and used by `auth` library. Each store has to implement `avatar.Store` [interface](https://github.com/go-pkgz/auth/blob/master/avatar/store.go#L25).
+- In case of need custom implementations of other stores can be passed in and used by `auth` library. Each store has to implement `avatar.Store` [interface](https://pkg.go.dev/github.com/go-pkgz/auth/v2/avatar#Store).
 - All avatar-related setup done as a part of `auth.Opts` and needs:
-    - `AvatarStore` - avatar store to use, i.e. `avatar.NewLocalFS("/tmp/avatars")` or more generic `avatar.NewStore(uri)`
+    - `AvatarStore` - avatar store to use, i.e. `avatar.NewLocalFS("/tmp/avatars")` or more generic `avatar.NewStore(uri)`. It is optional: nil disables the avatar proxy, keeps the provider's picture URL in `Picture` (Telegram leaves it empty), and the avatar route answers 404. `avatar.NoOp` stores nothing and leaves `Picture` pointing at an empty avatar path.
         - file system uri - `file:///tmp/location` or just `/tmp/location`
-        - boltdb - `bolt://tmp/avatars.bdb`
-        - mongo - `"mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1`
-    - `AvatarRoutePath` - route prefix for direct links to proxied avatar. For example `/api/v1/avatars` will make full links like this - `http://example.com/api/v1/avatars/1234567890123.image`. The url will be stored in user's token and retrieved by middleware (see "User Info")
+        - boltdb - `bolt:///tmp/avatars.bdb`
+        - mongo - `mongodb://127.0.0.1:27017/test?ava_db=db1&ava_coll=coll1`; `mongodb+srv://` works too. Without `ava_db` and `ava_coll` the database is `test` and the collection `avatars_fs`
+    - `AvatarRoutePath` - route prefix for direct links to proxied avatar. For example `/api/v1/avatars` will make full links like this - `http://example.com/api/v1/avatars/b3daa77b4c04a9551b8781d03191fe098f325e67.image`. The url will be stored in user's token and retrieved by middleware (see "User Info")
     - `AvatarResizeLimit` - size (in pixels) used to resize the avatar. Pls note - resize happens once as a part of `Put` call, i.e. on login. 0 size (default) disables resizing.
-    - `AvatarIdenticonSize` - size (in pixels) of the identicon generated for a user without a picture, 300 by default. Browsers blur the block edges when they don't map to whole device pixels. At device pixel ratio 2, generating it at twice the displayed size gives a 1:1 pixel mapping; at ratio 1 the browser halves it, and whether the edges stay aligned depends on the size: 48 for a 24px avatar does, 64 for a 32px one doesn't. A positive `AvatarResizeLimit` below it still scales the identicon down. Like resizing, it applies on login, so stored identicons keep their size until the user logs in again.
+    - `AvatarIdenticonSize` - size (in pixels) of the identicon generated for a user without a picture, 300 by default; values from 5 to 4096 are accepted, others give 300. Browsers blur the block edges when they don't map to whole device pixels. At device pixel ratio 2, generating it at twice the displayed size gives a 1:1 pixel mapping; at ratio 1 the browser halves it, and whether the edges stay aligned depends on the size: 48 for a 24px avatar does, 64 for a 32px one doesn't. A positive `AvatarResizeLimit` below it still scales the identicon down. Like resizing, it applies on login, so stored identicons keep their size until the user logs in again.
 
 ### Direct authentication
 
@@ -252,7 +255,7 @@ The API for this provider supports both GET and POST requests:
   {
     "user": "name",
     "passwd": "xyz",
-    "aud": "bar",
+    "aud": "bar"
   }
   ```
 * GET request with user credentials provided as query params, but be aware that [the https query string is not secure](https://stackoverflow.com/a/323286/633961):
@@ -264,17 +267,21 @@ _note: password parameter doesn't have to be naked/real password and can be any 
 
 _note: `session=1` makes the auth cookie session-only, i.e. dropped when the browser closes. `sess` is accepted as an alias for backward compatibility._
 
+The login answers 200 with the user JSON and sets the auth cookies, 400 when the request body cannot be parsed, 403 for wrong credentials, and 500 when the checker returns an error. The user id is `<name>_<sha1(user)>`, where `<name>` is the provider name and the hash is taken of the user name exactly as sent, so names differing only in case give different ids. To build the id from something else, register the provider with `AddDirectProviderWithUserIDFunc` (see [Linking an anonymous user after login](#linking-an-anonymous-user-after-login)).
+
 ### Verified authentication
 
 Another non-oauth2 provider allowing user-confirmed authentication, for example by email or slack or telegram. This is
 done by adding confirmed provider with `auth.AddVerifProvider`.
 
 ```go
-    msgTemplate := "Confirmation email, token: {{.Token}}"
+    msgTemplate := `<p>Confirm your login: <a href="{{.URL}}/auth/email/login?token={{.LinkToken}}">log in</a></p>`
 	service.AddVerifProvider("email", msgTemplate, sender)
 ```
 
-Message template may use the follow elements:
+The template receives the tokens, not a link, so the confirmation link, `<Opts.URL>/auth/<name>/login?token=<token>`, is written into the template itself, as above. A link made with `{{.LinkToken}}` leaves `{{.Token}}` valid, so the message can also show it for pasting.
+
+Message template may use the following elements:
 
 - `{{.Address}}` - user address, for example email
 - `{{.User}}` - user name
@@ -282,6 +289,8 @@ Message template may use the follow elements:
 - `{{.LinkToken}}` - a second confirmation token for the same sign-in, meant for a link in the message. Both tokens are accepted by the login endpoint and each works once on its own, so using one leaves the other valid until it expires. The link token carries `provider.VerifLinkTokenState` as its handshake state, which lets an application serving the link refuse any other token
 - `{{.Site}}` - site ID
 - `{{.URL}}` - the service URL from `Opts.URL`, without a trailing slash
+
+The template is an `html/template`, meant for HTML mail (set `ContentType: "text/html"` for the email sender below): every value is HTML-escaped, so in a plain-text message `O'Brien` arrives as `O&#39;Brien`. The template's `User` and `Address` values are stripped of line breaks and surrounding spaces and cut to 128 bytes; the tokens and the `Sender` get the values as sent. An empty template selects a built-in plain one with the user, the address, the site and the token.
 
 Sender should be provided by end-user and implements a single function interface
 
@@ -292,12 +301,14 @@ type Sender interface {
 ```
 
 For convenience a functional wrapper `SenderFunc` provided. Email sender provided in `provider/sender` package and can be
-used as `Sender`.
+used as `Sender`. A `Sender` that also implements `provider.ContextSender` (`SendContext(ctx context.Context, address, text string) error`), as the email sender does, gets the request context, so the delivery ends when the request does.
 
 The API for this provider:
 
- - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. `site` is accepted as an alias for `aud`. When host validation is enabled via `Opts.AllowedRedirectHosts`, the `from` URL is subject to the same allowlist check described in "Allowed redirect hosts"; otherwise any non-empty value is honoured.
- - `GET /auth/<name>/login?token=<conf.token>&session=[1|0]` - authorize with confirmation token, `sess` is accepted as an alias for `session`
+ - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. `site` is accepted as an alias for `aud`. When host validation is enabled via `Opts.AllowedRedirectHosts`, the `from` URL is subject to the same allowlist check described in "Allowed redirect hosts"; otherwise any non-empty value is honoured. It answers `{"user":"<user>","address":"<address>"}` once the message is sent. The confirmation token is valid for 30 minutes; this is fixed.
+ - `GET /auth/<name>/login?token=<conf.token>&session=[1|0]` - authorize with confirmation token, `sess` is accepted as an alias for `session`. It answers the user JSON, or redirects with 303 to `from` when one was given and is allowed.
+
+The library checks only that `user` and `address` are not empty (400 otherwise) and that the address neither contains `::` nor starts with `:` (400 `invalid address`). The first call needs no authentication, so anyone can make the service send a message with their own `user` text to any address, as often as they like. The application, or its `Sender`, must validate the address and rate-limit this route.
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
 
@@ -306,6 +317,8 @@ Only a signed handshake token that carries this provider's name is accepted for 
 #### Confirmation token replay protection
 
 Confirmation tokens are one-shot: a token redeemed once cannot be redeemed again within its TTL. This stops anyone with read access to the email link (forwarded mail, mail-gateway logs, mailbox archive) from independently consuming it after the user has. The protection is per token: a message whose template carries both `{{.Token}}` and `{{.LinkToken}}` lets a reader of the message sign in once more with whichever token the user did not use, until it expires. A template that needs the full guarantee carries only one of them.
+
+This holds for providers added with `AddVerifProvider`. A `provider.VerifyHandler` constructed directly and registered with `AddCustomHandler` needs `ConfirmationStore` set; without it, its tokens can be replayed until they expire.
 
 By default the library installs an in-memory store on first call to `AddVerifProvider`. This is correct for **single-instance** deployments.
 
@@ -324,7 +337,7 @@ The store key is the SHA-256 of the token's signed header and payload, without t
 
 #### Email-as-identity caveat
 
-The verify provider returns a local user id of the form `<provider>_<sha1(address)>`. The confirmation round-trip proves current control of the address at the moment of login; it does **not** prove stable+unique identity over time. The owner of an address can change without the address changing:
+The verify provider returns a local user id of the form `<provider>_<sha1(address)>`. The address is hashed exactly as given, so `user@example.com`, `User@Example.COM` and ` user@example.com` are three different users; normalise the address before the request (trim spaces, lower-case the domain), or map ids on the application side. The confirmation round-trip proves current control of the address at the moment of login; it does **not** prove stable+unique identity over time. The owner of an address can change without the address changing:
 
 - **Employer offboarding** — `alice@example-corp.com` returns to the company when Alice leaves and may be reassigned to a new employee.
 - **Lapsed free-mail accounts** — providers reclaim and recycle inactive mailboxes; the next person who registers the same handle inherits any service that keys on the address.
@@ -342,11 +355,11 @@ If your threat model accepts that whoever currently controls an address gets the
 
 ### Email
 
-For email notify provider, please use `github.com/go-pkgz/auth/provider/sender` package:
+For email notify provider, please use `github.com/go-pkgz/auth/v2/provider/sender` package:
 ```go
 	sndr := sender.NewEmailClient(sender.EmailParams{
 		Host:               "email.hostname",
-		Port:               567,
+		Port:               587,
 		HELOHost:           "mail.example.com", // optional, greeting hostname, defaults to localhost
 		SMTPUserName:       "username",
 		SMTPPassword:       "pass",
@@ -356,11 +369,11 @@ For email notify provider, please use `github.com/go-pkgz/auth/provider/sender` 
 		Subject:            "subject",
 		ContentType:        "text/html",
 		Charset:            "UTF-8",
-	}, log.Default())
+	}, logger.Std)
 	authenticator.AddVerifProvider("email", "template goes here", sndr)
 ```
 
-See [that documentation](https://github.com/go-pkgz/email#options) for full options list.
+`EmailParams` also has `TLS` (connect over TLS from the start), `LoginAuth` (LOGIN in place of PLAIN authentication, for servers that offer only LOGIN, e.g. Office 365 while the tenant allows basic SMTP authentication) and `TimeOut` (connection timeout). `logger.Std` comes from `github.com/go-pkgz/auth/v2/logger`. [That documentation](https://github.com/go-pkgz/email#options) describes the options of the underlying email library; only the `EmailParams` fields reach it.
 
 ### Telegram
 
@@ -376,6 +389,8 @@ Next initialize TelegramHandler with following parameters:
 	2. An http.Client for accessing Telegram API's
 * `ChatIDAttribute` - optional. The user ID stays the hashed `telegram_...` value; when this key is set, a fresh login also stores the user's raw Telegram chat ID as a string attribute under it (read with `user.StrAttr(key)`), so the app can message the user through the bot. Leave it empty unless the app needs the raw ID: the attribute goes into the JWT and the `/auth/user` and login responses. Users with tokens issued before the key was set get the attribute on their next login.
 
+For a proxy in front of the Telegram API, use `provider.NewTelegramAPIWithBaseURL(token, client, baseURL)` in place of `provider.NewTelegramAPI`; it returns an error for a base URL that is not an absolute http or https URL.
+
 ```go
 token := os.Getenv("TELEGRAM_TOKEN")
 
@@ -385,13 +400,13 @@ telegram := provider.TelegramHandler{
 	SuccessMsg:   "✅ You have successfully authenticated!",
 	Telegram:     provider.NewTelegramAPI(token, http.DefaultClient),
 
-	L:            log.Default(),
+	L:            logger.Std,
 	TokenService: service.TokenService(),
 	AvatarSaver:  service.AvatarProxy(),
 }
 ```
 
-After that run provider and register it's handlers:
+After that run provider and register its handlers:
 ```go
 // Run Telegram provider in the background
 go func() {
@@ -404,6 +419,8 @@ go func() {
 // Register Telegram provider
 service.AddCustomHandler(&telegram)
 ```
+
+`Run` must be running before the first login, otherwise the login route answers 500 `failed to process login request`. An application that receives the bot's updates itself, for example through a webhook, calls `ProcessUpdate` instead, and the first call has to happen before the first login. `ProcessUpdate` takes updates in the shape `getUpdates` returns, `{"result": [<update>, ...]}`, so a single update from a webhook has to be wrapped in that `result` array; a bare update is accepted and ignored. The two exclude each other: `ProcessUpdate` returns an error while `Run` is running. Pending login requests live in the memory of the process, so the provider works on a single instance: the login call and the check have to reach the instance that holds the request and receives the updates.
 
 #### Avatar handling
 
@@ -421,9 +438,9 @@ will see an empty `User.Picture` for Telegram logins, and the avatar proxy
 will fall back to identicon. To preserve avatars with a custom saver,
 implement that method alongside `Put`.
 
-> **Behaviour change for custom `AvatarSaver`:** before this change, custom
+> **Behaviour change for custom `AvatarSaver`:** before v1.25.3 and v2.1.3, custom
 > savers received the raw Telegram file URL (which included the bot token)
-> via `Put`. After this change they no longer do, because that URL is a
+> via `Put`. Since those versions they no longer do, because that URL is a
 > bearer credential. Implementations that relied on receiving and refetching
 > that URL must now implement `PutContent` to keep saving Telegram avatars,
 > or accept that Telegram users get identicons.
@@ -432,8 +449,8 @@ Now all your users have to do is click one of the following links and press **st
 `tg://resolve?domain=<botname>&start=<token>` or `https://t.me/<botname>/?start=<token>`
 
 Use the following routes to interact with provider:
-1. `/auth/<providerName>/login` - Obtain auth token. Returns JSON object with `bot` (bot username) and `token` (token itself) fields.
-2. `/auth/<providerName>/login?token=<token>` - Check if auth request has been confirmed (i.e. user pressed start). Sets session cookie and returns user info on success, errors with 404 otherwise.
+1. `/auth/<providerName>/login` - Obtain auth token. Returns JSON object with `bot` (bot username) and `token` (token itself) fields. The login request lives 10 minutes, and `Run` polls Telegram for updates every 5 seconds.
+2. `/auth/<providerName>/login?token=<token>&site=<site_id>` - Check if auth request has been confirmed (i.e. user pressed start). `site` sets the token's audience; `aud` is not read here. Sets the auth cookie, which is always persistent (`session` is ignored), and returns user info on success, errors with 404 otherwise.
 
 3. `/auth/<providerName>/logout` - Invalidate user session.
 
@@ -441,14 +458,15 @@ Use the following routes to interact with provider:
 
 This provider brings two extra functions:
 
-1. Adds ability to use any third-party oauth2 providers in addition to the list of directly supported. Included [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L113) demonstrates how to do it for bitbucket.
+1. Adds ability to use any third-party oauth2 providers in addition to the list of directly supported. Included [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go) demonstrates how to do it for bitbucket.
 In order to add a new oauth2 provider following input is required:
-	* `Name` - any name is allowed except the names from list of supported providers, unless the custom provider replaces the built-in registration of that name, as in [Google user email](#google-user-email). It is possible to register more than one client for one given oauth2 provider (for example using different names `bitbucket_dev` and `bitbucket_prod`)
+	* `Name` - a path-safe name made of letters, digits, `-`, `.`, `_` and `~`; any other name is skipped with an `[ERROR]` log line and never shows in `/auth/list`. Avoid the names from list of supported providers, unless the custom provider replaces the built-in registration of that name, as in [Google user email](#google-user-email). It is possible to register more than one client for one given oauth2 provider (for example using different names `bitbucket_dev` and `bitbucket_prod`). Nothing rejects a name registered twice: both registrations are kept and the first one serves the routes
 	* `Client` - ID and secret of client
 	* `Endpoint` - auth URL and token URL. This information could be obtained from auth2 provider page
 	* `InfoURL` - oauth2 provider API method to read information of logged in user. This method could be found in documentation of oauth2 provider (e.g. for bitbucket https://developer.atlassian.com/bitbucket/api/2/reference/resource/user)
 	* `MapUserFn` - function to convert the response from `InfoURL` to `token.User` (s. example below). It must return an empty `ID` when the response has no user id: the callback then answers 503 and issues no session. Check the id before hashing it, because a prefix plus `token.HashID` of an empty value is not an empty `ID` and maps every such login to the same user
 	* `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
+	* `BearerTokenHookFn` - optional, called after a successful login with the provider name, the mapped user and the provider's OAuth2 token; it is the way to keep that token for later API calls
 	```go
 	c := auth.Client{
 		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
@@ -475,15 +493,17 @@ In order to add a new oauth2 provider following input is required:
 		Scopes: []string{"account"},
 	})
 	```
-2.  Adds local oauth2 server user can fully customize. It uses [`gopkg.in/oauth2.v3`](https://github.com/go-oauth2/oauth2) library and example shows how [to initialize](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L227) the server and [setup a provider](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L100).
-	*  to start local oauth2 server following options are required:
-		* `URL` - url of oauth2 server with port
-		* `WithLoginPage` - flag to define whether login page should be shown
-		* `LoginPageHandler` - function to handle login request. If not specified default login page will be shown
+2.  Adds local oauth2 server user can fully customize. It uses [`github.com/go-oauth2/oauth2/v4`](https://github.com/go-oauth2/oauth2) library and example shows how to initialize the server (`initGoauth2Srv` in the [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go)) and set up a provider (the `NewCustomServer` call in `main` there).
+	*  to start local oauth2 server following options are used:
+		* `URL` - url of oauth2 server with port, required
+		* `L` - logger, required: `Run` logs before it starts listening, so a nil logger panics
+		* `WithLoginPage` - optional flag to show the default login page, which asks for a user name
+		* `LoginPageHandler` - optional function to handle login request. When set, it is shown in place of the default login page, with or without `WithLoginPage`
+	* the go-oauth2 server needs a `UserAuthorizationHandler` (`srv.SetUserAuthorizationHandler`) in every case; without a login page, `/authorize` goes straight to it and the user is never asked for a name. The user id it returns is used as it is, with no provider prefix, so it can collide with ids of other providers; prefix it in the handler, as the example does with `custom123_admin`
 		```go
 		sopts := provider.CustomServerOpt{
 			URL:           "http://127.0.0.1:9096",
-			L:             options.Logger,
+			L:             logger.Std,
 			WithLoginPage: true,
 		}
 		prov := provider.NewCustomServer(srv, sopts)
@@ -492,7 +512,7 @@ In order to add a new oauth2 provider following input is required:
 		go prov.Run(context.Background())
 		```
 	* to register handler for local oauth2 following option are required:
-		* `Name` - any name except the names from list of supported providers
+		* `Name` - a path-safe name (letters, digits, `-`, `.`, `_`, `~`) other than the names from list of supported providers; registering a name twice keeps the first registration
 		* `Client` - ID and secret of client
 		* `HandlerOpt` - handler options of custom oauth provider
 		```go
@@ -509,12 +529,14 @@ c := customHandler{}
 service.AddCustomHandler(c)
 ```
 
+Only paths ending in `/login` or `/callback` reach the handler, and only with GET or POST: other paths get 404 and other methods 405. Paths ending in `/logout` reach it only when it is the provider added first, since that provider serves every logout path. Every response of an auth route carries `Content-Security-Policy: default-src 'none'; sandbox; frame-ancestors 'none'`, which blocks a handler that renders an HTML page; such a handler sets its own `Content-Security-Policy` header with `w.Header().Set` before writing, relaxing only the directives it needs.
+
 ### Customization
 
 There are several ways to adjust functionality of the library:
 
-1. `SecretReader` - interface with a single method `Get(aud string) string` to return the secret used for JWT signing and verification
-1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status, roles and so on.
+1. `SecretReader` - interface with a single method `Get(aud string) (string, error)` to return the secret used for JWT signing and verification. Per-site secrets need `Opts.AudSecrets: true`; without it the reader is called with `"ignore"` when a token is verified, so it must return one secret for every site.
+1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status, roles and so on. `Update` is also called for the handshake and confirmation tokens, where `claims.User` is nil, so check it before use.
 1. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on **each request** wrapped with `Auth` middleware. This will be the place for special logic to reject some tokens or users.
 1. `UserUpdater` - interface with `Update(claims token.User) token.User` method.  This method will be called on **each request** wrapped with `UpdateUser` middleware. This will be the place for special logic modify User Info in request context. [Example of usage.](https://github.com/go-pkgz/auth/blob/19c1b6d26608494955a4480f8f6165af85b1deab/_example/main.go#L189)
 
@@ -548,8 +570,6 @@ Restricting some users or some tokens is two step process:
 - `ClaimsUpdater` sets an attribute, like `blocked` (or `allowed`)
 - `Validator` checks the attribute and returns true/false
 
-_This technique used in the [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L56) code_
-
 The process can be simplified by doing all checks directly in `Validator`, but depends on particular case such solution
 can be too expensive because `Validator` runs on each request as a part of auth middleware. In contrast, `ClaimsUpdater` called on token creation/refresh only.
 
@@ -581,10 +601,21 @@ For complex systems a single authenticator may serve multiple distinct subsystem
 Such functionality can be implemented in 3 different ways:
 
 - Different instances of `auth.Service` each one with different secret. Doing this way will ensure the highest level of isolation and cookies/tokens won't be even parsable across the instances. Practically such architecture can be too complicated and not always possible.
-– Handling "allowed audience" as a part of `ClaimsUpdater` and `Validator` chain. I.e. `ClaimsUpdater` sets a claim indicating expected audience code/id and `Validator` making sure it matches. This way a single `auth.Service` could handle multiple groups of auth tokens and reject some based on the audience.
+- Handling "allowed audience" as a part of `ClaimsUpdater` and `Validator` chain. I.e. `ClaimsUpdater` sets a claim indicating expected audience code/id and `Validator` making sure it matches. This way a single `auth.Service` could handle multiple groups of auth tokens and reject some based on the audience.
 - Using the standard JWT `aud` claim. This method conceptually very similar to the previous one, but done by library internally and consumer don't need to define special  `ClaimsUpdater` and `Validator` logic.
 
-In order to allow `aud` support the list of allowed audiences should be passed in as `opts.Audiences` parameter. Non-empty value will trigger internal checks for token generation (will reject token creation for alien `aud`) as well as `Auth` middleware.
+In order to allow `aud` support, set `Opts.AudienceReader` to a reader returning the allowed audiences:
+
+```go
+opts := auth.Opts{
+    AudienceReader: token.AudienceFunc(func() ([]string, error) {
+        return []string{"site1", "site2"}, nil
+    }),
+    // ...
+}
+```
+
+A non-nil reader enables the check on token creation (a token for an alien `aud` is not issued) and on every read of a token, `Auth` middleware included; a reader returning an empty list rejects all tokens. The token's first `aud` is compared with the list case-insensitively. The list is one allowlist for the whole service, so a `site1` token passes on `site2` routes too; a route that serves one tenant has to compare `User.Audience` with the tenant the request names.
 
 ### Allowed redirect hosts
 
@@ -616,8 +647,9 @@ Once the policy is on:
 
 * The host of `Opts.URL` is always permitted implicitly (single-host deployments need no list entries — pass `func() ([]string, error) { return nil, nil }` to enable the policy with same-host-only semantics).
 * Values returned by `Get()` are appended to that. Subdomain wildcards are not supported — list each host explicitly.
-* Hostname comparison is port-insensitive: `https://app.example.com` and `https://app.example.com:443` are treated as the same host.
-* Relative paths and unparseable URLs are rejected.
+* Hostname comparison is port-insensitive: `https://app.example.com` and `https://app.example.com:443` are treated as the same host, and a hostname without a port, the host of `Opts.URL` included, accepts any port, `https://app.example.com:8443` among them. An entry with a port, such as `billing.example.com:8443`, matches only that port.
+* Relative paths and unparseable URLs are rejected, and so are schemes other than `http` and `https`.
+* An error returned by `Get()` rejects a redirect to any host other than that of `Opts.URL`.
 * Rejected redirects are logged at `[WARN]` level with only the host portion of the URL (paths and query strings are stripped to avoid logging attacker-supplied data).
 
 ### Dev provider
@@ -631,11 +663,29 @@ Working with oauth2 providers can be a pain, especially during development phase
 		if err != nil {
 			log.Fatal(err)
 		}
-		devAuthServer.Run()
+		devAuthServer.Run(context.Background())
 	}()
 ```
 
-It will run fake aouth2 "server" on port :8084 and user could login with any user name. See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go) for more details.
+It will run fake oauth2 "server" on port :8084 and user could login with any user name. See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go) for more details.
+
+The dev server sends the browser back to `Opts.URL` + `/auth/dev/callback`, whatever `redirect_uri` it receives, so the auth handlers must be mounted at `/auth` to use the dev provider. Open the application on the host `Opts.URL` names: `localhost` and `127.0.0.1` are different hosts to the browser, the login sets the handshake cookie on the host the page was opened on, and a callback arriving on the other one fails with 500 `failed to get token` (the log says `token cookie was not presented`). The dev provider's user id is the bare user name, without the `<provider>_` prefix of the other providers.
+
+By default, Dev provider doesn't return `email` claim from `/user` endpoint, to match behaviour of other providers which only request minimal scopes.
+However sometimes it is useful to have `email` included into user info. This can be done by configuring `devAuthServer.GetEmailFn` function:
+
+```go
+	go func() {
+		devAuthServer, err := service.DevAuth()
+		if err != nil {
+			log.Fatal(err)
+		}
+		devAuthServer.GetEmailFn = func(username string) string {
+			return username + "@example.com"
+		}
+		devAuthServer.Run(context.Background())
+	}()
+```
 
 _Warning: this is not the real oauth2 server but just a small fake thing for development and testing only. Don't use `dev` provider with any production code._
 
@@ -645,7 +695,7 @@ The dev OAuth server and the embedded `CustomServer` helper bind to **`127.0.0.1
 
 ##### Dev provider
 
-The dev provider has a separate `Host` field for the listen address; the OAuth callback URL is taken from `Opts.URL` and is independent. To bind to all interfaces (e.g. when the auth process runs inside a container and needs to be reachable from the host) pass `Host` explicitly:
+The dev provider has a separate `Host` field. It is the address the dev server listens on, and also the address the browser and the application use to reach it: the host of the authorise, token and user-info URLs and of the dev avatar link. The OAuth callback URL is taken from `Opts.URL` and is independent. To bind to all interfaces (e.g. when the auth process runs inside a container and needs to be reachable from the host) pass `Host` explicitly; the login then sends the browser to `http://0.0.0.0:8084/login/oauth/authorize`, the same coupling `CustomServer` has below:
 
 ```go
 // dev provider -- listen on all interfaces, callback URL stays whatever you set in Opts.URL
@@ -659,44 +709,36 @@ service.AddDevProvider("0.0.0.0", 8084)
 Recommended approaches:
 
 * **Single host, no proxy** -- leave `URL: "http://localhost:9096"` (or your real hostname). The default loopback bind matches the advertised host and everything works.
-* **Behind a reverse proxy (typical Docker/kubernetes pattern)** -- terminate at the proxy on the public hostname and let the auth process talk to the proxy over a docker network or unix socket. Set `URL` to the public-facing value the proxy serves and bind the auth process to a network the proxy can reach (e.g. a docker network, or `0.0.0.0` if the proxy is on a different host and the network is otherwise restricted). The advertised URL stays correct because that is what `Opts.URL` says.
+* **Behind a reverse proxy (typical Docker/kubernetes pattern)** -- `Run` listens on the host and port of `URL`, so until a separate bind option exists `URL` must name an address of the auth host itself, and a public address the proxy serves cannot be used there. When it cannot listen there (a public address the host does not have, or a `URL` without a port), `Run` returns at once and leaves only a log line. It also serves plain HTTP for an `https://` URL while advertising `https` endpoints.
 * **Direct LAN exposure with a sensible advertised URL** -- set `URL` to a real hostname or LAN IP that resolves on every consumer (e.g. `http://oauth.lan.example:9096`); the bind extracts the host and listens there. Avoid embedding `0.0.0.0` in `URL` unless you have already accepted the consequence that clients will see `0.0.0.0` in the advertised metadata.
 
 A future change is likely to add a separate bind option (`CustomServerOpt.BindAddr` or similar) so the bind and the advertised URL can diverge cleanly; until then, the bind follows `URL`.
 
-By default, Dev provider doesn't return `email` claim from `/user` endpoint, to match behaviour of other providers which only request minimal scopes.
-However sometimes it is useful to have `email` included into user info. This can be done by configuring `devAuthServer.GetEmailFn` function:
+### Token lifetime
 
-```go
-    go func() {
-		devAuthServer, err := service.DevAuth()
-		devOauth2Srv.GetEmailFn = func(username string) string {
-			return username + "@example.com"
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		devAuthServer.Run()
-	}()
-```
+`Opts.TokenDuration` is the lifetime of a JWT issued without an explicit expiry, 15 minutes by default; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default. Reissuing a persistent cookie on a refresh starts its full `CookieDuration` again, so `CookieDuration` limits idle time, not the age of a session. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
 
 ### Other ways to authenticate
 
-In addition to the primary method (i.e. JWT cookie with XSRF header) there are two more ways to authenticate:
+In addition to the primary method (i.e. JWT cookie with XSRF header) there are three more ways to authenticate:
 
-1. Send JWT header as `X-JWT`. This shouldn't be used for web application, however can be helpful for service-to-service authentication.
-2. Send JWT token as query parameter, i.e. `/something?token=<jwt>`
+1. Send JWT header as `X-JWT` (the name is set by `Opts.JWTHeaderKey`). This shouldn't be used for web application, however can be helpful for service-to-service authentication.
+2. Send JWT token as query parameter, i.e. `/something?token=<jwt>` (the name is set by `Opts.JWTQuery`)
 3. Basic access authentication, for more details see below [Basic authentication](#basic-authentication).
+
+When a request carries more than one token, the query parameter is used first, then the header, then the cookie. Tokens from the header or the query are not XSRF-checked, and they are rejected once expired, while an expired cookie token is refreshed.
 
 ### Basic authentication
 
-In some cases the `middleware.Authenticator` allow use  [Basic access authentication](https://en.wikipedia.org/wiki/Basic_access_authentication), which transmits credentials as user-id/password pairs, encoded using Base64 ([RFC7235](https://tools.ietf.org/html/rfc7617)).
+In some cases the `middleware.Authenticator` allow use  [Basic access authentication](https://en.wikipedia.org/wiki/Basic_access_authentication), which transmits credentials as user-id/password pairs, encoded using Base64 ([RFC 7617](https://tools.ietf.org/html/rfc7617)).
 When basic authentication used, client doesn't get auth token in response. It's auth type expect credentials in a header `Authorization` at every client request. It can be helpful, if client side not support cookie/token store (e.g. embedded device or custom apps).
 This mode disabled by default and will be enabled with options.
 
 The `auth` package has two options of basic authentication:
-- simple basic auth will be enabled if `Opts.AdminPasswd` defined. This will allow access with basic auth admin:<Opts.AdminPasswd> with user [admin](https://github.com/go-pkgz/auth/blob/master/middleware/auth.go#L24). Such method can be used for automation scripts.
-- basic auth with custom checker [function](https://github.com/go-pkgz/auth/blob/master/middleware/auth.go#L47), which allow adding user data from store to context of request.  It will be enabled if `Opts.BasicAuthChecker` defined. When `BasicAuthChecker` defined then `Opts.AdminPasswd` option will be ignore.
+- simple basic auth will be enabled if `Opts.AdminPasswd` defined. This will allow access with basic auth admin:<Opts.AdminPasswd> with user [admin](https://github.com/go-pkgz/auth/blob/master/v2/middleware/auth.go). Such method can be used for automation scripts. A wrong admin password is not an error: the request goes on to the JWT check.
+- basic auth with custom checker [function](https://pkg.go.dev/github.com/go-pkgz/auth/v2/middleware#BasicAuthFunc), which allow adding user data from store to context of request.  It will be enabled if `Opts.BasicAuthChecker` defined. When `BasicAuthChecker` defined then `Opts.AdminPasswd` option will be ignore. A request with an `Authorization: Basic` header is then decided by the checker alone, so a wrong password gives 401 even when the request also carries a valid JWT cookie.
+
+Users authenticated with basic auth skip the `Validator`, the provider check and the XSRF check.
 ```go
 options := auth.Opts{
    //...
@@ -706,13 +748,13 @@ options := auth.Opts{
            return true, token.User{Name: user, Role: "test_r"}, nil
       }
       return false, token.User{}, errors.New("basic auth credentials check failed")
-   }
+   },
    //...
 }
 ```
 ### Logging
 
-By default, this library doesn't print anything to stdout/stderr, however user can pass a logger implementing `logger.L` interface with a single method `Logf(format string, args ...interface{})`. Functional adapter for this interface included as `logger.Func`. There are two predefined implementations in the `logger` package - `NoOp` (prints nothing, default) and `Std` wrapping `log.Printf` from stdlib.
+By default, this library doesn't print anything to stdout/stderr (the exceptions are the BoltDB avatar store and `avatar.Migrate`, which write a few messages to the standard `log` package whatever logger is set), however user can pass a logger implementing `logger.L` interface with a single method `Logf(format string, args ...interface{})`. Functional adapter for this interface included as `logger.Func`. There are two predefined implementations in the `logger` package - `NoOp` (prints nothing, default) and `Std` wrapping `log.Printf` from stdlib.
 
 ## Register oauth2 providers
 
@@ -723,6 +765,8 @@ Authentication handled by external providers. You should setup oauth2 for all (o
 Every oauth2 login through the shared oauth2 handler, which serves the built-in oauth2 providers except Apple and every `AddCustomProvider` registration, uses PKCE ([RFC 7636](https://www.rfc-editor.org/rfc/rfc7636)) with the `S256` method: the login sends a code challenge, and the callback sends the matching verifier, kept in the handshake token, to the token endpoint. Servers without PKCE support ignore both, so no configuration is needed.
 
 The oauth2, oauth1 and Apple callbacks read the handshake token only from the JWT cookie set by the login step. A handshake token passed in the JWT query parameter or header (`token` and `X-JWT` by default) is ignored on the callback, so the callback requires the handshake cookie from the login step. Login handlers give the handshake a 30-minute expiry, and the callback rejects a handshake whose expiry has passed, so a user who leaves the provider's consent page open longer has to start the login again. A handshake without an expiry is still accepted.
+
+The callback from a provider on another site is a cross-site navigation, so `Opts.SameSiteCookie` decides whether the browser sends the handshake cookie with it. `http.SameSiteStrictMode` breaks every provider on another site, because the browser drops the handshake cookie on a cross-site callback; a provider on the same site, such as the dev server on the application's host, still works. Apple's `form_post` callback is a cross-site POST and needs `http.SameSiteNoneMode` with `SecureCookies`; `Lax` or the browser default can drop the cookie there, and the callback then fails with 500 `failed to get token`.
 
 #### Google Auth Provider
 
@@ -736,7 +780,7 @@ The oauth2, oauth1 and Apple callbacks read the handshake token only from the JW
   * Upload a logo, if you want to
   * In the **App Domain** section:
     * **Application home page** - your site URL, e.g., `https://mysite.com`
-    * **Application privacy policy link** - `/web/privacy.html` of your Remark42 installation, e.g. `https://remark42.mysite.com/web/privacy.html` (please check that it works)
+    * **Application privacy policy link** - your site's privacy policy, e.g. `https://mysite.com/privacy.html` (please check that it works)
     * **Terms of service** - leave empty
   * **Authorized domains** - your site domain, e.g., `mysite.com`
   * **Developer contact information** - add your email, and then click **Save and continue**
@@ -799,8 +843,9 @@ The example sets `Email` only for an address Google reports as verified. Read th
 2. Under **"Supported account types"** select **"Accounts in any organizational directory (Any Microsoft Entra directory - Multitenant) and personal Microsoft accounts"**
 3. Under **"Authentication/Platform configurations/Web"** enter the correct url constructed as domain + `/auth/microsoft/callback`. i.e. `https://example.mysite.com/auth/microsoft/callback`
 4. In "Overview" take note of the **Application (client) ID**
-5. Choose the new project from the top right project dropdown (only if another project is selected)
-6.  Select "Certificates & secrets" and click on "+ New Client Secret".
+5.  Select "Certificates & secrets" and click on "+ New Client Secret".
+
+Microsoft avatars are available only through the avatar proxy (`Opts.AvatarStore`): the picture URL the provider returns, `https://graph.microsoft.com/beta/me/photo/$value`, needs the user's token, which the proxy has at login and a browser does not.
 
 By default, the Microsoft provider uses the `common` tenant endpoint, which requires an application accepting both work or school accounts and personal Microsoft accounts. That corresponds to `signInAudience: AzureADandPersonalMicrosoftAccount`, which can be checked and changed under "Manifest" for an application that already exists. An application restricted to a single account type is rejected at that endpoint, for instance with [`AADSTS50194`](https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes) when it is not registered as multi-tenant.
 
@@ -854,10 +899,10 @@ Follow to next steps for configuring on the Apple side:
 1. Log in [to the developer account](https://developer.apple.com/account).
 1. If you don't have an App ID yet, [create one](https://developer.apple.com/account/resources/identifiers/add/bundleId). Later on, you'll need **TeamID**, which is an "App ID Prefix" value.
 1. Enable the "Sign in with Apple" capability for your App ID in [the Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/identifiers/list) section.
-1. Create [Service ID](https://developer.apple.com/account/resources/identifiers/list/serviceId) and bind with App ID from the previous step. Apple will display the description field value to end-users on sign-in. You'll need that service **Identifier as a ClientID** later on**.**
-1. Configure "Sign in with Apple" for created Service ID. Add domain where you will use that auth on to "Domains and subdomains" and its main page URL (like `https://example.com/` to "Return URLs".
+1. Create [Service ID](https://developer.apple.com/account/resources/identifiers/list/serviceId) and bind with App ID from the previous step. Apple will display the description field value to end-users on sign-in. You'll need that service **Identifier as a ClientID** later on.
+1. Configure "Sign in with Apple" for created Service ID. Add domain where you will use that auth on to "Domains and subdomains", and add `https://<your domain>/auth/apple/callback` to "Return URLs". Apple accepts only https and no `localhost`.
 1. Register a [New Key](https://developer.apple.com/account/resources/authkeys/list) (private key) for the "Sign in with Apple" feature and download it. Write down the **Key ID**. This key will be used to create [JWT](https://developer.apple.com/documentation/sign_in_with_apple/generate_and_validate_tokens#3262048) Client Secret.
-1. Add your domain name and sender email in the Certificates, Identifiers & Profiles >> [More](https://developer.apple.com/account/resources/services/configure) section as a new Email Source.
+1. Add your domain name and sender email in the Certificates, Identifiers & Profiles >> [More](https://developer.apple.com/account/resources/services/configure) section as a new Email Source. This is needed only to send mail to users through Apple's private relay, which this library never does.
 
 After completing the previous steps, you can proceed with configuring the Apple auth provider. Here are the parameters for AppleConfig:
 
@@ -879,9 +924,9 @@ Then add an Apple provider that accepts the following parameters:
 * `appleConfig (provider.AppleConfig)`  created above
 * `privateKeyLoader (PrivateKeyLoaderInterface)`
 
-`PrivateKeyLoaderInterface` [implements](https://github.com/go-pkgz/auth/blob/master/provider/apple.go#L98:L100) a loader for the private key (which you downloaded above) to create a `client_secret`. The user can use a pre-defined function `provider.LoadApplePrivateKeyFromFile(filePath string)` to load the private key from local file.
+`PrivateKeyLoaderInterface` [implements](https://pkg.go.dev/github.com/go-pkgz/auth/v2/provider#PrivateKeyLoaderInterface) a loader for the private key (which you downloaded above) to create a `client_secret`. The user can use a pre-defined function `provider.LoadApplePrivateKeyFromFile(filePath string)` to load the private key from local file.
 
-`AddAppleProvide` tries to load private key at call and return an error if load failed. Always check error when calling this provider.
+`AddAppleProvider` tries to load private key at call and return an error if load failed. Always check error when calling this provider.
 
 ```go
     if err := service.AddAppleProvider(appleCfg, provider.LoadApplePrivateKeyFromFile("PATH_TO_PRIVATE_KEY_FILE")); err != nil {
@@ -891,10 +936,10 @@ Then add an Apple provider that accepts the following parameters:
 
 **Limitation:**
 
-* Map a userName (if specific scope defined) is only sent in the upon initial user sign up.
-  Subsequent logins to your app using Sign In with Apple with the same account do not share any user info and will only return a user identifier in IDToken claims.
-  This behaves correctly until a user delete sign in for you service with Apple ID in own Apple account profile (security section).
-  It is recommend that you securely cache the at first login containing the user info for bind it with a user UID at next login.
+* Apple sends the user's name only on the first authorisation. The token then carries `First Last`; on later logins it carries `noname_` followed by 6 characters of the user id.
+  Store the name at the first login under the user id, and do not overwrite it with a `noname_` value.
+  Email is not requested.
+* Provider always get user `UID` (`sub` claim) in `IDToken`.
 
 **Token validation:**
 
@@ -904,11 +949,10 @@ The provider verifies the Apple `id_token` signature against Apple's published J
 * `aud == ClientID` (your Service ID or App ID)
 
 A token signed by Apple but issued for a different `aud` is rejected with `403 invalid id_token`. The `aud` check (not the `iss` check) is what closes the confused-deputy attack: a sibling service in the same Apple developer team (or any other Sign-in-with-Apple client) holds tokens with the real Apple `iss` but their own `aud`, and could replay one of those tokens against this service if `aud` were not enforced.
-  Provider always get user `UID` (`sub` claim) in `IDToken`.
 
 * Apple doesn't have an API for fetch avatar and user info.
 
-See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L83:L93) before use.
+See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go) before use.
 
 #### Yandex Auth Provider
 
@@ -923,12 +967,14 @@ See [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go#L83:L
 
 For more details refer to [Yandex OAuth](https://tech.yandex.com/oauth/doc/dg/concepts/about-docpage/) and [Yandex.Passport](https://tech.yandex.com/passport/doc/dg/index-docpage/) API documentation.
 
-##### Battle.net Auth Provider
+#### Battle.net Auth Provider
+
+The provider uses the EU endpoints at `eu.battle.net`.
 
 1. Log into Battle.net as a developer: https://develop.battle.net/nav/login-redirect
 1.  Click "+ CREATE CLIENT" https://develop.battle.net/access/clients/create
 1. For "Client name", enter whatever you want
-1. For "Redirect URLs", one of the lines must be "http\[s\]://your_remark_installation:port//auth/battlenet/callback", e.g. https://localhost:8443/auth/battlenet/callback or https://remark.mysite.com/auth/battlenet/callback
+1. For "Redirect URLs", one of the lines must be "http\[s\]://your_server:port/auth/battlenet/callback", e.g. https://localhost:8443/auth/battlenet/callback or https://remark.mysite.com/auth/battlenet/callback
 1. For "Service URL", enter the URL to your site or check "I do not have a service URL for this client." checkbox if you don't have any
 1. For "Intended use", describe the application you're developing
 1. Click "Save".
@@ -941,6 +987,8 @@ For more details refer to [Complete Guide of Battle.net OAuth API and Login Butt
 1.  Fill **"App Name"**, **"Description"**, **"App Category"** and **"Author"** for your site
 1.  Under **"Redirect URIs"** enter the correct url constructed as domain + `/auth/patreon/callback`. ie `https://example.mysite.com/auth/patreon/callback`
 1.  Take note of the **Client ID** and **Client Secret**
+
+A user with at least one pledge gets `IsPaidSub() == true`.
 
 #### Discord Auth Provider ####
 1.  Log into Discord Developer Portal https://discord.com/developers/applications
@@ -977,8 +1025,11 @@ The two providers read the user from different versions of the X API, and X deci
 Both providers were checked with new apps in a Pay-per-use project and no credits bought. On 20 November 2026 the account that owned the app signed in with each provider. On 23 November 2026, with another app in the **Development** environment, an account that did not own the app signed in with each provider as well. X [charges](https://docs.x.com/x-api/getting-started/pricing) for user reads and blocks requests once the credit balance goes negative, so these checks do not show how many sign-ins X answers before credits are bought. An app on the legacy Free plan was not checked with either provider.
 
 ## XSRF Protections
-By default, the XSRF protections will apply to all requests which reach the `middlewares.Auth`,
-`middlewares.Admin` or `middlewares.RBAC` middlewares. This will require setting a request header 
+By default, the XSRF protections apply whenever the JWT of a user is read from the cookie: in the
+`Auth`, `AdminOnly`, `RBAC` and `Trace` middlewares (a mismatch in `Trace` serves the request without
+a user), in `/auth/user`, `/auth/status`, and in the logout when the provider added first is an oauth2,
+oauth1 or Apple provider.
+Tokens from the header or the query are not checked. This will require setting a request header
 with a key of `<XSRFHeaderKey>` containing the value of the cookie named `<XSRFCookieName>`.
 
 To disable all XSRF protections, set `DisableXSRF` to `true`. This should probably only be used 
@@ -987,7 +1038,8 @@ during testing or debugging.
 When setting a custom request header is not possible, such as when building a web application which
 is not a Single-Page-Application and HTML link tags are used to navigate pages, specific HTTP methods
 may be excluded using the `XSRFIgnoreMethods` option. For example, to disable GET requests, set this
-option to `XSRFIgnoreMethods: []string{"GET"}`. Adding methods other than GET to this list may result
+option to `XSRFIgnoreMethods: []string{"GET"}`. Methods are compared with the request method as they
+are, so write them in upper case. Adding methods other than GET to this list may result
 in XSRF vulnerabilities.
 
 ### Browser apps: pair with `http.CrossOriginProtection` (Go 1.25+)

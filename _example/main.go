@@ -56,25 +56,18 @@ func main() {
 			return claims
 		}),
 		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool { // rejects some tokens
-			if claims.User != nil {
-				if strings.HasPrefix(claims.User.ID, "github_") { // allow all users with github auth
-					return true
-				}
-				if strings.HasPrefix(claims.User.ID, "microsoft_") { // allow all users with ms auth
-					return true
-				}
-				if strings.HasPrefix(claims.User.ID, "patreon_") { // allow all users with patreon auth
-					return true
-				}
-				if strings.HasPrefix(claims.User.ID, "discord_") { // allow all users with discord auth
-					return true
-				}
-				if strings.HasPrefix(claims.User.Name, "dev_") { // allow all users with dev auth
-					return true
-				}
-				return strings.HasPrefix(claims.User.Name, "custom123_") // allow all users with custom123 auth
+			if claims.User == nil {
+				return false
 			}
-			return false
+			// allow all users of the providers registered below whose ids carry the provider prefix
+			for _, prefix := range []string{"github_", "twitter_", "microsoft_", "patreon_", "discord_", "apple_",
+				"anonymous_", "email_", "telegram_", "bitbucket_"} {
+				if strings.HasPrefix(claims.User.ID, prefix) {
+					return true
+				}
+			}
+			// dev ids are the bare user names, so dev users are checked by name, as are custom123 users
+			return strings.HasPrefix(claims.User.Name, "dev_") || strings.HasPrefix(claims.User.Name, "custom123_")
 		}),
 		Logger:      log.Default(), // optional logger for auth library
 		UseGravatar: true,          // for verified provider use gravatar service

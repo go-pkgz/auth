@@ -44,8 +44,8 @@ type Opts struct {
 	SecretReader   token.Secret        // reader returns secret for given site id (aud), required
 	ClaimsUpd      token.ClaimsUpdater // updater for jwt to add/modify values stored in the token
 	SecureCookies  bool                // makes jwt cookie secure
-	TokenDuration  time.Duration       // token's TTL, refreshed automatically
-	CookieDuration time.Duration       // cookie's TTL. This cookie stores JWT token
+	TokenDuration  time.Duration       // token's TTL, refreshed automatically, default 15 minutes
+	CookieDuration time.Duration       // cookie's TTL. This cookie stores JWT token, default 31 days
 
 	DisableXSRF bool // disable XSRF protection, useful for testing/debugging
 	DisableIAT  bool // disable IssuedAt claim
@@ -86,7 +86,9 @@ type Opts struct {
 	// only, pass a getter returning an empty slice.
 	AllowedRedirectHosts token.AllowedHosts
 
-	AvatarStore         avatar.Store // store to save/load avatars, required (use avatar.NoOp to disable avatars support)
+	// nil AvatarStore disables the avatar proxy and keeps the provider's picture URL (Telegram leaves it empty);
+	// avatar.NoOp stores nothing and leaves Picture pointing at an empty avatar path
+	AvatarStore         avatar.Store // store to save/load avatars, optional
 	AvatarResizeLimit   int          // resize avatar's limit in pixels
 	AvatarIdenticonSize int          // size of generated identicon avatars in pixels, default 300
 	AvatarRoutePath     string       // avatar routing prefix, i.e. "/api/v1/avatar", default `/avatar`
