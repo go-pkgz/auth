@@ -186,7 +186,7 @@ For the example above authentication handlers wired as `/auth` and provides:
 - `/auth/user` - returns `token.User` (json) of a request the `Auth` middleware accepts, which includes the `Validator` and the check that the user's provider is still registered; 401 otherwise
 - `/auth/status` - returns status of logged in user (json), by the same checks as `/auth/user`
 
-`/auth/user` and `/auth/status`, and the logout when the provider added first is an oauth2, oauth1 or Apple provider, apply the XSRF rule of the middleware: a token from the cookie needs the `X-XSRF-TOKEN` header (`Opts.XSRFHeaderKey`) carrying the value of the `XSRF-TOKEN` cookie. Without a valid token `/auth/user` answers 401 with `{"error": "..."}`, `/auth/status` answers `{"status":"not logged in"}`, and that logout answers 403 `{"error":"logout not allowed"}` and keeps the cookies. With one, `/auth/user` answers the `token.User` JSON and `/auth/status` answers `{"status":"logged in","user":"<name>"}`.
+`/auth/user` and `/auth/status` report the identity `Auth` would accept, so a token from the cookie needs the `X-XSRF-TOKEN` header (`Opts.XSRFHeaderKey`) carrying the value of the `XSRF-TOKEN` cookie, and basic credentials accepted by `AdminPasswd` or `BasicAuthChecker` count as well. With such an identity they answer the `token.User` JSON and `{"status":"logged in","user":"<name>"}`; otherwise `/auth/user` answers 401 `{"error":"unauthorized"}` and `/auth/status` answers `{"status":"not logged in"}`. The logout applies the same XSRF rule when the provider added first is an oauth2, oauth1 or Apple provider: without a valid token it answers 403 `{"error":"logout not allowed"}` and keeps the cookies.
 
 ### User info
 
@@ -308,7 +308,7 @@ The API for this provider:
  - `GET /auth/<name>/login?user=<user>&address=<address>&aud=<site_id>&from=<url>` - send confirmation request to user. `site` is accepted as an alias for `aud`. When host validation is enabled via `Opts.AllowedRedirectHosts`, the `from` URL is subject to the same allowlist check described in "Allowed redirect hosts"; otherwise any non-empty value is honoured. It answers `{"user":"<user>","address":"<address>"}` once the message is sent. The confirmation token is valid for 30 minutes; this is fixed.
  - `GET /auth/<name>/login?token=<conf.token>&session=[1|0]` - authorize with confirmation token, `sess` is accepted as an alias for `session`. It answers the user JSON, or redirects with 303 to `from` when one was given and is allowed.
 
-The library does not check the format of `address`, and the first call needs no authentication, so anyone can make the service send a message with their own `user` text to any address, as often as they like. The application, or its `Sender`, must validate the address and rate-limit this route.
+The library checks only that `user` and `address` are not empty (400 otherwise) and that the address neither contains `::` nor starts with `:` (400 `invalid address`). The first call needs no authentication, so anyone can make the service send a message with their own `user` text to any address, as often as they like. The application, or its `Sender`, must validate the address and rate-limit this route.
 
 The provider acts like any other, i.e. will be registered as `/auth/email/login`.
 
@@ -373,7 +373,7 @@ For email notify provider, please use `github.com/go-pkgz/auth/v2/provider/sende
 	authenticator.AddVerifProvider("email", "template goes here", sndr)
 ```
 
-`EmailParams` also has `TLS` (connect over TLS from the start), `LoginAuth` (LOGIN in place of PLAIN authentication, needed for Office 365 and outlook.com) and `TimeOut` (connection timeout). `logger.Std` comes from `github.com/go-pkgz/auth/v2/logger`. [That documentation](https://github.com/go-pkgz/email#options) describes the options of the underlying email library; only the `EmailParams` fields reach it.
+`EmailParams` also has `TLS` (connect over TLS from the start), `LoginAuth` (LOGIN in place of PLAIN authentication, for servers that offer only LOGIN, e.g. Office 365 while the tenant allows basic SMTP authentication) and `TimeOut` (connection timeout). `logger.Std` comes from `github.com/go-pkgz/auth/v2/logger`. [That documentation](https://github.com/go-pkgz/email#options) describes the options of the underlying email library; only the `EmailParams` fields reach it.
 
 ### Telegram
 
@@ -460,7 +460,7 @@ This provider brings two extra functions:
 
 1. Adds ability to use any third-party oauth2 providers in addition to the list of directly supported. Included [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go) demonstrates how to do it for bitbucket.
 In order to add a new oauth2 provider following input is required:
-	* `Name` - any name is allowed except the names from list of supported providers, unless the custom provider replaces the built-in registration of that name, as in [Google user email](#google-user-email). It is possible to register more than one client for one given oauth2 provider (for example using different names `bitbucket_dev` and `bitbucket_prod`). Nothing rejects a name registered twice: both registrations are kept and the first one serves the routes
+	* `Name` - a path-safe name made of letters, digits, `-`, `.`, `_` and `~`; any other name is skipped with an `[ERROR]` log line and never shows in `/auth/list`. Avoid the names from list of supported providers, unless the custom provider replaces the built-in registration of that name, as in [Google user email](#google-user-email). It is possible to register more than one client for one given oauth2 provider (for example using different names `bitbucket_dev` and `bitbucket_prod`). Nothing rejects a name registered twice: both registrations are kept and the first one serves the routes
 	* `Client` - ID and secret of client
 	* `Endpoint` - auth URL and token URL. This information could be obtained from auth2 provider page
 	* `InfoURL` - oauth2 provider API method to read information of logged in user. This method could be found in documentation of oauth2 provider (e.g. for bitbucket https://developer.atlassian.com/bitbucket/api/2/reference/resource/user)
@@ -496,13 +496,14 @@ In order to add a new oauth2 provider following input is required:
 2.  Adds local oauth2 server user can fully customize. It uses [`github.com/go-oauth2/oauth2/v4`](https://github.com/go-oauth2/oauth2) library and example shows how to initialize the server (`initGoauth2Srv` in the [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go)) and set up a provider (the `NewCustomServer` call in `main` there).
 	*  to start local oauth2 server following options are used:
 		* `URL` - url of oauth2 server with port, required
+		* `L` - logger, required: `Run` logs before it starts listening, so a nil logger panics
 		* `WithLoginPage` - optional flag to show the default login page, which asks for a user name
 		* `LoginPageHandler` - optional function to handle login request. When set, it is shown in place of the default login page, with or without `WithLoginPage`
 	* the go-oauth2 server needs a `UserAuthorizationHandler` (`srv.SetUserAuthorizationHandler`) in every case; without a login page, `/authorize` goes straight to it and the user is never asked for a name. The user id it returns is used as it is, with no provider prefix, so it can collide with ids of other providers; prefix it in the handler, as the example does with `custom123_admin`
 		```go
 		sopts := provider.CustomServerOpt{
 			URL:           "http://127.0.0.1:9096",
-			L:             options.Logger,
+			L:             logger.Std,
 			WithLoginPage: true,
 		}
 		prov := provider.NewCustomServer(srv, sopts)
@@ -511,7 +512,7 @@ In order to add a new oauth2 provider following input is required:
 		go prov.Run(context.Background())
 		```
 	* to register handler for local oauth2 following option are required:
-		* `Name` - any name except the names from list of supported providers; registering a name twice keeps the first registration
+		* `Name` - a path-safe name (letters, digits, `-`, `.`, `_`, `~`) other than the names from list of supported providers; registering a name twice keeps the first registration
 		* `Client` - ID and secret of client
 		* `HandlerOpt` - handler options of custom oauth provider
 		```go
@@ -715,7 +716,7 @@ A future change is likely to add a separate bind option (`CustomServerOpt.BindAd
 
 ### Token lifetime
 
-`Opts.TokenDuration` is the lifetime of a JWT issued without an explicit expiry, 15 minutes by default; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
+`Opts.TokenDuration` is the lifetime of a JWT issued without an explicit expiry, 15 minutes by default; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default; each refresh reissues the cookie, and a persistent cookie then gets its full `CookieDuration` again, so `CookieDuration` limits the idle time, not the age of a session. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
 
 ### Other ways to authenticate
 
@@ -765,7 +766,7 @@ Every oauth2 login through the shared oauth2 handler, which serves the built-in 
 
 The oauth2, oauth1 and Apple callbacks read the handshake token only from the JWT cookie set by the login step. A handshake token passed in the JWT query parameter or header (`token` and `X-JWT` by default) is ignored on the callback, so the callback requires the handshake cookie from the login step. Login handlers give the handshake a 30-minute expiry, and the callback rejects a handshake whose expiry has passed, so a user who leaves the provider's consent page open longer has to start the login again. A handshake without an expiry is still accepted.
 
-The callback is a cross-site navigation, so `Opts.SameSiteCookie` decides whether the browser sends the handshake cookie with it. `http.SameSiteStrictMode` breaks every provider. Apple's `form_post` callback is a cross-site POST and needs `http.SameSiteNoneMode` with `SecureCookies`; `Lax` or the browser default can drop the cookie there, and the callback then fails with 500 `failed to get token`.
+The callback from a provider on another site is a cross-site navigation, so `Opts.SameSiteCookie` decides whether the browser sends the handshake cookie with it. `http.SameSiteStrictMode` breaks every provider on another site, because the browser drops the handshake cookie on a cross-site callback; a provider on the same site, such as the dev server on the application's host, still works. Apple's `form_post` callback is a cross-site POST and needs `http.SameSiteNoneMode` with `SecureCookies`; `Lax` or the browser default can drop the cookie there, and the callback then fails with 500 `failed to get token`.
 
 #### Google Auth Provider
 
