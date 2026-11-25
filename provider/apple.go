@@ -74,7 +74,7 @@ type AppleConfig struct {
 	ClientID     string // the identifier Services ID for your app created in Apple developer account.
 	TeamID       string // developer Team ID (10 characters), required for create JWT. It available, after signed in at developer account, by link: https://developer.apple.com/account/#/membership
 	KeyID        string // private key ID  assigned to private key obtain in Apple developer account
-	ResponseMode string // changes method of receiving data in callback. Default value "form_post" (https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168)
+	ResponseMode string // method of receiving data in callback. Only "form_post", the default, is accepted: the provider requests the name scope, which Apple allows with form_post only (https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168)
 
 	scopes       []string         // for this package allow only username scope and UID in token claims. Apple service API provide only "email" and "name" scope values (https://developer.apple.com/documentation/sign_in_with_apple/clientconfigi/3230955-scope)
 	privateKey   any              // private key from Apple obtained in developer account (the keys section). Required for create the Client Secret (https://developer.apple.com/documentation/sign_in_with_apple/generate_and_validate_tokens#3262048)
@@ -159,9 +159,10 @@ func NewApple(p Params, appleCfg AppleConfig, privateKeyLoader PrivateKeyLoaderI
 		return nil, fmt.Errorf("required params missed: %s", strings.Join(emptyParams, ", "))
 	}
 
+	// the name scope requested below is accepted by Apple with form_post only, any other mode fails every login
 	responseMode := "form_post"
-	if appleCfg.ResponseMode != "" {
-		responseMode = appleCfg.ResponseMode
+	if appleCfg.ResponseMode != "" && appleCfg.ResponseMode != responseMode {
+		return nil, fmt.Errorf("response mode %q is not supported, only %q works with the name scope", appleCfg.ResponseMode, responseMode)
 	}
 
 	ah := AppleHandler{
@@ -242,7 +243,7 @@ func (ah *AppleHandler) tokenKeyFunc(jwtToken *jwt.Token) (any, error) {
 // Name of the provider
 func (ah *AppleHandler) Name() string { return ah.name }
 
-// LoginHandler - GET */{provider-name}/login
+// LoginHandler - GET */{provider-name}/login?from=redirect-back-url&[site|aud]=siteID&session=1&noava=1
 func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	ah.Logf("[DEBUG] login with %s", ah.Name())
@@ -259,6 +260,11 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	aud := r.URL.Query().Get("site") // legacy, for back compat
+	if aud == "" {
+		aud = r.URL.Query().Get("aud")
+	}
+
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: state,
@@ -267,10 +273,11 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		SessionOnly: sessionOnlyFromRequest(r),
 		StandardClaims: jwt.StandardClaims{
 			Id:        cid,
-			Audience:  r.URL.Query().Get("site"),
+			Audience:  aud,
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 		},
+		NoAva: r.URL.Query().Get("noava") == "1",
 		AuthProvider: &token.AuthProvider{
 			Name: ah.name,
 		},
@@ -295,7 +302,7 @@ func (ah *AppleHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // AuthHandler fills user info and redirects to "from" url. This is callback url redirected locally by browser.
-// POST /callback with the default form_post response mode, GET /callback when response mode is overridden
+// POST /callback, as Apple's form_post response mode sends it
 func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	// read response form data
@@ -358,6 +365,9 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	u := ah.mapUser(tokenClaims)
+	if oauthClaims.NoAva {
+		u.Picture = "" // reset picture on no avatar request
+	}
 
 	u, err = setAvatar(ah.AvatarSaver, u, &http.Client{Timeout: 5 * time.Second})
 	if err != nil {
@@ -382,6 +392,7 @@ func (ah AppleHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 			Audience: oauthClaims.Audience,
 		},
 		SessionOnly: oauthClaims.SessionOnly,
+		NoAva:       oauthClaims.NoAva,
 		AuthProvider: &token.AuthProvider{
 			Name: ah.name,
 		},

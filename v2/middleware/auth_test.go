@@ -295,6 +295,200 @@ func TestAuthJWtBlocked(t *testing.T) {
 	assert.Equal(t, 401, resp.StatusCode, "blocked user")
 }
 
+func TestAuthRejectionClearsCookies(t *testing.T) {
+	tbl := []struct {
+		name      string
+		validator token.Validator
+		jwt       string
+	}{
+		{name: "blocked by validator", jwt: testJwtValid,
+			validator: token.ValidatorFunc(func(string, token.Claims) bool { return false })},
+		{name: "provider not allowed", jwt: testJwtValidWrongProvider},
+	}
+
+	for _, tt := range tbl {
+		for _, required := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s, required=%v", tt.name, required), func(t *testing.T) {
+				a := makeTestAuth(t)
+				if tt.validator != nil {
+					a.Validator = tt.validator
+				}
+				server := httptest.NewServer(makeTestMux(t, &a, required))
+				defer server.Close()
+
+				req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+				require.NoError(t, err)
+				req.AddCookie(&http.Cookie{Name: "JWT", Value: tt.jwt, HttpOnly: true, Path: "/"})
+				req.Header.Add("X-XSRF-TOKEN", "random id")
+				resp, err := server.Client().Do(req)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				if required {
+					assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+				} else {
+					assert.Equal(t, http.StatusCreated, resp.StatusCode)
+				}
+
+				// the cookies must be in the response the client received, not added after it was written
+				expired := map[string]bool{}
+				for _, c := range resp.Cookies() {
+					expired[c.Name] = c.MaxAge < 0 && c.Value == ""
+				}
+				assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, expired)
+			})
+		}
+	}
+}
+
+func TestAuthRejectionKeepsCookiesOfAnotherToken(t *testing.T) {
+	branches := []struct {
+		name      string
+		rejected  string // token the middleware rejects
+		session   string // valid session cookie of the request
+		validator token.Validator
+	}{
+		{name: "blocked by validator", rejected: testJwtValid, session: testJwtValidWithAuthProvider,
+			validator: token.ValidatorFunc(func(tkn string, _ token.Claims) bool { return tkn != testJwtValid })},
+		{name: "provider not allowed", rejected: testJwtValidWrongProvider, session: testJwtValid},
+	}
+	sources := []struct {
+		name string
+		set  func(r *http.Request, tkn string)
+	}{
+		{name: "query", set: func(r *http.Request, tkn string) {
+			q := r.URL.Query()
+			q.Set("token", tkn)
+			r.URL.RawQuery = q.Encode()
+		}},
+		{name: "header", set: func(r *http.Request, tkn string) { r.Header.Set("X-JWT", tkn) }},
+	}
+
+	for _, b := range branches {
+		for _, src := range sources {
+			for _, required := range []bool{true, false} {
+				t.Run(fmt.Sprintf("%s, %s, required=%v", b.name, src.name, required), func(t *testing.T) {
+					a := makeTestAuth(t)
+					if b.validator != nil {
+						a.Validator = b.validator
+					}
+					// the wrapped handler writes nothing, so any Set-Cookie comes from the middleware
+					mw := a.Auth
+					if !required {
+						mw = a.Trace
+					}
+					server := httptest.NewServer(mw(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
+					defer server.Close()
+
+					call := func(cookie string) *http.Response {
+						req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+						require.NoError(t, err)
+						req.AddCookie(&http.Cookie{Name: "JWT", Value: cookie})
+						req.AddCookie(&http.Cookie{Name: "XSRF-TOKEN", Value: "random id"})
+						src.set(req, b.rejected)
+						resp, err := server.Client().Do(req)
+						require.NoError(t, err)
+						_ = resp.Body.Close()
+						return resp
+					}
+					wantCode := http.StatusOK
+					if required {
+						wantCode = http.StatusUnauthorized
+					}
+
+					// a rejected token from the query or a header leaves the session cookie of the request alone
+					resp := call(b.session)
+					assert.Equal(t, wantCode, resp.StatusCode)
+					assert.Empty(t, resp.Header.Values("Set-Cookie"), "the other session's cookies must stay")
+
+					// the same rejected token is also the cookie: that session is cleared
+					resp = call(b.rejected)
+					assert.Equal(t, wantCode, resp.StatusCode)
+					expired := map[string]bool{}
+					for _, c := range resp.Cookies() {
+						expired[c.Name] = c.MaxAge < 0
+					}
+					assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, expired)
+				})
+			}
+		}
+	}
+}
+
+func TestTraceRejectionKeepsHandlerContentType(t *testing.T) {
+	tbl := []struct {
+		name     string
+		outerSet string // Content-Type set in front of Trace, empty for none
+		want     string
+	}{
+		// the handler leaves the type to sniffing, as a file server or a template page may
+		{name: "sniffed by the handler", want: "text/html; charset=utf-8"},
+		// a handler in front of Trace sets the type, the wrapped handler only writes the body
+		{name: "set before Trace", outerSet: "application/json", want: "application/json"},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			a := makeTestAuth(t)
+			a.Validator = token.ValidatorFunc(func(string, token.Claims) bool { return false })
+			page := a.Trace(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte("<!DOCTYPE html><html><body>public page</body></html>"))
+			}))
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.outerSet != "" {
+					w.Header().Set("Content-Type", tt.outerSet)
+				}
+				page.ServeHTTP(w, r)
+			}))
+			defer server.Close()
+
+			req, err := http.NewRequest("GET", server.URL, http.NoBody)
+			require.NoError(t, err)
+			req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtValid, HttpOnly: true, Path: "/"})
+			req.Header.Add("X-XSRF-TOKEN", "random id")
+			resp, err := server.Client().Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, tt.want, resp.Header.Get("Content-Type"))
+			expired := map[string]bool{}
+			for _, c := range resp.Cookies() {
+				expired[c.Name] = c.MaxAge < 0
+			}
+			assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, expired)
+		})
+	}
+}
+
+func TestAuthJWTRefreshLogsUserID(t *testing.T) {
+	var logged []string
+	var mu sync.Mutex
+	a := makeTestAuth(t)
+	a.L = logger.Func(func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		logged = append(logged, fmt.Sprintf(format, args...))
+	})
+	server := httptest.NewServer(makeTestMux(t, &a, true))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/"})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Contains(t, logged, "[DEBUG] token refreshed for provider1_id1")
+	for _, line := range logged {
+		assert.NotContains(t, line, "me@example.com", "the user's attributes stay out of the log")
+	}
+}
+
 func TestAuthJWtWithHandshake(t *testing.T) {
 	a := makeTestAuth(t)
 	server := httptest.NewServer(makeTestMux(t, &a, true))

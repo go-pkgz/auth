@@ -286,12 +286,12 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	elems := strings.Split(confClaims.Handshake.ID, "::")
-	if len(elems) != 2 {
+	// the user name may contain the separator, the address follows its last occurrence
+	user, address, found := cutLast(confClaims.Handshake.ID, "::")
+	if !found {
 		rest.SendErrorJSON(w, scrubTokenFromRequest(r), e.L, http.StatusBadRequest, fmt.Errorf("%s", confClaims.Handshake.ID), "invalid handshake token")
 		return
 	}
-	user, address := elems[0], elems[1]
 	sessOnly := sessionOnlyFromRequest(r)
 
 	u := token.User{
@@ -357,6 +357,13 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 
 	if user == "" || address == "" {
 		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("wrong request"), "can't get user and address")
+		return
+	}
+
+	// the handshake id is user::address, split on its last separator, so only the user may contain one;
+	// a leading colon in the address would also move the split
+	if strings.Contains(":"+address, "::") {
+		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("address contains \"::\" or starts with \":\""), "invalid address")
 		return
 	}
 
@@ -462,4 +469,12 @@ func trim(inp string) string {
 		return res[:128]
 	}
 	return res
+}
+
+// cutLast slices s around the last instance of sep, returning the text before and after it
+func cutLast(s, sep string) (before, after string, found bool) {
+	if i := strings.LastIndex(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):], true
+	}
+	return s, "", false
 }

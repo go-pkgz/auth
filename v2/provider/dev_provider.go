@@ -2,9 +2,11 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -100,25 +102,15 @@ func (d *DevAuthServer) Run(ctx context.Context) { // nolint (gocyclo)
 				}
 
 			case strings.HasPrefix(r.URL.Path, "/user"):
-				ava := fmt.Sprintf("http://%s:%d/avatar?user=%s", d.Provider.Host, d.Provider.Port, d.username)
-				res := fmt.Sprintf(`{
-					"id": "%s",
-					"name":"%s",
-					"picture":"%s"
-					}`, d.username, d.username, ava)
-
+				ava := fmt.Sprintf("http://%s:%d/avatar?user=%s", d.Provider.Host, d.Provider.Port, url.QueryEscape(d.username))
+				info := map[string]string{"id": d.username, "name": d.username, "picture": ava}
 				if d.GetEmailFn != nil {
-					email := d.GetEmailFn(d.username)
-					res = fmt.Sprintf(`{
-					"id": "%s",
-					"name":"%s",
-					"picture":"%s",
-					"email": "%s"
-					}`, d.username, d.username, ava, email)
+					info["email"] = d.GetEmailFn(d.username)
 				}
+				res, _ := json.Marshal(info) // a map of strings always marshals
 
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				if _, err = w.Write([]byte(res)); err != nil {
+				if _, err = w.Write(res); err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}

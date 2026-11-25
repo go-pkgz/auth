@@ -1,6 +1,8 @@
 package token
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -689,6 +691,68 @@ func TestAudience(t *testing.T) {
 
 	err = j.checkAuds(&c, AudienceFunc(func() ([]string, error) { return []string{"xxx", "yyy", "au1"}, nil }))
 	assert.NoError(t, err, `au1 allowed`)
+}
+
+func TestJWT_TokenWithoutAudience(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), TokenDuration: time.Hour, CookieDuration: days31})
+	claims := Claims{User: &User{ID: "id1", Name: "name1"}}
+
+	_, err := j.Token(claims)
+	require.EqualError(t, err, "aud rejected: no audience provided")
+
+	rr := httptest.NewRecorder()
+	_, err = j.Set(rr, claims)
+	require.EqualError(t, err, "failed to make token token: aud rejected: no audience provided")
+	assert.Empty(t, rr.Result().Cookies(), "no cookie set for a rejected token")
+}
+
+func TestJWT_AudienceEncoding(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore), TokenDuration: time.Hour, CookieDuration: days31})
+
+	// the service leaves the golang-jwt package default alone for other code in the process
+	b, err := json.Marshal(jwt.ClaimStrings{"a"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `["a"]`, string(b))
+
+	// a type embedding Claims keeps its own fields when encoded
+	type appClaims struct {
+		Claims
+		TenantID string `json:"tenant_id"`
+	}
+	b, err = json.Marshal(appClaims{Claims: Claims{User: &User{ID: "id1"}}, TenantID: "t1"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"user":{"id":"id1","name":"","picture":""},"tenant_id":"t1"}`, string(b))
+
+	payload := func(tkn string) map[string]any {
+		parts := strings.Split(tkn, ".")
+		require.Len(t, parts, 3)
+		data, err := base64.RawURLEncoding.DecodeString(parts[1])
+		require.NoError(t, err)
+		res := map[string]any{}
+		require.NoError(t, json.Unmarshal(data, &res))
+		return res
+	}
+
+	tbl := []struct {
+		name string
+		aud  []string
+		wire any
+	}{
+		{name: "single audience is a string", aud: []string{"site1"}, wire: "site1"},
+		{name: "several audiences are an array", aud: []string{"site1", "site2"}, wire: []any{"site1", "site2"}},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			claims := Claims{RegisteredClaims: jwt.RegisteredClaims{Audience: tt.aud, Issuer: "iss1"}, User: &User{ID: "id1"}}
+			tkn, err := j.Token(claims)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wire, payload(tkn)["aud"])
+
+			parsed, err := j.Parse(tkn)
+			require.NoError(t, err)
+			assert.Equal(t, jwt.ClaimStrings(tt.aud), parsed.Audience)
+		})
+	}
 }
 
 func TestAudReader(t *testing.T) {
