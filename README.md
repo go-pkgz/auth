@@ -196,7 +196,7 @@ Middleware populates `token.User` to request's context. It can be loaded with `t
 - `Name` - user name
 - `ID` - user id; the built-in providers other than `dev` set it to `<provider>_<hash of the user id>`, the form the linking flow below relies on
 - `Picture` - full link to proxied avatar (see "Avatar proxy"); without an `AvatarStore`, the provider's own picture URL, or empty for Telegram, whose picture URL carries the bot token
-- `Audience` - the token's `aud`, filled in on every read of the token
+- `Audience` - the token's `aud`, filled in by `token.Service.Get`, which the middleware and `/auth/user` use; `Parse` leaves it empty, and the login response does not carry it
 
 It also has placeholders for fields application can populate with custom `token.ClaimsUpdater` (see "Customization")
 
@@ -320,7 +320,7 @@ Confirmation tokens are one-shot: a token redeemed once cannot be redeemed again
 
 This holds for providers added with `AddVerifProvider`. A `provider.VerifyHandler` constructed directly and registered with `AddCustomHandler` needs `ConfirmationStore` set; without it, its tokens can be replayed until they expire.
 
-By default the library installs an in-memory store on first call to `AddVerifProvider`. This is correct for **single-instance** deployments.
+By default the library installs an in-memory store on first call to `AddVerifProvider`. This is correct for **single-instance** deployments, except that a restart forgets redeemed tokens, so a token redeemed before the restart can be redeemed again until it expires; a persistent `Opts.VerifConfirmationStore` covers restarts.
 
 **Multi-instance deployments behind a load balancer MUST supply a shared backend.** With the default in-memory store, replay protection works only on the instance that originally consumed the token; an attacker who hits any other instance can still replay within the TTL. **This is silent: the request succeeds and the auth flow completes normally, with no log indicating the protection was bypassed.** Plug in Redis or any shared KV by setting `Opts.VerifConfirmationStore` to a value implementing `provider.VerifConfirmationStore`:
 
@@ -389,7 +389,7 @@ Next initialize TelegramHandler with following parameters:
 	2. An http.Client for accessing Telegram API's
 * `ChatIDAttribute` - optional. The user ID stays the hashed `telegram_...` value; when this key is set, a fresh login also stores the user's raw Telegram chat ID as a string attribute under it (read with `user.StrAttr(key)`), so the app can message the user through the bot. Leave it empty unless the app needs the raw ID: the attribute goes into the JWT and the `/auth/user` and login responses. Users with tokens issued before the key was set get the attribute on their next login.
 
-For a proxy in front of the Telegram API, use `provider.NewTelegramAPIWithBaseURL(token, client, baseURL)` in place of `provider.NewTelegramAPI`; it returns an error for a base URL that is not an absolute http or https URL.
+For a proxy in front of the Telegram API, use `provider.NewTelegramAPIWithBaseURL(token, client, baseURL)` in place of `provider.NewTelegramAPI`; it returns an error for a base URL that is not an absolute http or https URL. An empty base URL, or one made only of slashes, selects the public Telegram API.
 
 ```go
 token := os.Getenv("TELEGRAM_TOKEN")
@@ -497,7 +497,7 @@ In order to add a new oauth2 provider following input is required:
 	*  to start local oauth2 server following options are used:
 		* `URL` - url of oauth2 server with port, required
 		* `L` - logger, required: `Run` logs before it starts listening, so a nil logger panics
-		* `WithLoginPage` - optional flag to show the default login page, which asks for a user name
+		* `WithLoginPage` - optional flag to show the default login page, which asks for a user name and a password and passes both, as the `username` and `password` form values, to the `UserAuthorizationHandler`; the library itself requires only a non-empty `username`
 		* `LoginPageHandler` - optional function to handle login request. When set, it is shown in place of the default login page, with or without `WithLoginPage`
 	* the go-oauth2 server needs a `UserAuthorizationHandler` (`srv.SetUserAuthorizationHandler`) in every case; without a login page, `/authorize` goes straight to it and the user is never asked for a name. The user id it returns is used as it is, with no provider prefix, so it can collide with ids of other providers; prefix it in the handler, as the example does with `custom123_admin`
 		```go
@@ -647,7 +647,7 @@ Once the policy is on:
 
 * The host of `Opts.URL` is always permitted implicitly (single-host deployments need no list entries — pass `func() ([]string, error) { return nil, nil }` to enable the policy with same-host-only semantics).
 * Values returned by `Get()` are appended to that. Subdomain wildcards are not supported — list each host explicitly.
-* Hostname comparison is port-insensitive: `https://app.example.com` and `https://app.example.com:443` are treated as the same host, and a hostname without a port, the host of `Opts.URL` included, accepts any port, `https://app.example.com:8443` among them. An entry with a port, such as `billing.example.com:8443`, matches only that port.
+* Hostname comparison is port-insensitive: `https://app.example.com` and `https://app.example.com:443` are treated as the same host, and a hostname without a port, the host of `Opts.URL` included even when `Opts.URL` names a port, accepts any port, `https://app.example.com:8443` among them. An entry with a port, such as `billing.example.com:8443`, matches only that port.
 * Relative paths and unparseable URLs are rejected, and so are schemes other than `http` and `https`.
 * An error returned by `Get()` rejects a redirect to any host other than that of `Opts.URL`.
 * Rejected redirects are logged at `[WARN]` level with only the host portion of the URL (paths and query strings are stripped to avoid logging attacker-supplied data).
@@ -709,14 +709,14 @@ service.AddDevProvider("0.0.0.0", 8084)
 Recommended approaches:
 
 * **Single host, no proxy** -- leave `URL: "http://localhost:9096"` (or your real hostname). The default loopback bind matches the advertised host and everything works.
-* **Behind a reverse proxy (typical Docker/kubernetes pattern)** -- `Run` listens on the host and port of `URL`, so until a separate bind option exists `URL` must name an address of the auth host itself, and a public address the proxy serves cannot be used there. When it cannot listen there (a public address the host does not have, or a `URL` without a port), `Run` returns at once and leaves only a log line. It also serves plain HTTP for an `https://` URL while advertising `https` endpoints.
+* **Behind a reverse proxy: not supported until a separate bind option exists** -- `Run` listens on the host and port of `URL`, so until a separate bind option exists `URL` must name an address of the auth host itself, and a public address the proxy serves cannot be used there. When it cannot listen there (a public address the host does not have, or a `URL` without a port), `Run` returns at once and leaves only a log line. It also serves plain HTTP for an `https://` URL while advertising `https` endpoints.
 * **Direct LAN exposure with a sensible advertised URL** -- set `URL` to a real hostname or LAN IP that resolves on every consumer (e.g. `http://oauth.lan.example:9096`); the bind extracts the host and listens there. Avoid embedding `0.0.0.0` in `URL` unless you have already accepted the consequence that clients will see `0.0.0.0` in the advertised metadata.
 
 A future change is likely to add a separate bind option (`CustomServerOpt.BindAddr` or similar) so the bind and the advertised URL can diverge cleanly; until then, the bind follows `URL`.
 
 ### Token lifetime
 
-`Opts.TokenDuration` is the lifetime of a JWT issued without an explicit expiry, 15 minutes by default; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default. Reissuing a persistent cookie on a refresh starts its full `CookieDuration` again, so `CookieDuration` limits idle time, not the age of a session. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
+`Opts.TokenDuration` is the lifetime of a JWT the library issues through `token.Service.Set` (logins and refreshes) without an explicit expiry, 15 minutes by default. A token signed directly with `TokenService().Token` gets no expiry unless `ExpiresAt` is set, and v2 accepts such a token from the header or the query without limit; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default. Reissuing a persistent cookie on a refresh starts its full `CookieDuration` again, so `CookieDuration` limits idle time, not the age of a session. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
 
 ### Other ways to authenticate
 
