@@ -103,7 +103,8 @@ type Opts struct {
 	// VerifConfirmationStore enforces one-shot consumption of email
 	// confirmation tokens issued by the verify provider. The default
 	// (nil) installs an in-memory store on first use of AddVerifProvider —
-	// fine for single-instance deployments. Multi-instance deployments
+	// fine for a single instance, but it lives in process memory, so a restart
+	// forgets redeemed tokens until they expire. Multi-instance deployments
 	// MUST supply a shared backend (e.g. Redis) implementing
 	// provider.VerifConfirmationStore, otherwise replay rejection works
 	// only on the instance that consumed the token.

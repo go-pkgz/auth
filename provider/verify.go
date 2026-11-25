@@ -92,7 +92,8 @@ func (f VerifConfirmationStoreFunc) MarkUsed(key string, ttl time.Duration) (boo
 }
 
 // NewInMemoryVerifStore returns a process-local default VerifConfirmationStore.
-// Suitable for single-instance deployments. Multi-instance deployments behind
+// Suitable for a single instance, but a restart empties it, so a token redeemed
+// before the restart can be redeemed again until it expires. Multi-instance deployments behind
 // a load balancer MUST supply a shared backend (e.g. Redis) -- otherwise an
 // attacker who lands on a different instance from the legitimate user can
 // replay the token there. The default's failure is silent: the request
