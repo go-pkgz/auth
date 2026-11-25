@@ -83,7 +83,7 @@ func main() {
 			return "secret", nil
 		}),
 		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
-		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
+		CookieDuration: time.Hour * 24,  // cookie expires 1 day after it was last issued and will enforce re-login
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
@@ -125,7 +125,7 @@ func main() {
 			return "secret", nil
 		}),
 		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
-		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
+		CookieDuration: time.Hour * 24,  // cookie expires 1 day after it was last issued and will enforce re-login
 		Issuer:         "my-test-app",
 		URL:            "http://127.0.0.1:8080",
 		AvatarStore:    avatar.NewLocalFS("/tmp"),
@@ -716,7 +716,7 @@ A future change is likely to add a separate bind option (`CustomServerOpt.BindAd
 
 ### Token lifetime
 
-`Opts.TokenDuration` is the lifetime of a JWT issued without an explicit expiry, 15 minutes by default; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default; each refresh reissues the cookie, and a persistent cookie then gets its full `CookieDuration` again, so `CookieDuration` limits the idle time, not the age of a session. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
+`Opts.TokenDuration` is the lifetime of a JWT issued without an explicit expiry, 15 minutes by default; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default. Reissuing a persistent cookie on a refresh starts its full `CookieDuration` again, so `CookieDuration` limits idle time, not the age of a session. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
 
 ### Other ways to authenticate
 
