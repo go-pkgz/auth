@@ -23,7 +23,7 @@ import (
 	"github.com/go-pkgz/rest/logger"
 	"github.com/go-pkgz/routegroup"
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/bitbucket"
 
 	"github.com/go-pkgz/auth/v2"
 	"github.com/go-pkgz/auth/v2/avatar"
@@ -59,15 +59,18 @@ func main() {
 			if claims.User == nil {
 				return false
 			}
-			// allow all users of the providers registered below whose ids carry the provider prefix
+			// dev ids are the bare typed names, so a dev user could pick another provider's id prefix;
+			// the signed provider name decides first
+			if claims.AuthProvider != nil && claims.AuthProvider.Name == "dev" {
+				return strings.HasPrefix(claims.User.Name, "dev_")
+			}
 			for _, prefix := range []string{"github_", "twitter_", "microsoft_", "patreon_", "discord_", "apple_",
 				"anonymous_", "email_", "telegram_", "bitbucket_"} {
 				if strings.HasPrefix(claims.User.ID, prefix) {
 					return true
 				}
 			}
-			// dev ids are the bare user names, so dev users are checked by name, as are custom123 users
-			return strings.HasPrefix(claims.User.Name, "dev_") || strings.HasPrefix(claims.User.Name, "custom123_")
+			return strings.HasPrefix(claims.User.Name, "custom123_")
 		}),
 		Logger:      log.Default(), // optional logger for auth library
 		UseGravatar: true,          // for verified provider use gravatar service
@@ -159,11 +162,8 @@ func main() {
 	}
 
 	service.AddCustomProvider("bitbucket", c, provider.CustomHandlerOpt{
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://bitbucket.org/site/oauth2/authorize",
-			TokenURL: "https://bitbucket.org/site/oauth2/access_token",
-		},
-		InfoURL: "https://api.bitbucket.org/2.0/user/",
+		Endpoint: bitbucket.Endpoint,
+		InfoURL:  "https://api.bitbucket.org/2.0/user/",
 		MapUserFn: func(data provider.UserData, _ []byte) token.User {
 			username := data.Value("username")
 			if username == "" {

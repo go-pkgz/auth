@@ -96,7 +96,7 @@ type Opts struct {
 
 	AdminPasswd      string                   // if presented, allows basic auth with user admin and given password
 	BasicAuthChecker middleware.BasicAuthFunc // custom checker for basic auth; when set, AdminPasswd is bypassed entirely
-	AudienceReader   token.Audience           // list of allowed aud values, default (empty) allows any
+	AudienceReader   token.Audience           // allowed aud values; nil (default) allows any, an empty list rejects every token
 	AudSecrets       bool                     // allow multiple secrets (secret per aud)
 	Logger           logger.L                 // logger interface, default is no logging at all
 	RefreshCache     middleware.RefreshCache  // optional cache to keep refreshed tokens

@@ -36,7 +36,7 @@
 - Preserve backward compatibility for public auth flows and documented query parameters. For example, direct login still supports `passwd` in the URL, so sensitive-query fixes must redact rather than remove that input path.
 - Avoid logging raw user profiles, mapped `token.User` values, JWTs, OAuth tokens, confirmation tokens, or credential-bearing URLs. Use redacted request copies when passing URLs with secrets to `rest.SendErrorJSON`.
 - `AllowedRedirectHosts` hardening is opt-in. Nil keeps legacy permissive `from` redirects; a non-nil getter enables host validation.
-- Verify-provider confirmation tokens are one-shot within one `Service` by default: nil `VerifConfirmationStore` makes `AddVerifProvider` install an in-memory store for that service. They are one-shot across services and instances only with a shared `VerifConfirmationStore`.
+- Verify-provider confirmation tokens are one-shot within one `Service` by default: nil `VerifConfirmationStore` makes `AddVerifProvider` install an in-memory store for that service, and its redeemed tokens are forgotten on restart. They are one-shot across services and instances only with a shared `VerifConfirmationStore`.
 - Avatar handling is security-sensitive: keep content-type validation, image dimension/size caps, and bot-token URL redaction intact in both root and v2.
 
 ## Testing Gotchas
