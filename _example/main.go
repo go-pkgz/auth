@@ -49,7 +49,7 @@ func main() {
 		AvatarStore:       avatar.NewLocalFS("/tmp/demo-auth-service"), // stores avatars locally
 		AvatarResizeLimit: 200,                                         // resizes avatars to 200x200
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims { // modify issued token
-			if claims.User != nil && claims.User.Name == "dev_admin" { // set attributes for dev_admin
+			if claims.User != nil && claims.User.ID == "dev_admin" { // only the dev provider issues bare ids
 				claims.User.SetAdmin(true)
 				claims.User.SetStrAttr("custom-key", "some value")
 			}

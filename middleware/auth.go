@@ -137,7 +137,7 @@ func (a *Authenticator) auth(reqAuth bool) func(http.Handler) http.Handler {
 
 				if a.JWTService.IsExpired(claims) {
 					if claims, err = a.refreshExpiredToken(w, claims, tkn); err != nil {
-						a.JWTService.Reset(w)
+						a.resetCookies(w, r, tkn)
 						onError(h, w, r, fmt.Errorf("can't refresh token: %w", err))
 						return
 					}

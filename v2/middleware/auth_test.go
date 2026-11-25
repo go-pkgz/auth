@@ -460,6 +460,41 @@ func TestTraceRejectionKeepsHandlerContentType(t *testing.T) {
 	}
 }
 
+func TestTraceRefreshFailureKeepsHandlerContentType(t *testing.T) {
+	a := makeTestAuth(t)
+	a.JWTService = token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
+		TokenDuration:  time.Second,
+		CookieDuration: time.Hour * 24 * 31,
+		AudienceReader: token.AudienceFunc(func() ([]string, error) { return []string{"test_sys"}, nil }),
+		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
+			claims.Audience = []string{"other_sys"}
+			return claims
+		}),
+	})
+	page := a.Trace(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<!DOCTYPE html><html><body>public page</body></html>"))
+	}))
+	server := httptest.NewServer(page)
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL, http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/"})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+	expired := map[string]bool{}
+	for _, c := range resp.Cookies() {
+		expired[c.Name] = c.MaxAge < 0
+	}
+	assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, expired)
+}
+
 func TestAuthJWTRefreshLogsUserID(t *testing.T) {
 	var logged []string
 	var mu sync.Mutex
