@@ -467,6 +467,7 @@ In order to add a new oauth2 provider following input is required:
 	* `MapUserFn` - function to convert the response from `InfoURL` to `token.User` (s. example below). It must return an empty `ID` when the response has no user id: the callback then answers 503 and issues no session. Check the id before hashing it, because a prefix plus `token.HashID` of an empty value is not an empty `ID` and maps every such login to the same user
 	* `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
 	* `BearerTokenHookFn` - optional, called after a successful login with the provider name, the mapped user and the provider's OAuth2 token; it is the way to keep that token for later API calls
+	* `AvatarSaver` - optional, saves the user's picture for this provider in place of the service's avatar proxy. The callback hands the saver the provider's OAuth2 client, which sends the user's access token with every request to any address, and the avatar proxy fetches the picture URL from the user info with it. When users of the provider can set that URL, pass a saver that fetches the picture with a client of its own, for example one that refuses private addresses, and stores it through `Service.AvatarProxy()`
 	```go
 	c := auth.Client{
 		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),

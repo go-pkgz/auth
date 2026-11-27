@@ -384,6 +384,25 @@ func TestNewServiceAvatarIdenticonSize(t *testing.T) {
 	assert.Equal(t, 48, svc.avatarProxy.IdenticonSize, "Opts.AvatarIdenticonSize has to reach the avatar proxy")
 }
 
+func TestAddCustomProviderAvatarSaver(t *testing.T) {
+	svc := NewService(Opts{AvatarStore: avatar.NewNoOp(), URL: "http://127.0.0.1:8089"})
+	saver := &customAvatarSaver{}
+	svc.AddCustomProvider("own", Client{"cid", "csecret"}, provider.CustomHandlerOpt{AvatarSaver: saver})
+	svc.AddCustomProvider("proxy", Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
+
+	p, err := svc.Provider("own")
+	require.NoError(t, err)
+	assert.Same(t, saver, p.Provider.(provider.Oauth2Handler).AvatarSaver, "the provider's own saver")
+
+	p, err = svc.Provider("proxy")
+	require.NoError(t, err)
+	assert.Same(t, svc.AvatarProxy(), p.Provider.(provider.Oauth2Handler).AvatarSaver, "the service's avatar proxy")
+}
+
+type customAvatarSaver struct{}
+
+func (customAvatarSaver) Put(token.User, *http.Client) (string, error) { return "", nil }
+
 func TestIntegrationList(t *testing.T) {
 	_, teardown := prepService(t, func(svc *Service) {
 		svc.AddProvider("github", "cid", "csec")

@@ -30,6 +30,12 @@ type CustomHandlerOpt struct {
 	MapUserFn         func(UserData, []byte) token.User
 	BearerTokenHookFn BearerTokenHook
 	Scopes            []string
+	// AvatarSaver, when set, saves the user's picture in place of Params.AvatarSaver, which for
+	// Service.AddCustomProvider is the service's avatar proxy. The saver gets the provider's oauth2 client,
+	// which sends the user's access token with every request to any address, and the proxy fetches the
+	// picture URL of the user info with it. When users can set that URL, pass a saver that fetches with a
+	// client of its own.
+	AvatarSaver AvatarSaver
 }
 
 // CustomServerOpt are options to initialize a custom go-oauth2/oauth2 server
@@ -220,6 +226,9 @@ func (c *CustomServer) Shutdown() {
 
 // NewCustom creates a handler for go-oauth2/oauth2 server
 func NewCustom(name string, p Params, copts CustomHandlerOpt) Oauth2Handler {
+	if copts.AvatarSaver != nil {
+		p.AvatarSaver = copts.AvatarSaver
+	}
 	return initOauth2Handler(p, Oauth2Handler{
 		name:            name,
 		endpoint:        copts.Endpoint,
