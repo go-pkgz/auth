@@ -80,6 +80,30 @@ func TestUser_Attrs(t *testing.T) {
 	assert.Equal(t, []string{}, u.SliceAttr("k2"), "not a slice")
 }
 
+func TestUser_SliceAttr(t *testing.T) {
+	tbl := []struct {
+		name string
+		val  any
+		want []string
+	}{
+		{name: "string slice", val: []string{"a", "b"}, want: []string{"a", "b"}},
+		{name: "decoded strings", val: []any{"a", "b"}, want: []string{"a", "b"}},
+		{name: "decoded empty", val: []any{}, want: []string{}},
+		{name: "decoded with non-string", val: []any{"a", 1.0}, want: []string{}},
+		{name: "not a slice", val: "a", want: []string{}},
+		{name: "missing", val: nil, want: []string{}},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			u := User{Attributes: map[string]any{}}
+			if tt.val != nil {
+				u.Attributes["k"] = tt.val
+			}
+			assert.Equal(t, tt.want, u.SliceAttr("k"))
+		})
+	}
+}
+
 func TestUser_Admin(t *testing.T) {
 	u := User{Name: "test", IP: "127.0.0.1"}
 	assert.False(t, u.IsAdmin())

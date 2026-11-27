@@ -119,6 +119,19 @@ func TestJWT_Token(t *testing.T) {
 
 }
 
+func TestJWT_SliceAttrAfterParse(t *testing.T) {
+	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore)})
+	claims := testClaims
+	claims.User = &User{ID: "id1", Name: "name1"}
+	claims.User.SetSliceAttr("groups", []string{"g1", "g2"})
+	tkn, err := j.Token(claims)
+	require.NoError(t, err)
+
+	parsed, err := j.Parse(tkn)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"g1", "g2"}, parsed.User.SliceAttr("groups"))
+}
+
 func TestJWT_Parse(t *testing.T) {
 	j := NewService(Opts{SecretReader: SecretFunc(mockKeyStore)})
 	claims, err := j.Parse(testJwtValid)
