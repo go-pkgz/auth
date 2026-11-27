@@ -1,6 +1,10 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -238,6 +242,388 @@ func TestAuthJWTRefreshConcurrentWithCache(t *testing.T) {
 	assert.Equal(t, "JWT", resp.Cookies()[0].Name)
 	assert.NotEqual(t, tkn, resp.Cookies()[0].Value)
 	t.Log(resp.Cookies()[0].Value)
+}
+
+// TestAuthRefreshValidatesRefreshedClaims covers a block that ClaimsUpd adds when an expired token is
+// refreshed. testJwtExpired is signed directly and carries no block, so only the refreshed claims have
+// it: the request is refused, the client gets no fresh token, and a cached refresh is checked as well.
+func TestAuthRefreshValidatesRefreshedClaims(t *testing.T) {
+	blockInPlace := token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
+		claims.User.SetBoolAttr("blocked", true)
+		return claims
+	})
+	blockOnCopy := token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
+		u := *claims.User
+		u.Attributes = map[string]any{"blocked": true}
+		claims.User = &u
+		return claims
+	})
+	notBlocked := token.ValidatorFunc(func(_ string, claims token.Claims) bool { return !claims.User.BoolAttr("blocked") })
+
+	tbl := []struct {
+		name      string
+		claimsUpd token.ClaimsUpdater
+		cached    bool
+	}{
+		{name: "updater changes the user in place", claimsUpd: blockInPlace},
+		{name: "updater replaces the user", claimsUpd: blockOnCopy},
+		{name: "blocked claims in the refresh cache", cached: true},
+	}
+
+	for _, tt := range tbl {
+		for _, required := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s, required=%v", tt.name, required), func(t *testing.T) {
+				a := makeTestAuth(t)
+				a.JWTService = token.NewService(token.Opts{
+					SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
+					TokenDuration:  time.Second,
+					CookieDuration: time.Hour * 24 * 31,
+					SendJWTHeader:  true,
+					ClaimsUpd:      tt.claimsUpd,
+				})
+				a.Validator = notBlocked
+				cache := newTestRefreshCache()
+				a.RefreshCache = cache
+				if tt.cached {
+					c, err := a.JWTService.Parse(testJwtExpired)
+					require.NoError(t, err)
+					c.User.SetBoolAttr("blocked", true)
+					cache.Set(testJwtExpired, c)
+				}
+
+				var served atomic.Int32
+				var servedUser atomic.Bool
+				server := httptest.NewServer(a.auth(required)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					served.Add(1)
+					_, err := token.GetUserInfo(r)
+					servedUser.Store(err == nil)
+					w.WriteHeader(http.StatusCreated)
+				})))
+				defer server.Close()
+
+				for i := range 2 { // the second request repeats the first with the same expired token
+					req, err := http.NewRequest("GET", server.URL, http.NoBody)
+					require.NoError(t, err)
+					req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/"})
+					req.Header.Add("X-XSRF-TOKEN", "random id")
+					resp, err := server.Client().Do(req)
+					require.NoError(t, err)
+					require.NoError(t, resp.Body.Close())
+
+					if required {
+						assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "request %d", i)
+					} else {
+						assert.Equal(t, http.StatusCreated, resp.StatusCode, "request %d", i)
+						assert.False(t, servedUser.Load(), "request %d served with a user", i)
+					}
+					assert.Empty(t, resp.Header.Get("X-JWT"), "request %d got a fresh token in the header", i)
+					expired := map[string]bool{}
+					for _, c := range resp.Cookies() {
+						assert.Empty(t, c.Value, "request %d got a fresh %s cookie", i, c.Name)
+						expired[c.Name] = c.MaxAge < 0 && c.Value == ""
+					}
+					assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, expired, "request %d", i)
+				}
+				if required {
+					assert.Zero(t, served.Load(), "handler reached for a blocked user")
+				}
+			})
+		}
+	}
+}
+
+// TestAuthRefreshServesSignedClaims checks that a refreshed request carries the user the new token was
+// signed with, also when ClaimsUpd replaces the user, and that the XSRF cookie matches that token.
+func TestAuthRefreshServesSignedClaims(t *testing.T) {
+	a := makeTestAuth(t)
+	a.JWTService = token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
+		TokenDuration:  time.Second,
+		CookieDuration: time.Hour * 24 * 31,
+		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
+			claims.User = &token.User{ID: claims.User.ID, Name: claims.User.Name, Attributes: map[string]any{"updated": true}}
+			claims.ID = "updated id"
+			return claims
+		}),
+	})
+	var updated atomic.Bool
+	var audience atomic.Value
+	server := httptest.NewServer(a.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, err := token.GetUserInfo(r)
+		updated.Store(err == nil && u.BoolAttr("updated"))
+		audience.Store(u.Audience)
+		w.WriteHeader(http.StatusCreated)
+	})))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL, http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/"})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	assert.True(t, updated.Load(), "request served with the claims before ClaimsUpd")
+	assert.Equal(t, "test_sys", audience.Load(), "user audience is filled from the token, as for a token read by Get")
+
+	cookies := map[string]string{}
+	for _, c := range resp.Cookies() {
+		cookies[c.Name] = c.Value
+	}
+	claims, err := a.JWTService.Parse(cookies["JWT"])
+	require.NoError(t, err)
+	assert.Equal(t, "updated id", claims.ID)
+	assert.Equal(t, claims.ID, cookies["XSRF-TOKEN"], "XSRF cookie must match the signed token")
+}
+
+// TestAuthRefreshValidatesDecodedClaims checks that the Validator and the handler see the refreshed claims with
+// the types a later request reads from the token, not the Go types ClaimsUpd put in.
+func TestAuthRefreshValidatesDecodedClaims(t *testing.T) {
+	a := makeTestAuth(t)
+	a.JWTService = token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
+		TokenDuration:  time.Second,
+		CookieDuration: time.Hour * 24 * 31,
+		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
+			claims.User.SetSliceAttr("groups", []string{"g1"})
+			claims.User.Attributes["level"] = 1
+			claims.User.Attributes["ext"] = json.Number("5") // a number decoded elsewhere with UseNumber
+			return claims
+		}),
+	})
+	// testJwtExpired carries no level and no groups, so the check of the token as sent passes
+	a.Validator = token.ValidatorFunc(func(_ string, claims token.Claims) bool {
+		if _, ok := claims.User.Attributes["level"]; !ok {
+			return true
+		}
+		_, isNumber := claims.User.Attributes["level"].(float64)
+		_, isExtNumber := claims.User.Attributes["ext"].(float64)
+		_, isList := claims.User.Attributes["groups"].([]any)
+		return isNumber && isExtNumber && isList
+	})
+	var level atomic.Value
+	server := httptest.NewServer(a.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, err := token.GetUserInfo(r)
+		if err == nil {
+			level.Store(fmt.Sprintf("%T", u.Attributes["level"]))
+		}
+		w.WriteHeader(http.StatusCreated)
+	})))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL, http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/"})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusCreated, resp.StatusCode, "refreshed claims refused")
+	assert.Equal(t, "float64", level.Load())
+}
+
+// TestAuthRefreshKeepsJSONNumber uses a TokenService whose Get reads numbers as json.Number. The refreshed
+// claims keep them so, with every digit, as the next request reads them from the token.
+func TestAuthRefreshKeepsJSONNumber(t *testing.T) {
+	a := makeTestAuth(t)
+	svc := token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
+		TokenDuration:  time.Second,
+		CookieDuration: time.Hour * 24 * 31,
+	})
+	a.JWTService = numberTokenService{Service: svc}
+	claims, err := svc.Parse(testJwtExpired)
+	require.NoError(t, err)
+	claims.User.Attributes["uid"] = json.Number("9007199254740993") // above 2^53, float64 drops the last digit
+	tkn, err := svc.Token(claims)
+	require.NoError(t, err)
+
+	a.Validator = token.ValidatorFunc(func(_ string, claims token.Claims) bool {
+		return claims.User.Attributes["uid"] == json.Number("9007199254740993")
+	})
+	var uid atomic.Value
+	server := httptest.NewServer(a.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, uErr := token.GetUserInfo(r)
+		if uErr == nil {
+			uid.Store(fmt.Sprintf("%T %v", u.Attributes["uid"], u.Attributes["uid"]))
+		}
+		w.WriteHeader(http.StatusCreated)
+	})))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL, http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: tkn, HttpOnly: true, Path: "/"})
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusCreated, resp.StatusCode, "refreshed claims refused")
+	assert.Equal(t, "json.Number 9007199254740993", uid.Load())
+	assert.NotEmpty(t, resp.Header.Get("Set-Cookie"), "the token was refreshed")
+}
+
+func TestHasNumber(t *testing.T) {
+	tbl := []struct {
+		name   string
+		claims token.Claims
+		want   bool
+	}{
+		{name: "no user", claims: token.Claims{}},
+		{name: "no number", claims: token.Claims{User: &token.User{Attributes: map[string]any{"a": 1.0, "b": []any{"x"}}}}},
+		{name: "number", claims: token.Claims{User: &token.User{Attributes: map[string]any{"a": json.Number("1")}}}, want: true},
+		{name: "in a list", claims: token.Claims{User: &token.User{Attributes: map[string]any{"a": []any{"x", json.Number("1")}}}},
+			want: true},
+		{name: "in a map", claims: token.Claims{User: &token.User{Attributes: map[string]any{"a": map[string]any{"b": json.Number("1")}}}},
+			want: true},
+	}
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, hasNumber(tt.claims))
+		})
+	}
+}
+
+// numberTokenService reads the claims of the JWT cookie with json.Number for numbers, as a TokenService
+// parsing with jwt's UseJSONNumber does. It skips the signature and XSRF checks, which the test does not need
+type numberTokenService struct{ *token.Service }
+
+func (s numberTokenService) Get(r *http.Request) (token.Claims, string, error) {
+	cookie, err := r.Cookie("JWT")
+	if err != nil {
+		return token.Claims{}, "", err
+	}
+	parts := strings.Split(cookie.Value, ".")
+	if len(parts) != 3 {
+		return token.Claims{}, "", errors.New("not a jwt")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return token.Claims{}, "", err
+	}
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.UseNumber()
+	claims := token.Claims{}
+	if err = dec.Decode(&claims); err != nil {
+		return token.Claims{}, "", err
+	}
+	return claims, cookie.Value, nil
+}
+
+// TestAuthRefreshNested runs the auth checks twice for one request, as Auth in front of AdminOnly does. Both
+// passes refresh the same expired cookie; the response carries one JWT header, as when Set wrote it directly.
+func TestAuthRefreshNested(t *testing.T) {
+	a := makeTestAuth(t)
+	a.JWTService = token.NewService(token.Opts{
+		SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
+		TokenDuration:  time.Second,
+		CookieDuration: time.Hour * 24 * 31,
+		SendJWTHeader:  true,
+	})
+	server := httptest.NewServer(a.Auth(a.Auth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL, http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/"})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	assert.Len(t, resp.Header.Values("X-JWT"), 1)
+}
+
+// TestAuthRefreshWithoutUser covers a ClaimsUpd that drops the user of a refreshed token: the request gets
+// no user and no fresh token, and the middleware does not panic.
+func TestAuthRefreshWithoutUser(t *testing.T) {
+	for _, required := range []bool{true, false} {
+		t.Run(fmt.Sprintf("required=%v", required), func(t *testing.T) {
+			a := makeTestAuth(t)
+			a.JWTService = token.NewService(token.Opts{
+				SecretReader:   token.SecretFunc(func(string) (string, error) { return "xyz 12345", nil }),
+				TokenDuration:  time.Second,
+				CookieDuration: time.Hour * 24 * 31,
+				ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims {
+					claims.User = nil
+					return claims
+				}),
+			})
+			a.RefreshCache = newTestRefreshCache()
+			var servedUser atomic.Bool
+			server := httptest.NewServer(a.auth(required)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, err := token.GetUserInfo(r)
+				servedUser.Store(err == nil)
+				w.WriteHeader(http.StatusCreated)
+			})))
+			defer server.Close()
+
+			req, err := http.NewRequest("GET", server.URL, http.NoBody)
+			require.NoError(t, err)
+			req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/"})
+			req.Header.Add("X-XSRF-TOKEN", "random id")
+			resp, err := server.Client().Do(req)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			if required {
+				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+			} else {
+				assert.Equal(t, http.StatusCreated, resp.StatusCode)
+				assert.False(t, servedUser.Load())
+			}
+			for _, c := range resp.Cookies() {
+				assert.Empty(t, c.Value, "fresh %s cookie", c.Name)
+			}
+		})
+	}
+}
+
+// bodyJwtService writes a status and a body in Set, which a refresh must not pass on to the response
+type bodyJwtService struct {
+	*token.Service
+}
+
+func (b *bodyJwtService) Set(w http.ResponseWriter, claims token.Claims) (token.Claims, error) {
+	w.Header().Add("Vary", "Cookie")
+	w.Header().Del("X-Drop")
+	w.WriteHeader(http.StatusTeapot)
+	_, _ = w.Write([]byte("from Set"))
+	return b.Service.Set(w, claims)
+}
+
+func TestAuthRefreshPassesOnlySetHeaders(t *testing.T) {
+	a := makeTestAuth(t)
+	a.JWTService = &bodyJwtService{Service: a.JWTService.(*token.Service)}
+	mux := makeTestMux(t, &a, true)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Vary", "Origin") // as a middleware in front of Auth would
+		w.Header().Set("X-Drop", "1")
+		mux.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired, HttpOnly: true, Path: "/"})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusCreated, resp.StatusCode, "status comes from the handler")
+	assert.Empty(t, string(body), "body comes from the handler")
+	cookies := map[string]string{}
+	for _, c := range resp.Cookies() {
+		cookies[c.Name] = c.Value
+	}
+	assert.NotEmpty(t, cookies["JWT"], "refreshed token cookie")
+	assert.NotEmpty(t, cookies["XSRF-TOKEN"], "refreshed XSRF cookie")
+	assert.Equal(t, []string{"Origin", "Cookie"}, resp.Header.Values("Vary"), "Set adds to the live headers")
+	assert.Empty(t, resp.Header.Get("X-Drop"), "Set deletes from the live headers")
 }
 
 type badJwtService struct {

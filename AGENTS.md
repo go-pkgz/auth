@@ -45,3 +45,7 @@
 - When reproducing CI lint, use the pinned `v2.15.0` command above, not the globally installed `golangci-lint` binary unless its version matches CI.
 - Many tests bind fixed localhost ports: 8089 and 18084 (dev provider) in `auth_test.go`, and ports from 8691-8696 and 8961-8998 in the `provider/` packages. `-p 1` serialises the packages of one `go test` run only; these tests still fail while another process holds one of those ports. The dev and custom server provider tests take their ports from the kernel.
 - `go test ./...` in the root includes Mongo tests only when `ENABLE_MONGO_TESTS=true`; without it, CI-only Mongo coverage may not run locally.
+
+## Release
+
+- When both modules are released, tag and release v1 (`v1.x.y`) first and v2 (`v2.x.y`) after it, so that GitHub marks the v2 release as the latest.
