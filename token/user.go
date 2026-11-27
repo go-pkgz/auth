@@ -88,13 +88,24 @@ func (u *User) IsPaidSub() bool {
 	return u.BoolAttr(paidSubscriberAttr)
 }
 
-// SliceAttr gets slice attribute
+// SliceAttr gets slice attribute. A token read back holds the list as []any; it is returned only when
+// every element is a string, otherwise the result is empty.
 func (u *User) SliceAttr(key string) []string {
-	r, ok := u.Attributes[key].([]string)
-	if !ok {
-		return []string{}
+	switch v := u.Attributes[key].(type) {
+	case []string:
+		return v
+	case []any:
+		res := make([]string, 0, len(v))
+		for _, e := range v {
+			s, ok := e.(string)
+			if !ok {
+				return []string{}
+			}
+			res = append(res, s)
+		}
+		return res
 	}
-	return r
+	return []string{}
 }
 
 // SetSliceAttr sets slice attribute for given key
