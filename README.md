@@ -537,7 +537,7 @@ There are several ways to adjust functionality of the library:
 
 1. `SecretReader` - interface with a single method `Get(aud string) (string, error)` to return the secret used for JWT signing and verification. Per-site secrets need `Opts.AudSecrets: true`; without it the reader is called with `"ignore"` when a token is verified, so it must return one secret for every site.
 1. `ClaimsUpdater` - interface with `Update(claims Claims) Claims` method. This is the primary way to alter a token at login time and add any attributes, set ip, email, admin status, roles and so on. `Update` is also called for the handshake and confirmation tokens, where `claims.User` is nil, so check it before use.
-1. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on **each request** wrapped with `Auth` middleware. This will be the place for special logic to reject some tokens or users.
+1. `Validator` - interface with `Validate(token string, claims Claims) bool` method. This is post-token hook and will be called on **each request** wrapped with `Auth` middleware. This will be the place for special logic to reject some tokens or users. When the middleware refreshes an expired token, `Validate` is called on the claims as sent and again on the refreshed claims, which `ClaimsUpdater` has seen, with the token string as sent both times.
 1. `UserUpdater` - interface with `Update(claims token.User) token.User` method.  This method will be called on **each request** wrapped with `UpdateUser` middleware. This will be the place for special logic modify User Info in request context. [Example of usage.](https://github.com/go-pkgz/auth/blob/19c1b6d26608494955a4480f8f6165af85b1deab/_example/main.go#L189)
 
 All of the interfaces above have corresponding Func adapters - `SecretFunc`, `ClaimsUpdFunc`, `ValidatorFunc` and `UserUpdFunc`.
@@ -572,6 +572,8 @@ Restricting some users or some tokens is two step process:
 
 The process can be simplified by doing all checks directly in `Validator`, but depends on particular case such solution
 can be too expensive because `Validator` runs on each request as a part of auth middleware. In contrast, `ClaimsUpdater` called on token creation/refresh only.
+
+A block set by `ClaimsUpdater` applies from the next refresh of the user's token: the middleware passes the refreshed claims to the `Validator` before it writes the new cookies, so the request that carries the expired cookie token gets no user (`Auth` refuses it with 401, or with what `Opts.ErrorHandler` answers, and `Trace` serves it anonymously) and its cookies are cleared. That is at most one token lifetime after the block, see [Token lifetime](#token-lifetime). With `Opts.RefreshCache`, claims refreshed before the block are served from the cache for the same expired token while the cache keeps them.
 
 ### Linking an anonymous user after login
 
@@ -716,7 +718,7 @@ A future change is likely to add a separate bind option (`CustomServerOpt.BindAd
 
 ### Token lifetime
 
-`Opts.TokenDuration` is the lifetime of a JWT the library issues through `token.Service.Set` (logins and refreshes) without an explicit expiry, 15 minutes by default. A token signed directly with `TokenService().Token` gets no expiry unless `ExpiresAt` is set, and v2 accepts such a token from the header or the query without limit; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default. Reissuing a persistent cookie on a refresh starts its full `CookieDuration` again, so `CookieDuration` limits idle time, not the age of a session. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed.
+`Opts.TokenDuration` is the lifetime of a JWT the library issues through `token.Service.Set` (logins and refreshes) without an explicit expiry, 15 minutes by default. A token signed directly with `TokenService().Token` gets no expiry unless `ExpiresAt` is set, and v2 accepts such a token from the header or the query without limit; a Telegram login sets an explicit 30-minute expiry on its token, whatever `TokenDuration` is. `Opts.CookieDuration` is the lifetime of the cookie that carries the token, 31 days by default. Reissuing a persistent cookie on a refresh starts its full `CookieDuration` again, so `CookieDuration` limits idle time, not the age of a session. A token read from the cookie that has expired is refreshed on the next request while the cookie lives; a token from the header or the query is not refreshed. `Opts.RefreshCache` keeps refreshed claims keyed by the expired token, so a request carrying an expired token that was already refreshed takes the claims from the cache instead of refreshing it again; requests that arrive before the first refresh is cached each refresh. A request served from the cache gets no new cookies, the `Validator` checks the cached claims again, and claims it refuses are not cached.
 
 ### Other ways to authenticate
 

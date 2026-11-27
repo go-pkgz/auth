@@ -139,6 +139,12 @@ func NewService(opts Opts) *Service {
 
 // Token makes token with claims
 func (j *Service) Token(claims Claims) (string, error) {
+	tokenString, _, err := j.token(claims)
+	return tokenString, err
+}
+
+// token makes token with claims and returns it with the claims it was signed with, after ClaimsUpd
+func (j *Service) token(claims Claims) (string, Claims, error) {
 
 	// make token for allowed aud values only, rejects others
 
@@ -150,23 +156,23 @@ func (j *Service) Token(claims Claims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	if j.SecretReader == nil {
-		return "", fmt.Errorf("secret reader not defined")
+		return "", Claims{}, fmt.Errorf("secret reader not defined")
 	}
 
 	if err := j.checkAuds(&claims, j.AudienceReader); err != nil {
-		return "", fmt.Errorf("aud rejected: %w", err)
+		return "", Claims{}, fmt.Errorf("aud rejected: %w", err)
 	}
 
 	secret, err := j.SecretReader.Get(claims.Audience) // get secret via consumer defined SecretReader
 	if err != nil {
-		return "", fmt.Errorf("can't get secret: %w", err)
+		return "", Claims{}, fmt.Errorf("can't get secret: %w", err)
 	}
 
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
-		return "", fmt.Errorf("can't sign token: %w", err)
+		return "", Claims{}, fmt.Errorf("can't sign token: %w", err)
 	}
-	return tokenString, nil
+	return tokenString, claims, nil
 }
 
 // Parse token string and verify. Not checking for expiration
@@ -250,7 +256,8 @@ func (j *Service) validate(claims *Claims) error {
 // response header when SendJWTHeader is enabled. Expiration is filled in from
 // j.TokenDuration if claims.ExpiresAt is zero. The cookie is session-only (MaxAge 0)
 // when claims.SessionOnly is true or claims contain a Handshake; otherwise it lasts
-// j.CookieDuration.
+// j.CookieDuration. The cookies and the returned claims are those the token was signed
+// with, after ClaimsUpd.
 func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 	if claims.ExpiresAt == 0 {
 		claims.ExpiresAt = time.Now().Add(j.TokenDuration).Unix()
@@ -264,7 +271,7 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 		claims.IssuedAt = time.Now().Unix()
 	}
 
-	tokenString, err := j.Token(claims)
+	tokenString, claims, err := j.token(claims)
 	if err != nil {
 		return Claims{}, fmt.Errorf("failed to make token token: %w", err)
 	}
@@ -455,7 +462,9 @@ func (f ClaimsUpdFunc) Update(claims Claims) Claims {
 }
 
 // Validator defines interface to accept o reject claims with consumer defined logic
-// It works with valid token and allows to reject some, based on token match or user's fields
+// It works with valid token and allows to reject some, based on token match or user's fields.
+// When the middleware refreshes an expired token it calls Validate twice, on the claims as sent and on
+// the refreshed claims, which ClaimsUpd has seen; token is the token string as sent both times
 type Validator interface {
 	Validate(token string, claims Claims) bool
 }
