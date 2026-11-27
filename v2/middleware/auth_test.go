@@ -358,10 +358,44 @@ func TestAuthRefreshCacheExpiredEntry(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	assert.Equal(t, int32(1), updates.Load())
 	assert.Empty(t, resp.Header.Get("X-JWT"))
+	reset := map[string]bool{}
 	for _, c := range resp.Cookies() {
 		assert.Empty(t, c.Value, c.Name)
 		assert.Negative(t, c.MaxAge, c.Name)
+		reset[c.Name] = true
 	}
+	assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, reset)
+}
+
+func TestAuthRefreshCacheUnreadableEntry(t *testing.T) {
+	a := makeTestAuth(t)
+	cached, err := a.JWTService.(*token.Service).Parse(testJwtExpired)
+	require.NoError(t, err)
+	cached.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Hour))
+	cached.User.Attributes = map[string]any{"ch": make(chan int)}
+	cache := newTestRefreshCache()
+	cache.Set(testJwtExpired, cached)
+	a.RefreshCache = cache
+	server := httptest.NewServer(makeTestMux(t, &a, true))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL+"/auth", http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "JWT", Value: testJwtExpired})
+	req.Header.Add("X-XSRF-TOKEN", "random id")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&cache.hits))
+	reset := map[string]bool{}
+	for _, c := range resp.Cookies() {
+		assert.Empty(t, c.Value, c.Name)
+		assert.Negative(t, c.MaxAge, c.Name)
+		reset[c.Name] = true
+	}
+	assert.Equal(t, map[string]bool{"JWT": true, "XSRF-TOKEN": true}, reset)
 }
 
 // TestAuthRefreshValidatesRefreshedClaims covers a block that ClaimsUpd adds when an expired token is
