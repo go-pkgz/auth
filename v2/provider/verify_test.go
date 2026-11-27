@@ -333,6 +333,46 @@ func TestVerifyHandler_LoginUserNameWithSeparator(t *testing.T) {
 	assert.Equal(t, "test_"+token.HashID(sha1.New(), "blah@user.com"), u.ID)
 }
 
+// regression: a 40-hex address skipped hashing and got the id of the user whose address it is the sha1 of.
+func TestVerifyHandler_LoginHashesHexAddress(t *testing.T) {
+	const address = "blah@user.com"
+	hexAddress := fmt.Sprintf("%x", sha1.Sum([]byte(address))) // the hash part of the id of address
+	emailer := mockSender{}
+	e := VerifyHandler{
+		ProviderName: "test",
+		TokenService: token.NewService(token.Opts{
+			SecretReader:   token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+			TokenDuration:  time.Hour,
+			CookieDuration: time.Hour * 24 * 31,
+		}),
+		Issuer:   "iss-test",
+		L:        logger.NoOp,
+		Sender:   SenderFunc(emailer.Send),
+		Template: "token:{{.Token}}",
+	}
+
+	login := func(addr string) token.User {
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/login?address="+url.QueryEscape(addr)+"&user=bob&site=remark42", http.NoBody)
+		require.NoError(t, err)
+		e.LoginHandler(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		rr = httptest.NewRecorder()
+		req, err = http.NewRequest("GET", "/login?token="+strings.TrimPrefix(emailer.text, "token:"), http.NoBody)
+		require.NoError(t, err)
+		e.LoginHandler(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		u := token.User{}
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &u))
+		return u
+	}
+
+	assert.Equal(t, "test_"+hexAddress, login(address).ID)
+	hexUser := login(hexAddress)
+	assert.NotEqual(t, "test_"+hexAddress, hexUser.ID, "a 40-hex address must not get the id of the address it hashes")
+	assert.Equal(t, fmt.Sprintf("test_%x", sha1.Sum([]byte(hexAddress))), hexUser.ID)
+}
+
 // TestVerifyHandler_LoginRejectsTokensItDidNotIssue covers tokens signed with the same secret that
 // did not come from this provider's confirmation step. An application can mint its own handshake
 // tokens of the same user::address shape for links it mails, and a session token carries no

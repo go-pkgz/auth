@@ -108,7 +108,7 @@ func (a *linkApp) cookieTokenOnly(r *http.Request) bool {
 // default mapper, a custom MapUserFn, AddCustomHandler and a ClaimsUpd rewriting the id may not keep.
 func (p *pendingLink) accepts(userID string) bool {
 	if p.provider == linkVerifProvider {
-		return userID == linkVerifProvider+"_"+token.HashID(sha1.New(), p.address) //nolint:gosec
+		return userID == emailID(p.address)
 	}
 	return providerOf(userID) == p.provider
 }
@@ -350,8 +350,9 @@ func (b *browser) openPasswordLink(name string) {
 	require.Equal(b.t, http.StatusOK, code, body)
 }
 
-func emailID(address string) string { //nolint:gosec
-	return linkVerifProvider + "_" + token.HashID(sha1.New(), address)
+// emailID is the user id the verify provider gives the address: its name and the hex sha1 of the address
+func emailID(address string) string {
+	return linkVerifProvider + "_" + fmt.Sprintf("%x", sha1.Sum([]byte(address)))
 }
 
 func emailLink(address string) url.Values {

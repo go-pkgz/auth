@@ -105,7 +105,10 @@ func (u *User) SetSliceAttr(key string, val []string) {
 	u.Attributes[key] = val
 }
 
-// HashID tries to hash val with hash.Hash and fallback to crc if needed
+// HashID tries to hash val with hash.Hash and fallback to crc if needed.
+// A val of exactly 40 hex characters is returned unchanged, as already hashed, so HashID suits values the
+// app or the provider assigns. A value the user chooses, such as a login name or an address, could spell
+// the hash of another user's value and get that user's id; hash it with plain sha1 instead.
 func HashID(h hash.Hash, val string) string {
 
 	if reValidSha.MatchString(val) {

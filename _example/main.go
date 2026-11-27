@@ -170,7 +170,7 @@ func main() {
 				return token.User{} // no id in the response, the login is refused
 			}
 			userInfo := token.User{
-				ID:   "bitbucket_" + token.HashID(sha1.New(), username),
+				ID:   "bitbucket_" + fmt.Sprintf("%x", sha1.Sum([]byte(username))),
 				Name: data.Value("nickname"),
 			}
 			return userInfo
