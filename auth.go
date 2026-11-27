@@ -81,8 +81,10 @@ type Opts struct {
 	// "/auth" or "/api/v1/auth". When set, the handler answers only <path>/list, <path>/logout, <path>/user,
 	// <path>/status and <path>/<provider>/<action>, so a middleware in front of it that goes by the path
 	// sees no made-up paths. Any other path gets 404, a route element with an escape in it included, and a
-	// provider name that is not registered 400. Empty (the default) takes the route from the last two elements of
-	// any path.
+	// provider name that is not registered 400. The path is compared as written, so keep its segments to ASCII
+	// letters, digits and "-._~": a segment with other characters can get 404, as clients escape them
+	// differently, and one that has to be escaped in a URL, such as "café", always does. Empty (the default)
+	// takes the route from the last two elements of any path.
 	AuthRoutePath string
 
 	// AllowedRedirectHosts lists hostnames accepted in the "from" query
@@ -311,7 +313,9 @@ func (s *Service) Handlers() (authHandler, avatarHandler http.Handler) {
 // "<path>/list" gives an empty provider, "<path>/github/login" gives github and login. The route elements
 // are read from the escaped path, as chi and http.ServeMux see them, and an element with any escape is
 // refused: provider names and actions never need one, and a router keeps "direct%2Flogin" in one element
-// and may not match "%64irect" with "direct". ok is false for a path outside AuthRoutePath, with fewer or
+// and may not match "%64irect" with "direct". A RawPath that is not a valid escaping of Path is refused as
+// well: EscapedPath then rebuilds the path from the decoded Path, where "%6Cogin" reads as "login", while a
+// router matching on RawPath saw another path. ok is false for a path outside AuthRoutePath, with fewer or
 // more route elements, or with an empty or escaped one
 func (s *Service) routeUnder(r *http.Request) (provName, action string, ok bool) {
 	routePath := strings.TrimSuffix(s.opts.AuthRoutePath, "/")
@@ -319,16 +323,16 @@ func (s *Service) routeUnder(r *http.Request) (provName, action string, ok bool)
 		routePath = "/" + routePath
 	}
 	prefix := strings.Split(strings.TrimSuffix(routePath, "/"), "/")
-	elems := strings.Split(r.URL.EscapedPath(), "/")
+	escaped := r.URL.EscapedPath()
+	if r.URL.RawPath != "" && r.URL.RawPath != escaped {
+		return "", "", false
+	}
+	elems := strings.Split(escaped, "/")
 	if len(elems) <= len(prefix) || len(elems) > len(prefix)+2 {
 		return "", "", false
 	}
-	// each mount element is compared in the spelling browsers send: "!", "'", "(", ")", "*", "[" and "]" as
-	// written, other characters as Go escapes them, so "café(x)" is "caf%C3%A9(x)". Other escapes are refused,
-	// "%61" for "a" and also "%28" for "(", which Go's http.Client sends for an element that needs an escape
-	// as well, so a Go client writes such an element in the request URL in the spelling above
-	for i, want := range prefix {
-		if elems[i] != pathSubDelims.Replace((&url.URL{Path: want}).EscapedPath()) {
+	for i, want := range prefix { // as written, so "/%61uth" is not "/auth"
+		if elems[i] != want {
 			return "", "", false
 		}
 	}
@@ -343,10 +347,6 @@ func (s *Service) routeUnder(r *http.Request) (provName, action string, ok bool)
 	}
 	return route[0], route[1], true
 }
-
-// pathSubDelims undoes the escapes url.URL.EscapedPath writes for the characters a path carries as they are,
-// as browsers send them
-var pathSubDelims = strings.NewReplacer("%21", "!", "%27", "'", "%28", "(", "%29", ")", "%2A", "*", "%5B", "[", "%5D", "]")
 
 // isRegistered reports whether a provider of that name is registered
 func (s *Service) isRegistered(name string) bool {

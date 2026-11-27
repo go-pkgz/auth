@@ -758,7 +758,11 @@ func TestHandlersAuthRoutePath(t *testing.T) {
 	mounts := []struct {
 		name, routePath, base string
 		mount                 string // the mux pattern without the trailing slash, base when empty
-		strip                 bool
+		strip                 bool   // mounted under http.StripPrefix of the mount
+		stripSlash            bool   // with strip, the prefix stripped is the mount with its trailing slash
+		trimPath              string // mounted behind a middleware that trims this from Path and leaves RawPath
+		raw                   bool   // requests go to the handler as written, a literal UTF-8 base included
+		refused               bool   // every path gets 404
 	}{
 		{name: "no route path", base: "/auth"},
 		{name: "route path", routePath: "/auth", base: "/auth"},
@@ -766,11 +770,15 @@ func TestHandlersAuthRoutePath(t *testing.T) {
 		{name: "nested route path", routePath: "/api/v1/auth", base: "/api/v1/auth"},
 		{name: "route path without leading slash", routePath: "auth", base: "/auth"},
 		// the base is sent as written, so the escapes in the paths below reach the server
-		{name: "route path that needs escaping", routePath: "/café", base: "/caf%C3%A9", mount: "/café"},
+		{name: "route path that needs escaping", routePath: "/café", base: "/caf%C3%A9", mount: "/café", refused: true},
+		{name: "route path that needs escaping, sent as literal UTF-8", routePath: "/café", base: "/café", raw: true,
+			refused: true},
 		{name: "route path with a comma", routePath: "/a,b", base: "/a,b"},
 		{name: "route path with parentheses", routePath: "/a(b)", base: "/a(b)"}, // sent as written, not as %28 and %29
-		{name: "route path with parentheses that needs escaping", routePath: "/café(x)", base: "/caf%C3%A9(x)", mount: "/café(x)"},
+		{name: "route path behind a middleware that trims Path only", routePath: "/auth", base: "/api/auth", trimPath: "/api"},
 		{name: "root route path under StripPrefix", routePath: "/", base: "/auth", strip: true},
+		{name: "root route path under StripPrefix with a trailing slash", routePath: "/", base: "/auth", strip: true,
+			stripSlash: true, refused: true},
 	}
 	paths := []struct {
 		path                string
@@ -795,6 +803,7 @@ func TestHandlersAuthRoutePath(t *testing.T) {
 		{path: "/x%2Fdirect/login?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
 		{path: "/%64irect/login?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
 		{path: "/direct/%6cogin?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/direct/%6Cogin?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
 	}
 
 	for _, m := range mounts {
@@ -812,39 +821,54 @@ func TestHandlersAuthRoutePath(t *testing.T) {
 				mount = m.mount
 			}
 			mux := http.NewServeMux()
-			if m.strip {
+			switch {
+			case m.strip && m.stripSlash:
+				mux.Handle(mount+"/", http.StripPrefix(mount+"/", authRoute))
+			case m.strip:
 				mux.Handle(mount+"/", http.StripPrefix(mount, authRoute))
-			} else {
+			case m.trimPath != "":
+				mux.Handle(mount+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					r2 := r.Clone(r.Context())
+					r2.URL.Path = strings.TrimPrefix(r.URL.Path, m.trimPath)
+					authRoute.ServeHTTP(w, r2)
+				}))
+			default:
 				mux.Handle(mount+"/", authRoute)
 			}
 			mux.Handle("/other/", authRoute)
 			server := httptest.NewServer(mux)
 			defer server.Close()
-
-			for _, p := range paths {
-				resp, err := server.Client().Get(server.URL + m.base + p.path)
+			get := func(target string) int {
+				if m.raw { // an http.Client would send the decoded path escaped again
+					rec := httptest.NewRecorder()
+					authRoute.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, http.NoBody))
+					return rec.Code
+				}
+				resp, err := server.Client().Get(server.URL + target)
 				require.NoError(t, err)
 				require.NoError(t, resp.Body.Close())
+				return resp.StatusCode
+			}
+
+			for _, p := range paths {
 				want := p.oldCode
-				if m.routePath != "" {
+				switch {
+				case m.refused:
+					want = http.StatusNotFound
+				case m.routePath != "":
 					want = p.strictCode
 				}
-				assert.Equal(t, want, resp.StatusCode, "%s%s", m.base, p.path)
+				assert.Equal(t, want, get(m.base+p.path), "%s%s", m.base, p.path)
 			}
 
 			// another spelling of the route path is not the route path
 			if m.routePath != "" && !m.strip {
-				resp, err := server.Client().Get(server.URL + strings.Replace(m.base, "a", "%61", 1) + "/list")
-				require.NoError(t, err)
-				require.NoError(t, resp.Body.Close())
-				assert.Equal(t, http.StatusNotFound, resp.StatusCode, "escaped letter in %s", m.base)
+				assert.Equal(t, http.StatusNotFound, get(strings.Replace(m.base, "a", "%61", 1)+"/list"), "escaped letter in %s", m.base)
 			}
 			// a parenthesis of the route path counts only as written
 			if strings.Contains(m.base, "(") {
-				resp, err := server.Client().Get(server.URL + strings.ReplaceAll(strings.ReplaceAll(m.base, "(", "%28"), ")", "%29") + "/list")
-				require.NoError(t, err)
-				require.NoError(t, resp.Body.Close())
-				assert.Equal(t, http.StatusNotFound, resp.StatusCode, "escaped parentheses in %s", m.base)
+				escaped := strings.ReplaceAll(strings.ReplaceAll(m.base, "(", "%28"), ")", "%29")
+				assert.Equal(t, http.StatusNotFound, get(escaped+"/list"), "escaped parentheses in %s", m.base)
 			}
 
 			// under StripPrefix the mount path itself reaches the handler as an empty path
