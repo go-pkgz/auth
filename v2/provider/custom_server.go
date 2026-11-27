@@ -26,7 +26,8 @@ type CustomHandlerOpt struct {
 	InfoURL  string
 	// MapUserFn converts the response from InfoURL to a user. It has to return an empty ID when the response
 	// has no user id, such a login is refused. Check the id before hashing it: a prefix plus a hash of
-	// an empty value is not an empty ID and maps every such login to the same user.
+	// an empty value is not an empty ID and maps every such login to the same user. An empty ID is also
+	// the way to refuse a user the app does not accept; the callback answers 503 and issues no session.
 	MapUserFn         func(UserData, []byte) token.User
 	BearerTokenHookFn BearerTokenHook
 	Scopes            []string
