@@ -757,6 +757,8 @@ func TestHandlersAuthRoutePath(t *testing.T) {
 		{name: "route path with a comma", routePath: "/a,b", base: "/a,b"},
 		{name: "route path with parentheses", routePath: "/a(b)", base: "/a(b)"}, // sent as written, not as %28 and %29
 		{name: "route path behind a middleware that trims Path only", routePath: "/auth", base: "/api/auth", trimPath: "/api"},
+		{name: "route path behind a middleware that trims Path only, prefix with parentheses", routePath: "/auth",
+			base: "/api(v1)/auth", trimPath: "/api(v1)", refused: true}, // RawPath keeps "(", so it never matches Path
 		{name: "root route path under StripPrefix", routePath: "/", base: "/auth", strip: true},
 		{name: "root route path under StripPrefix with a trailing slash", routePath: "/", base: "/auth", strip: true,
 			stripSlash: true, refused: true},
@@ -847,7 +849,7 @@ func TestHandlersAuthRoutePath(t *testing.T) {
 				assert.Equal(t, http.StatusNotFound, get(strings.Replace(m.base, "a", "%61", 1)+"/list"), "escaped letter in %s", m.base)
 			}
 			// a parenthesis of the route path counts only as written
-			if strings.Contains(m.base, "(") {
+			if strings.Contains(m.routePath, "(") {
 				escaped := strings.ReplaceAll(strings.ReplaceAll(m.base, "(", "%28"), ")", "%29")
 				assert.Equal(t, http.StatusNotFound, get(escaped+"/list"), "escaped parentheses in %s", m.base)
 			}

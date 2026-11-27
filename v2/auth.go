@@ -83,8 +83,10 @@ type Opts struct {
 	// sees no made-up paths. Any other path gets 404, a route element with an escape in it included, and a
 	// provider name that is not registered 400. The path is compared as written, so keep its segments to ASCII
 	// letters, digits and "-._~": a segment with other characters can get 404, as clients escape them
-	// differently, and one that has to be escaped in a URL, such as "café", always does. Empty (the default)
-	// takes the route from the last two elements of any path.
+	// differently, and one that has to be escaped in a URL, such as "café", always does. A middleware in front
+	// that removes a prefix has to trim RawPath along with Path, as http.StripPrefix does; otherwise a request
+	// whose removed part carries a character such as "(" or "!" unescaped gets 404. Empty (the default) takes
+	// the route from the last two elements of any path.
 	AuthRoutePath string
 
 	// AllowedRedirectHosts lists hostnames accepted in the "from" query
