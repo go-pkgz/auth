@@ -201,15 +201,20 @@ var errRefreshRejected = errors.New("refreshed claims rejected")
 // the request, before the new cookies reach w. Refused claims are neither written nor cached
 func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.Claims, tkn string) (token.Claims, error) {
 
-	// cache refreshed claims for given token in order to eliminate multiple refreshes for concurrent requests
+	// cache refreshed claims for given token in order to eliminate multiple refreshes for concurrent requests.
+	// a copy per request, as UpdateUser and handlers change user attributes; an expired entry is refreshed again
 	if a.RefreshCache != nil {
-		if c, ok := a.RefreshCache.Get(tkn); ok {
-			// already in cache
-			cached := c.(token.Claims)
-			if a.Validator != nil && !a.Validator.Validate(tkn, cached) {
-				return token.Claims{}, errRefreshRejected
+		if v, ok := a.RefreshCache.Get(tkn); ok {
+			if stored := v.(token.Claims); !a.JWTService.IsExpired(stored) {
+				cached, err := decodedClaims(stored, hasNumber(stored))
+				if err != nil {
+					return token.Claims{}, fmt.Errorf("can't read cached claims: %w", err)
+				}
+				if a.Validator != nil && !a.Validator.Validate(tkn, cached) {
+					return token.Claims{}, errRefreshRejected
+				}
+				return cached, nil
 			}
-			return cached, nil
 		}
 	}
 
@@ -234,6 +239,13 @@ func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.
 	if a.Validator != nil && !a.Validator.Validate(tkn, c) {
 		return token.Claims{}, errRefreshRejected
 	}
+	var stored token.Claims
+	if a.RefreshCache != nil {
+		// the cache keeps a copy apart from the one this request goes on with
+		if stored, err = decodedClaims(c, numbers); err != nil {
+			return token.Claims{}, fmt.Errorf("can't copy refreshed claims: %w", err)
+		}
+	}
 	// the headers as Set left them, as if it had written to w
 	for k := range w.Header() {
 		if _, ok := hw.header[k]; !ok {
@@ -243,7 +255,7 @@ func (a *Authenticator) refreshExpiredToken(w http.ResponseWriter, claims token.
 	maps.Copy(w.Header(), hw.header)
 
 	if a.RefreshCache != nil {
-		a.RefreshCache.Set(tkn, c)
+		a.RefreshCache.Set(tkn, stored)
 	}
 
 	a.Logf("[DEBUG] token refreshed for %s", claims.User.ID)
