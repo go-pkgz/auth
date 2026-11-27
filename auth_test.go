@@ -384,6 +384,25 @@ func TestNewServiceAvatarIdenticonSize(t *testing.T) {
 	assert.Equal(t, 48, svc.avatarProxy.IdenticonSize, "Opts.AvatarIdenticonSize has to reach the avatar proxy")
 }
 
+func TestAddCustomProviderAvatarSaver(t *testing.T) {
+	svc := NewService(Opts{AvatarStore: avatar.NewNoOp(), URL: "http://127.0.0.1:8089"})
+	saver := &customAvatarSaver{}
+	svc.AddCustomProvider("own", Client{"cid", "csecret"}, provider.CustomHandlerOpt{AvatarSaver: saver})
+	svc.AddCustomProvider("proxy", Client{"cid", "csecret"}, provider.CustomHandlerOpt{})
+
+	p, err := svc.Provider("own")
+	require.NoError(t, err)
+	assert.Same(t, saver, p.Provider.(provider.Oauth2Handler).AvatarSaver, "the provider's own saver")
+
+	p, err = svc.Provider("proxy")
+	require.NoError(t, err)
+	assert.Same(t, svc.AvatarProxy(), p.Provider.(provider.Oauth2Handler).AvatarSaver, "the service's avatar proxy")
+}
+
+type customAvatarSaver struct{}
+
+func (customAvatarSaver) Put(token.User, *http.Client) (string, error) { return "", nil }
+
 func TestIntegrationList(t *testing.T) {
 	_, teardown := prepService(t, func(svc *Service) {
 		svc.AddProvider("github", "cid", "csec")
@@ -711,6 +730,152 @@ func TestVerifProvider(t *testing.T) {
 	assert.Equal(t, 86400, resp.Cookies()[0].MaxAge)
 	assert.Equal(t, "XSRF-TOKEN", resp.Cookies()[1].Name)
 	assert.NotEqual(t, "", resp.Cookies()[1].Value, "xsrf cookie set")
+}
+
+// TestHandlersAuthRoutePath checks which paths the auth routes answer. With Opts.AuthRoutePath a path with more
+// or fewer elements under it gets 404, so a middleware in front that goes by the path sees one path per
+// endpoint. Without it the route is the end of the path, as before.
+func TestHandlersAuthRoutePath(t *testing.T) {
+	mounts := []struct {
+		name, routePath, base string
+		mount                 string // the mux pattern without the trailing slash, base when empty
+		strip                 bool   // mounted under http.StripPrefix of the mount
+		stripSlash            bool   // with strip, the prefix stripped is the mount with its trailing slash
+		trimPath              string // mounted behind a middleware that trims this from Path and leaves RawPath
+		raw                   bool   // requests go to the handler as written, a literal UTF-8 base included
+		refused               bool   // every path gets 404
+	}{
+		{name: "no route path", base: "/auth"},
+		{name: "route path", routePath: "/auth", base: "/auth"},
+		{name: "route path with trailing slash", routePath: "/auth/", base: "/auth"},
+		{name: "nested route path", routePath: "/api/v1/auth", base: "/api/v1/auth"},
+		{name: "route path without leading slash", routePath: "auth", base: "/auth"},
+		// the base is sent as written, so the escapes in the paths below reach the server
+		{name: "route path that needs escaping", routePath: "/café", base: "/caf%C3%A9", mount: "/café", refused: true},
+		{name: "route path that needs escaping, sent as literal UTF-8", routePath: "/café", base: "/café", raw: true,
+			refused: true},
+		{name: "route path with a comma", routePath: "/a,b", base: "/a,b"},
+		{name: "route path with parentheses", routePath: "/a(b)", base: "/a(b)"}, // sent as written, not as %28 and %29
+		{name: "route path behind a middleware that trims Path only", routePath: "/auth", base: "/api/auth", trimPath: "/api"},
+		{name: "route path behind a middleware that trims Path only, prefix with parentheses", routePath: "/auth",
+			base: "/api(v1)/auth", trimPath: "/api(v1)", refused: true}, // RawPath keeps "(", so it never matches Path
+		{name: "root route path under StripPrefix", routePath: "/", base: "/auth", strip: true},
+		{name: "root route path under StripPrefix with a trailing slash", routePath: "/", base: "/auth", strip: true,
+			stripSlash: true, refused: true},
+	}
+	paths := []struct {
+		path                string
+		strictCode, oldCode int
+	}{
+		{path: "/list", strictCode: http.StatusOK, oldCode: http.StatusOK},
+		{path: "/status", strictCode: http.StatusOK, oldCode: http.StatusOK},
+		{path: "/logout", strictCode: http.StatusOK, oldCode: http.StatusOK},
+		{path: "/direct/logout", strictCode: http.StatusOK, oldCode: http.StatusOK},
+		{path: "/direct/login?user=u1&passwd=p1&aud=site1", strictCode: http.StatusOK, oldCode: http.StatusOK},
+		{path: "/unknown/login", strictCode: http.StatusBadRequest, oldCode: http.StatusBadRequest},
+		{path: "/unknown/logout", strictCode: http.StatusBadRequest, oldCode: http.StatusOK},
+		{path: "/x/direct/login?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/x/y/direct/login?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/direct/status", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/x/list", strictCode: http.StatusBadRequest, oldCode: http.StatusOK},
+		{path: "/x/y/logout", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/direct/login/", strictCode: http.StatusNotFound, oldCode: http.StatusBadRequest},
+		{path: "/foo", strictCode: http.StatusNotFound, oldCode: http.StatusBadRequest},
+		{path: "/", strictCode: http.StatusNotFound, oldCode: http.StatusBadRequest},
+		{path: "/direct%2Flogin?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/x%2Fdirect/login?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/%64irect/login?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/direct/%6cogin?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+		{path: "/direct/%6Cogin?user=u1&passwd=p1&aud=site1", strictCode: http.StatusNotFound, oldCode: http.StatusOK},
+	}
+
+	for _, m := range mounts {
+		t.Run(m.name, func(t *testing.T) {
+			svc := NewService(Opts{
+				SecretReader:  token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+				URL:           "http://127.0.0.1:8089",
+				Logger:        logger.NoOp,
+				AuthRoutePath: m.routePath,
+			})
+			svc.AddDirectProvider("direct", provider.CredCheckerFunc(func(string, string) (bool, error) { return true, nil }))
+			authRoute, _ := svc.Handlers()
+			mount := m.base
+			if m.mount != "" {
+				mount = m.mount
+			}
+			mux := http.NewServeMux()
+			switch {
+			case m.strip && m.stripSlash:
+				mux.Handle(mount+"/", http.StripPrefix(mount+"/", authRoute))
+			case m.strip:
+				mux.Handle(mount+"/", http.StripPrefix(mount, authRoute))
+			case m.trimPath != "":
+				mux.Handle(mount+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					r2 := r.Clone(r.Context())
+					r2.URL.Path = strings.TrimPrefix(r.URL.Path, m.trimPath)
+					authRoute.ServeHTTP(w, r2)
+				}))
+			default:
+				mux.Handle(mount+"/", authRoute)
+			}
+			mux.Handle("/other/", authRoute)
+			server := httptest.NewServer(mux)
+			defer server.Close()
+			get := func(target string) int {
+				if m.raw { // an http.Client would send the decoded path escaped again
+					rec := httptest.NewRecorder()
+					authRoute.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, http.NoBody))
+					return rec.Code
+				}
+				resp, err := server.Client().Get(server.URL + target)
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+				return resp.StatusCode
+			}
+
+			for _, p := range paths {
+				want := p.oldCode
+				switch {
+				case m.refused:
+					want = http.StatusNotFound
+				case m.routePath != "":
+					want = p.strictCode
+				}
+				assert.Equal(t, want, get(m.base+p.path), "%s%s", m.base, p.path)
+			}
+
+			// another spelling of the route path is not the route path
+			if m.routePath != "" && !m.strip {
+				assert.Equal(t, http.StatusNotFound, get(strings.Replace(m.base, "a", "%61", 1)+"/list"), "escaped letter in %s", m.base)
+			}
+			// a parenthesis of the route path counts only as written
+			if strings.Contains(m.routePath, "(") {
+				escaped := strings.ReplaceAll(strings.ReplaceAll(m.base, "(", "%28"), ")", "%29")
+				assert.Equal(t, http.StatusNotFound, get(escaped+"/list"), "escaped parentheses in %s", m.base)
+			}
+
+			// under StripPrefix the mount path itself reaches the handler as an empty path
+			if m.strip {
+				rec := httptest.NewRecorder()
+				http.StripPrefix(m.base, authRoute).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, m.base, http.NoBody))
+				assert.Equal(t, http.StatusNotFound, rec.Code, "the mount path itself")
+			}
+
+			// a path outside the route path is not an auth route; under the root route path "other" reads
+			// as an unregistered provider
+			resp, err := server.Client().Get(server.URL + "/other/list")
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			want := http.StatusOK
+			switch {
+			case m.strip:
+				want = http.StatusBadRequest
+			case m.routePath != "":
+				want = http.StatusNotFound
+			}
+			assert.Equal(t, want, resp.StatusCode, "/other/list")
+		})
+	}
 }
 
 func TestUserAndStatusRunAuthChecks(t *testing.T) {

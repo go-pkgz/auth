@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	_ "image/png"
@@ -10,8 +11,10 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +27,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 
 	"github.com/go-pkgz/auth/v2/logger"
 	"github.com/go-pkgz/auth/v2/token"
@@ -276,4 +280,97 @@ func initGoauth2Srv(t *testing.T, clientDomain string) *goauth2.Server {
 	})
 
 	return srv
+}
+
+// recordingAvatarSaver remembers the pictures it was asked to save and answers with its own url
+type recordingAvatarSaver struct {
+	url      string
+	mu       sync.Mutex
+	pictures []string
+}
+
+func (s *recordingAvatarSaver) Put(u token.User, _ *http.Client) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pictures = append(s.pictures, u.Picture)
+	return s.url, nil
+}
+
+func (s *recordingAvatarSaver) saved() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pictures
+}
+
+func TestNewCustomAvatarSaver(t *testing.T) {
+	tbl := []struct {
+		name    string
+		own     bool
+		wantURL string
+	}{
+		{name: "saver of the provider", own: true, wantURL: "http://example.com/own.png"},
+		{name: "saver of the params", wantURL: "http://example.com/params.png"},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			login := httptest.NewUnstartedServer(nil)
+			defer login.Close()
+			loginURL := "http://" + login.Listener.Addr().String()
+
+			var oauthURL string
+			oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/authorize":
+					http.Redirect(w, r, loginURL+"/callback?code=g0ZGZmNjVmOWI&state="+url.QueryEscape(r.URL.Query().Get("state")),
+						http.StatusFound)
+				case "/access_token":
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					_, _ = w.Write([]byte(`{"access_token":"MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3","token_type":"bearer"}`))
+				case "/user":
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					_, _ = fmt.Fprintf(w, `{"id":"u1","name":"user1","picture":%q}`, oauthURL+"/pic.png")
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer oauth.Close()
+			oauthURL = oauth.URL
+
+			paramsSaver := &recordingAvatarSaver{url: "http://example.com/params.png"}
+			ownSaver := &recordingAvatarSaver{url: "http://example.com/own.png"}
+			copts := CustomHandlerOpt{
+				Endpoint:  oauth2.Endpoint{AuthURL: oauth.URL + "/authorize", TokenURL: oauth.URL + "/access_token"},
+				InfoURL:   oauth.URL + "/user",
+				MapUserFn: defaultMapUserFn,
+			}
+			if tt.own {
+				copts.AvatarSaver = ownSaver
+			}
+			jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(func(string) (string, error) { return "secret", nil }),
+				TokenDuration: time.Hour, CookieDuration: time.Hour})
+			h := NewCustom("myprov", Params{URL: loginURL, Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+				Issuer: "iss", AvatarSaver: paramsSaver, L: logger.NoOp}, copts)
+			login.Config.Handler = http.HandlerFunc(Service{Provider: h}.Handler)
+			login.Start()
+
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err)
+			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+			resp, err := client.Get(loginURL + "/login?site=remark")
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			u := token.User{}
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&u))
+			assert.Equal(t, tt.wantURL, u.Picture)
+
+			want, other := paramsSaver, ownSaver
+			if tt.own {
+				want, other = ownSaver, paramsSaver
+			}
+			assert.Equal(t, []string{oauth.URL + "/pic.png"}, want.saved())
+			assert.Empty(t, other.saved())
+		})
+	}
 }
