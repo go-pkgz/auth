@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1086,6 +1087,7 @@ func TestOauth2InfoRequestRedirect(t *testing.T) {
 	}{
 		{name: "redirect to another origin is refused", infoPath: "/to-other", wantStatus: http.StatusServiceUnavailable},
 		{name: "redirect within the origin is followed", infoPath: "/to-same", wantStatus: http.StatusOK},
+		{name: "redirect past the hop cap is refused", infoPath: "/loop?n=0", wantStatus: http.StatusServiceUnavailable},
 	}
 
 	for _, c := range cases {
@@ -1121,6 +1123,14 @@ func TestOauth2InfoRequestRedirect(t *testing.T) {
 					assert.NoError(t, err)
 				case "/to-other":
 					http.Redirect(w, r, other.URL+"/user?sig=s3cr3tsig", http.StatusFound)
+				case "/loop":
+					n, err := strconv.Atoi(r.URL.Query().Get("n"))
+					require.NoError(t, err)
+					if n < 9 {
+						http.Redirect(w, r, fmt.Sprintf("%s/loop?n=%d", oauthURL, n+1), http.StatusFound)
+						return
+					}
+					http.Redirect(w, r, oauthURL+"/user?sig=s3cr3tsig", http.StatusFound)
 				case "/to-same":
 					http.Redirect(w, r, oauthURL+"/user", http.StatusFound)
 				case "/user":
@@ -1176,9 +1186,11 @@ func TestOauth2InfoRequestRedirect(t *testing.T) {
 			defer mu.Unlock()
 			assert.NotContains(t, logs.String(), "s3cr3tsig")
 			assert.Equal(t, c.wantOther, otherAuth)
-			if c.wantStatus == http.StatusOK {
-				assert.Equal(t, "Bearer "+accessToken, sameAuth)
+			if c.wantStatus != http.StatusOK {
+				assert.Empty(t, sameAuth, "the info url's own /user is never requested")
+				return
 			}
+			assert.Equal(t, "Bearer "+accessToken, sameAuth)
 		})
 	}
 }
@@ -1209,24 +1221,23 @@ func TestOauth2InfoClientRedirectPolicy(t *testing.T) {
 		hook     func(*http.Request, []*http.Request) error
 		next     *http.Request
 		via      []*http.Request
-		wantErr  string
-		wantIs   error
+		wantErr  error
 		wantHook bool
 	}{
 		{name: "same origin", next: req("https://API.example.com:443/v2/user"), via: via},
-		{name: "another host", next: req("https://evil.example.com/user"), via: via, wantIs: http.ErrUseLastResponse},
-		{name: "another scheme", next: req("http://api.example.com/user"), via: via, wantIs: http.ErrUseLastResponse},
+		{name: "another host", next: req("https://evil.example.com/user"), via: via, wantErr: http.ErrUseLastResponse},
+		{name: "another scheme", next: req("http://api.example.com/user"), via: via, wantErr: http.ErrUseLastResponse},
 		{name: "non-ascii info host", infoURL: "https://äpi.example.com/user", next: req("https://äpi.example.com/me"),
-			via: via, wantIs: http.ErrUseLastResponse},
-		{name: "default cap", next: req("https://api.example.com/user"), via: tooMany, wantErr: "stopped after 10 redirects"},
+			via: via, wantErr: http.ErrUseLastResponse},
+		{name: "default cap", next: req("https://api.example.com/user"), via: tooMany, wantErr: http.ErrUseLastResponse},
 		{name: "hook error kept", hook: func(*http.Request, []*http.Request) error { return errHook },
-			next: req("https://api.example.com/user"), via: via, wantIs: errHook},
+			next: req("https://api.example.com/user"), via: via, wantErr: errHook},
 		{name: "hook replaces the cap", hook: func(*http.Request, []*http.Request) error { return nil },
 			next: req("https://api.example.com/user"), via: tooMany},
 		{name: "origin checked after hook rewrite", hook: rewrite, next: req("https://api.example.com/user"), via: via,
-			wantIs: http.ErrUseLastResponse, wantHook: true},
+			wantErr: http.ErrUseLastResponse, wantHook: true},
 		{name: "origin from the info url, not from via", hook: moveFirst, next: req("https://evil.example.com/user"),
-			via: []*http.Request{{URL: first}}, wantIs: http.ErrUseLastResponse, wantHook: true},
+			via: []*http.Request{{URL: first}}, wantErr: http.ErrUseLastResponse, wantHook: true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1237,14 +1248,7 @@ func TestOauth2InfoClientRedirectPolicy(t *testing.T) {
 			}
 			ic := Oauth2Handler{infoURL: infoURL}.infoClient(&http.Client{CheckRedirect: c.hook})
 			err := ic.CheckRedirect(c.next, c.via)
-			switch {
-			case c.wantIs != nil:
-				assert.ErrorIs(t, err, c.wantIs)
-			case c.wantErr != "":
-				assert.ErrorContains(t, err, c.wantErr)
-			default:
-				assert.NoError(t, err)
-			}
+			assert.True(t, err == c.wantErr, "got %v, want %v", err, c.wantErr)
 			assert.Equal(t, c.wantHook, hookCalled)
 		})
 	}

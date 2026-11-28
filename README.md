@@ -504,9 +504,13 @@ In order to add a new oauth2 provider following input is required:
 	> needs the token now gets an identicon from the default avatar proxy, and a custom `AvatarSaver`
 	> that returns that fetch error fails the login with 500. The client also has a five-second timeout per fetch attempt.
 
-	The user info request refuses a redirect off the scheme, host and port of `InfoURL`, because the
-	access token goes with every hop, and the login then fails with 503. When the user info of a host with
-	non-ASCII characters answers with a redirect, write `InfoURL` with the host in its ASCII (`xn--`) form.
+	> **Behaviour change for custom providers:** up to v1.30.1 and v2.6.1, the user info request could
+	> follow a redirect to another origin and sent the access token on each followed hop. Since the
+	> releases after those versions it
+	> refuses a redirect off the scheme, host and port of `InfoURL`, and the login fails with 503. An
+	> `http://` `InfoURL` that redirects to `https://` on the same host is one such case: write it with
+	> `https://`. When the user info of a host with non-ASCII characters answers with a redirect, write
+	> the host in its ASCII (`xn--`) form in `InfoURL` and in any absolute redirect target on that host.
 
 2.  Adds local oauth2 server user can fully customize. It uses [`github.com/go-oauth2/oauth2/v4`](https://github.com/go-oauth2/oauth2) library and example shows how to initialize the server (`initGoauth2Srv` in the [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go)) and set up a provider (the `NewCustomServer` call in `main` there).
 	*  to start local oauth2 server following options are used:

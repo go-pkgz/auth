@@ -294,9 +294,10 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 
 // infoClient returns a copy of the oauth2 client for the user info request. The oauth2 transport adds the
 // access token to every redirect hop, so the copy stops at a redirect off the scheme, host and port of the
-// user info URL and returns that redirect response, which the caller answers with 503 and logs by status
-// only, keeping a signed Location out of the log. The check runs after the client's own redirect policy,
-// which may rewrite the request. With a non-ASCII info host no redirect is followed.
+// user info URL, or past ten hops when the client has no redirect policy of its own, and returns that
+// redirect response, which the caller answers with 503 and logs by status only, keeping a signed
+// Location out of the log. The check runs after the client's own redirect policy, which may rewrite the
+// request. With a non-ASCII info host no redirect is followed.
 func (p Oauth2Handler) infoClient(authed *http.Client) *http.Client {
 	origin := ""
 	if info, err := url.Parse(p.infoURL); err == nil {
@@ -310,10 +311,7 @@ func (p Oauth2Handler) infoClient(authed *http.Client) *http.Client {
 				return err
 			}
 		}
-		if next == nil && len(via) >= 10 {
-			return fmt.Errorf("user info request stopped after %d redirects", len(via))
-		}
-		if origin == "" || urlOrigin(req.URL) != origin {
+		if (next == nil && len(via) >= 10) || origin == "" || urlOrigin(req.URL) != origin {
 			return http.ErrUseLastResponse
 		}
 		return nil
