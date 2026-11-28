@@ -20,9 +20,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      statuses: write # goveralls posts the coverage status to the commit
 
     steps:
       - name: disable and stop mono-xsp4.service (wtf?)
@@ -64,10 +61,3 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.15.0
-
-      - name: submit coverage
-        run: |
-          go install github.com/mattn/goveralls@latest
-          goveralls -service="github" -coverprofile="$GITHUB_WORKSPACE/profile.cov"
-        env:
-          COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}

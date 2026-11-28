@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -754,6 +755,22 @@ func TestTelegram_ProcessUpdateFlow(t *testing.T) {
 	}, time.Millisecond*100, time.Millisecond*10, "ProcessUpdate should not work same time as Run")
 	cancel()
 	<-runDone
+}
+
+func TestTelegram_GetUpdatesErrorKeepsPolling(t *testing.T) {
+	var calls atomic.Int32
+	m := &TelegramAPIMock{
+		GetUpdatesFunc: func(context.Context) (*telegramUpdate, error) {
+			calls.Add(1)
+			return nil, errors.New("telegram api unavailable")
+		},
+		BotInfoFunc: botInfoFunc,
+	}
+
+	_, cleanup := setupHandler(t, m)
+	t.Cleanup(cleanup)
+	require.Eventually(t, func() bool { return calls.Load() >= 2 }, 5*time.Second, time.Millisecond,
+		"polling stopped after a GetUpdates error")
 }
 
 func TestTelegram_TokenVerification(t *testing.T) {
