@@ -32,10 +32,10 @@ type CustomHandlerOpt struct {
 	BearerTokenHookFn BearerTokenHook
 	Scopes            []string
 	// AvatarSaver, when set, saves the user's picture in place of Params.AvatarSaver, which for
-	// Service.AddCustomProvider is the service's avatar proxy. The saver gets the provider's oauth2 client,
-	// which sends the user's access token with every request to any address, and the proxy fetches the
-	// picture URL of the user info with it. When users can set that URL, pass a saver that fetches with a
-	// client of its own.
+	// Service.AddCustomProvider is the service's avatar proxy. The saver gets a client that sends the user's
+	// access token only with requests to the scheme, host and port of InfoURL, and the proxy fetches the
+	// picture URL of the user info with it. A picture on any other host is fetched without the token. When
+	// users can set that URL, pass a saver that fetches with a client of its own.
 	AvatarSaver AvatarSaver
 }
 

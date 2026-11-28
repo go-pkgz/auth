@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -971,3 +972,204 @@ func (m *mockAvatarSaver) PutContent(_ string, content io.Reader) (avatarURL str
 	}
 	return "http://example.com/ava12345.png", nil
 }
+
+func TestOauth2AvatarFetchSendsTokenOnlyToInfoHost(t *testing.T) {
+	const accessToken = "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3"
+	cases := []struct {
+		name    string
+		picture func(infoHost, otherHost string) string
+		want    map[string][]string // "server path" to the Authorization headers it received
+	}{
+		{name: "picture on another host",
+			picture: func(_, other string) string { return other + "/pic" },
+			want:    map[string][]string{"other /pic": {""}}},
+		{name: "picture on the user info host",
+			picture: func(info, _ string) string { return info + "/photo" },
+			want:    map[string][]string{"info /photo": {"Bearer " + accessToken}}},
+		{name: "user info host redirects the picture to another host",
+			picture: func(info, _ string) string { return info + "/moved" },
+			want:    map[string][]string{"info /moved": {"Bearer " + accessToken}, "other /pic": {""}}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var mu sync.Mutex
+			seen := map[string][]string{}
+			record := func(server string, r *http.Request) {
+				mu.Lock()
+				defer mu.Unlock()
+				key := server + " " + r.URL.Path
+				seen[key] = append(seen[key], r.Header.Get("Authorization"))
+			}
+
+			other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				record("other", r)
+				_, err := w.Write([]byte("picture"))
+				assert.NoError(t, err)
+			}))
+			defer other.Close()
+
+			login := httptest.NewUnstartedServer(nil)
+			defer login.Close()
+			loginURL := "http://" + login.Listener.Addr().String()
+
+			var infoURL string
+			oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/login/oauth/authorize":
+					http.Redirect(w, r, loginURL+"/callback?code=g0ZGZmNjVmOWI&state="+url.QueryEscape(r.URL.Query().Get("state")),
+						http.StatusFound)
+				case "/login/oauth/access_token":
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					_, err := fmt.Fprintf(w, `{"access_token":%q,"token_type":"bearer"}`, accessToken)
+					assert.NoError(t, err)
+				case "/user":
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					_, err := fmt.Fprintf(w, `{"id":"myuser1","name":"blah","picture":%q}`, c.picture(infoURL, other.URL))
+					assert.NoError(t, err)
+				case "/photo":
+					record("info", r)
+					_, err := w.Write([]byte("picture"))
+					assert.NoError(t, err)
+				case "/moved":
+					record("info", r)
+					http.Redirect(w, r, other.URL+"/pic", http.StatusFound)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer oauth.Close()
+			infoURL = oauth.URL
+
+			prov := Oauth2Handler{
+				name: "mock",
+				endpoint: oauth2.Endpoint{
+					AuthURL:  oauth.URL + "/login/oauth/authorize",
+					TokenURL: oauth.URL + "/login/oauth/access_token",
+				},
+				infoURL: oauth.URL + "/user",
+				mapUser: func(data UserData, _ []byte) token.User {
+					return token.User{ID: "mock_" + data.Value("id"), Name: data.Value("name"), Picture: data.Value("picture")}
+				},
+			}
+			jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+				TokenDuration: time.Hour, CookieDuration: days31})
+			prov = initOauth2Handler(Params{URL: loginURL, Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+				Issuer: "remark42", AvatarSaver: fetchingAvatarSaver{}, L: logger.Std}, prov)
+			login.Config.Handler = http.HandlerFunc(Service{Provider: prov}.Handler)
+			login.Start()
+
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err)
+			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+			resp, err := client.Get(loginURL + "/login?site=remark")
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, resp.Body.Close()) }()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode, "login must succeed, got body %s", string(body))
+
+			mu.Lock()
+			defer mu.Unlock()
+			assert.Equal(t, c.want, seen)
+		})
+	}
+}
+
+func TestURLOrigin(t *testing.T) {
+	cases := []struct{ a, b string }{
+		{"https://graph.microsoft.com/v1.0/me", "https://GRAPH.microsoft.com:443/beta/me/photo/$value"},
+		{"http://127.0.0.1/user", "http://127.0.0.1:80/photo"},
+	}
+	for _, c := range cases {
+		a, b := mustParseURL(t, c.a), mustParseURL(t, c.b)
+		assert.Equal(t, urlOrigin(a), urlOrigin(b), "%s and %s", c.a, c.b)
+	}
+
+	differ := []struct{ a, b string }{
+		{"https://graph.microsoft.com/v1.0/me", "http://graph.microsoft.com/beta/me/photo/$value"},
+		{"https://graph.microsoft.com/v1.0/me", "https://graph.microsoft.com:8443/photo"},
+		{"https://api.github.com/user", "https://avatars.githubusercontent.com/u/1"},
+		{"https://example.com/user", "https://pics.example.com/u/1"},
+	}
+	for _, c := range differ {
+		a, b := mustParseURL(t, c.a), mustParseURL(t, c.b)
+		assert.NotEqual(t, urlOrigin(a), urlOrigin(b), "%s and %s", c.a, c.b)
+	}
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	return u
+}
+
+// fetchingAvatarSaver fetches the picture with the client it is given, like avatar.Proxy does
+type fetchingAvatarSaver struct{}
+
+func (fetchingAvatarSaver) Put(u token.User, client *http.Client) (avatarURL string, err error) {
+	resp, err := client.Get(u.Picture)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("picture status %s", resp.Status)
+	}
+	return "http://example.com/ava12345.png", nil
+}
+
+func TestOauth2AvatarClientTransport(t *testing.T) {
+	errRedirect := errors.New("redirect policy of the oauth2 client")
+	cases := []struct {
+		name    string
+		infoURL string
+		want    map[string]string // picture URL to the Authorization header the base transport receives
+	}{
+		{name: "token only for the info origin", infoURL: "https://graph.microsoft.com/v1.0/me",
+			want: map[string]string{
+				"https://graph.microsoft.com/beta/me/photo/$value":   "Bearer tok",
+				"https://GRAPH.microsoft.com:443/beta/me/photo":      "Bearer tok",
+				"https://graph.mİcrosoft.com/beta/me/photo":          "",
+				"http://graph.microsoft.com/beta/me/photo/$value":    "",
+				"https://avatars.githubusercontent.com/u/1?v=4":      "",
+				"https://graph.microsoft.com.example.com/photo.jpeg": "",
+			}},
+		{name: "no token for any picture with a non-ascii info host", infoURL: "https://gräph.example.com/me",
+			want: map[string]string{
+				"https://gräph.example.com/photo":        "",
+				"https://xn--grph-koa.example.com/photo": "",
+			}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := map[string]string{}
+			base := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				got[r.URL.String()] = r.Header.Get("Authorization")
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+			})
+			authed := &http.Client{
+				Transport:     &oauth2.Transport{Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "tok"}), Base: base},
+				CheckRedirect: func(*http.Request, []*http.Request) error { return errRedirect },
+			}
+			client := Oauth2Handler{infoURL: c.infoURL}.avatarClient(authed)
+			want := map[string]string{}
+			for picture, header := range c.want {
+				req, err := http.NewRequest(http.MethodGet, picture, http.NoBody)
+				require.NoError(t, err)
+				resp, err := client.Transport.RoundTrip(req)
+				require.NoError(t, err, "every request goes through the base transport of the oauth2 client")
+				require.NoError(t, resp.Body.Close())
+				want[req.URL.String()] = header
+			}
+			assert.Equal(t, want, got)
+			require.NotNil(t, client.CheckRedirect)
+			assert.ErrorIs(t, client.CheckRedirect(nil, nil), errRedirect)
+		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
