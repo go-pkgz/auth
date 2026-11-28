@@ -35,7 +35,9 @@ type CustomHandlerOpt struct {
 	// Service.AddCustomProvider is the service's avatar proxy. The saver gets a client that sends the user's
 	// access token only with requests to the scheme, host and port of InfoURL, and the proxy fetches the
 	// picture URL of the user info with it. A picture on any other host is fetched without the token. When
-	// users can set that URL, pass a saver that fetches with a client of its own.
+	// users can set that URL, pass a saver that fetches with a client of its own. A host with non-ASCII
+	// characters never gets the token, so when the picture needs it, write InfoURL and the picture URL
+	// with the host in its xn-- form.
 	AvatarSaver AvatarSaver
 }
 

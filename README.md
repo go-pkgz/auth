@@ -470,7 +470,7 @@ In order to add a new oauth2 provider following input is required:
 	* `MapUserFn` - function to convert the response from `InfoURL` to `token.User` (s. example below). It must return an empty `ID` when the response has no user id: the callback then answers 503 and issues no session. Check the id before hashing it, because a prefix plus `token.HashID` of an empty value is not an empty `ID` and maps every such login to the same user. Hash an id the user chooses, such as a login name, with plain sha1 as below: `token.HashID` returns a value of 40 hex characters unchanged, so a user whose login spells the hash of another user's login would get that user's id
 	* `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
 	* `BearerTokenHookFn` - optional, called after a successful login with the provider name, the mapped user and the provider's OAuth2 token; it is the way to keep that token for later API calls
-	* `AvatarSaver` - optional, saves the user's picture for this provider in place of the service's avatar proxy. The callback hands the saver a client that sends the user's access token only with requests to the scheme, host and port of `InfoURL`, and the avatar proxy fetches the picture URL from the user info with it; a picture on any other host is fetched without the token. When users of the provider can set that URL, pass a saver that fetches the picture with a client of its own, for example one that refuses private addresses, and stores it through `Service.AvatarProxy()`
+	* `AvatarSaver` - optional, saves the user's picture for this provider in place of the service's avatar proxy. The callback hands the saver a client that sends the user's access token only with requests to the scheme, host and port of `InfoURL`, and the avatar proxy fetches the picture URL from the user info with it; a picture on any other host is fetched without the token. When users of the provider can set that URL, pass a saver that fetches the picture with a client of its own, for example one that refuses private addresses, and stores it through `Service.AvatarProxy()`. A host with non-ASCII characters never gets the token, so when the picture needs it, write both `InfoURL` and the picture URL with the host in its ASCII (`xn--`) form
 	```go
 	c := auth.Client{
 		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
@@ -497,6 +497,13 @@ In order to add a new oauth2 provider following input is required:
 		Scopes: []string{"account"},
 	})
 	```
+
+	> **Behaviour change for custom providers:** before v1.30.1 and v2.6.1, the client handed to the
+	> avatar saver sent the user's access token with every request to any address. Since those versions
+	> it sends the token only to the scheme, host and port of `InfoURL`. A picture on another origin that
+	> needs the token now gets an identicon from the default avatar proxy, and a custom `AvatarSaver`
+	> that returns that fetch error fails the login with 500. The client also has a five-second timeout per fetch attempt.
+
 2.  Adds local oauth2 server user can fully customize. It uses [`github.com/go-oauth2/oauth2/v4`](https://github.com/go-oauth2/oauth2) library and example shows how to initialize the server (`initGoauth2Srv` in the [example](https://github.com/go-pkgz/auth/blob/master/_example/main.go)) and set up a provider (the `NewCustomServer` call in `main` there).
 	*  to start local oauth2 server following options are used:
 		* `URL` - url of oauth2 server with port, required
