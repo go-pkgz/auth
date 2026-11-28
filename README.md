@@ -214,6 +214,7 @@ In JSON (the token, `/auth/user` and the login responses) the keys are `name`, `
 Direct links to avatars won't survive any real-life usage if they linked from a public page. For example, page [like this](https://remark42.com/demo/) may have hundreds of avatars and, most likely, will trigger throttling on provider's side. To eliminate such restriction `auth` library provides an automatic proxy
 
 - On each login the proxy will retrieve user's picture and save it to `AvatarStore`. Pictures that fail to load, exceed 10 MiB or 16 megapixels, or are not PNG, JPEG, GIF or WebP are replaced by the identicon
+- For OAuth2 providers the proxy sends the user's access token with the picture request only when the picture is on the scheme, host and port of the provider's user info URL, as with the Microsoft Graph photo; a picture on any other host, including one reached by a redirect, is fetched without it
 - Local (proxied) link to avatar included in user's info (jwt token)
 - API for avatar removal provided as a part of `AvatarStore`
 - User can leverage one of the provided stores:
@@ -469,7 +470,7 @@ In order to add a new oauth2 provider following input is required:
 	* `MapUserFn` - function to convert the response from `InfoURL` to `token.User` (s. example below). It must return an empty `ID` when the response has no user id: the callback then answers 503 and issues no session. Check the id before hashing it, because a prefix plus `token.HashID` of an empty value is not an empty `ID` and maps every such login to the same user. Hash an id the user chooses, such as a login name, with plain sha1 as below: `token.HashID` returns a value of 40 hex characters unchanged, so a user whose login spells the hash of another user's login would get that user's id
 	* `Scopes` - minimal needed scope to read user information. Client should be authorized to these scopes
 	* `BearerTokenHookFn` - optional, called after a successful login with the provider name, the mapped user and the provider's OAuth2 token; it is the way to keep that token for later API calls
-	* `AvatarSaver` - optional, saves the user's picture for this provider in place of the service's avatar proxy. The callback hands the saver the provider's OAuth2 client, which sends the user's access token with every request to any address, and the avatar proxy fetches the picture URL from the user info with it. When users of the provider can set that URL, pass a saver that fetches the picture with a client of its own, for example one that refuses private addresses, and stores it through `Service.AvatarProxy()`
+	* `AvatarSaver` - optional, saves the user's picture for this provider in place of the service's avatar proxy. The callback hands the saver a client that sends the user's access token only with requests to the scheme, host and port of `InfoURL`, and the avatar proxy fetches the picture URL from the user info with it; a picture on any other host is fetched without the token. When users of the provider can set that URL, pass a saver that fetches the picture with a client of its own, for example one that refuses private addresses, and stores it through `Service.AvatarProxy()`
 	```go
 	c := auth.Client{
 		Cid:     os.Getenv("AEXMPL_BITBUCKET_CID"),
