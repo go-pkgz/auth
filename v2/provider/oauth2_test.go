@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -978,7 +979,7 @@ func TestOauth2AvatarFetchSendsTokenOnlyToInfoHost(t *testing.T) {
 	cases := []struct {
 		name    string
 		picture func(infoHost, otherHost string) string
-		want    map[string][]string // "server path" to the Authorization headers it received
+		want    map[string][]string
 	}{
 		{name: "picture on another host",
 			picture: func(_, other string) string { return other + "/pic" },
@@ -1076,6 +1077,187 @@ func TestOauth2AvatarFetchSendsTokenOnlyToInfoHost(t *testing.T) {
 	}
 }
 
+func TestOauth2InfoRequestRedirect(t *testing.T) {
+	const accessToken = "MTQ0NjJkZmQ5OTM2NDE1ZTZjNGZmZjI3"
+	cases := []struct {
+		name       string
+		infoPath   string
+		wantStatus int
+		wantOther  []string
+	}{
+		{name: "redirect to another origin is refused", infoPath: "/to-other", wantStatus: http.StatusServiceUnavailable},
+		{name: "redirect within the origin is followed", infoPath: "/to-same", wantStatus: http.StatusOK},
+		{name: "redirect past the hop cap is refused", infoPath: "/loop?n=0", wantStatus: http.StatusServiceUnavailable},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var otherAuth []string
+			userJSON := `{"id":"myuser1","name":"blah"}`
+
+			other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				otherAuth = append(otherAuth, r.Header.Get("Authorization"))
+				mu.Unlock()
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				_, err := w.Write([]byte(userJSON))
+				assert.NoError(t, err)
+			}))
+			defer other.Close()
+
+			login := httptest.NewUnstartedServer(nil)
+			defer login.Close()
+			loginURL := "http://" + login.Listener.Addr().String()
+
+			var sameAuth string
+			var oauthURL string
+			oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/login/oauth/authorize":
+					http.Redirect(w, r, loginURL+"/callback?code=g0ZGZmNjVmOWI&state="+url.QueryEscape(r.URL.Query().Get("state")),
+						http.StatusFound)
+				case "/login/oauth/access_token":
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					_, err := fmt.Fprintf(w, `{"access_token":%q,"token_type":"bearer"}`, accessToken)
+					assert.NoError(t, err)
+				case "/to-other":
+					http.Redirect(w, r, other.URL+"/user?sig=s3cr3tsig", http.StatusFound)
+				case "/loop":
+					n, err := strconv.Atoi(r.URL.Query().Get("n"))
+					require.NoError(t, err)
+					if n < 9 {
+						http.Redirect(w, r, fmt.Sprintf("%s/loop?n=%d", oauthURL, n+1), http.StatusFound)
+						return
+					}
+					http.Redirect(w, r, oauthURL+"/user?sig=s3cr3tsig", http.StatusFound)
+				case "/to-same":
+					http.Redirect(w, r, oauthURL+"/user", http.StatusFound)
+				case "/user":
+					mu.Lock()
+					sameAuth = r.Header.Get("Authorization")
+					mu.Unlock()
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					_, err := w.Write([]byte(userJSON))
+					assert.NoError(t, err)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer oauth.Close()
+			oauthURL = oauth.URL
+
+			prov := Oauth2Handler{
+				name: "mock",
+				endpoint: oauth2.Endpoint{
+					AuthURL:  oauth.URL + "/login/oauth/authorize",
+					TokenURL: oauth.URL + "/login/oauth/access_token",
+				},
+				infoURL: oauth.URL + c.infoPath,
+				mapUser: func(data UserData, _ []byte) token.User {
+					return token.User{ID: "mock_" + data.Value("id"), Name: data.Value("name")}
+				},
+			}
+			var logs strings.Builder
+			lg := logger.Func(func(format string, args ...any) {
+				mu.Lock()
+				defer mu.Unlock()
+				logs.WriteString(fmt.Sprintf(format, args...) + "\n")
+			})
+			jwtService := token.NewService(token.Opts{SecretReader: token.SecretFunc(mockKeyStore), SecureCookies: false,
+				TokenDuration: time.Hour, CookieDuration: days31})
+			prov = initOauth2Handler(Params{URL: loginURL, Cid: "cid", Csecret: "csecret", JwtService: jwtService,
+				Issuer: "remark42", L: lg}, prov)
+			login.Config.Handler = http.HandlerFunc(Service{Provider: prov}.Handler)
+			login.Start()
+
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err)
+			client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+			resp, err := client.Get(loginURL + "/login?site=remark")
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, resp.Body.Close()) }()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Equal(t, c.wantStatus, resp.StatusCode, "body %s", string(body))
+			assert.NotContains(t, string(body), "s3cr3tsig")
+
+			mu.Lock()
+			defer mu.Unlock()
+			assert.NotContains(t, logs.String(), "s3cr3tsig")
+			assert.Equal(t, c.wantOther, otherAuth)
+			if c.wantStatus != http.StatusOK {
+				assert.Empty(t, sameAuth, "the info url's own /user is never requested")
+				return
+			}
+			assert.Equal(t, "Bearer "+accessToken, sameAuth)
+		})
+	}
+}
+
+func TestOauth2InfoClientRedirectPolicy(t *testing.T) {
+	first := mustParseURL(t, "https://api.example.com/user")
+	req := func(raw string) *http.Request { return &http.Request{URL: mustParseURL(t, raw)} }
+	via := []*http.Request{{URL: first}}
+	tooMany := make([]*http.Request, 10)
+	for i := range tooMany {
+		tooMany[i] = &http.Request{URL: first}
+	}
+	var hookCalled bool
+	rewrite := func(r *http.Request, _ []*http.Request) error {
+		hookCalled = true
+		r.URL = mustParseURL(t, "https://evil.example.com/user")
+		return nil
+	}
+	moveFirst := func(_ *http.Request, v []*http.Request) error {
+		hookCalled = true
+		v[0].URL = mustParseURL(t, "https://evil.example.com/user")
+		return nil
+	}
+	errHook := errors.New("hook refused")
+	cases := []struct {
+		name     string
+		infoURL  string
+		hook     func(*http.Request, []*http.Request) error
+		next     *http.Request
+		via      []*http.Request
+		wantErr  error
+		wantHook bool
+	}{
+		{name: "same origin", next: req("https://API.example.com:443/v2/user"), via: via},
+		{name: "another host", next: req("https://evil.example.com/user"), via: via, wantErr: http.ErrUseLastResponse},
+		{name: "another scheme", next: req("http://api.example.com/user"), via: via, wantErr: http.ErrUseLastResponse},
+		{name: "non-ascii info host", infoURL: "https://äpi.example.com/user", next: req("https://äpi.example.com/me"),
+			via: via, wantErr: http.ErrUseLastResponse},
+		{name: "default cap", next: req("https://api.example.com/user"), via: tooMany, wantErr: http.ErrUseLastResponse},
+		{name: "hook error kept", hook: func(*http.Request, []*http.Request) error { return errHook },
+			next: req("https://api.example.com/user"), via: via, wantErr: errHook},
+		{name: "hook replaces the cap", hook: func(*http.Request, []*http.Request) error { return nil },
+			next: req("https://api.example.com/user"), via: tooMany},
+		{name: "origin checked after hook rewrite", hook: rewrite, next: req("https://api.example.com/user"), via: via,
+			wantErr: http.ErrUseLastResponse, wantHook: true},
+		{name: "origin from the info url, not from via", hook: moveFirst, next: req("https://evil.example.com/user"),
+			via: []*http.Request{{URL: first}}, wantErr: http.ErrUseLastResponse, wantHook: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			hookCalled = false
+			infoURL := c.infoURL
+			if infoURL == "" {
+				infoURL = first.String()
+			}
+			ic := Oauth2Handler{infoURL: infoURL}.infoClient(&http.Client{CheckRedirect: c.hook})
+			err := ic.CheckRedirect(c.next, c.via)
+			assert.True(t, err == c.wantErr, "got %v, want %v", err, c.wantErr)
+			assert.Equal(t, c.wantHook, hookCalled)
+		})
+	}
+
+	authed := &http.Client{}
+	Oauth2Handler{}.infoClient(authed)
+	assert.Nil(t, authed.CheckRedirect, "the oauth2 client itself keeps its redirect policy")
+}
+
 func TestURLOrigin(t *testing.T) {
 	cases := []struct{ a, b string }{
 		{"https://graph.microsoft.com/v1.0/me", "https://GRAPH.microsoft.com:443/beta/me/photo/$value"},
@@ -1105,7 +1287,6 @@ func mustParseURL(t *testing.T, raw string) *url.URL {
 	return u
 }
 
-// fetchingAvatarSaver fetches the picture with the client it is given, like avatar.Proxy does
 type fetchingAvatarSaver struct{}
 
 func (fetchingAvatarSaver) Put(u token.User, client *http.Client) (avatarURL string, err error) {
@@ -1125,7 +1306,7 @@ func TestOauth2AvatarClientTransport(t *testing.T) {
 	cases := []struct {
 		name    string
 		infoURL string
-		want    map[string]string // picture URL to the Authorization header the base transport receives
+		want    map[string]string
 	}{
 		{name: "token only for the info origin", infoURL: "https://graph.microsoft.com/v1.0/me",
 			want: map[string]string{
