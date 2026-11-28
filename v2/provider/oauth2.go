@@ -201,7 +201,7 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := p.conf.Client(context.Background(), tok)
-	uinfo, err := client.Get(p.infoURL)
+	uinfo, err := p.infoClient(client).Get(p.infoURL)
 	if err != nil {
 		rest.SendErrorJSON(w, r, p.L, http.StatusServiceUnavailable, err, "failed to get client info")
 		return
@@ -292,6 +292,35 @@ func (p Oauth2Handler) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, &u)
 }
 
+// infoClient returns a copy of the oauth2 client for the user info request. The oauth2 transport adds the
+// access token to every redirect hop, so the copy stops at a redirect off the scheme, host and port of the
+// user info URL and returns that redirect response, which the caller answers with 503 and logs by status
+// only, keeping a signed Location out of the log. The check runs after the client's own redirect policy,
+// which may rewrite the request. With a non-ASCII info host no redirect is followed.
+func (p Oauth2Handler) infoClient(authed *http.Client) *http.Client {
+	origin := ""
+	if info, err := url.Parse(p.infoURL); err == nil {
+		origin = urlOrigin(info)
+	}
+	ic := *authed
+	next := authed.CheckRedirect
+	ic.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if next != nil {
+			if err := next(req, via); err != nil {
+				return err
+			}
+		}
+		if next == nil && len(via) >= 10 {
+			return fmt.Errorf("user info request stopped after %d redirects", len(via))
+		}
+		if origin == "" || urlOrigin(req.URL) != origin {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
+	return &ic
+}
+
 // avatarClient returns the client the avatar saver fetches the user's picture with. It sends the access
 // token only with requests to the scheme, host and port of the user info URL, so a picture served by the
 // provider's own API, like the Microsoft Graph photo, still loads, while a picture on any other host,
@@ -304,7 +333,7 @@ func (p Oauth2Handler) avatarClient(authed *http.Client) *http.Client {
 	}
 	client := &http.Client{Timeout: 5 * time.Second, Transport: plain, CheckRedirect: authed.CheckRedirect}
 	info, err := url.Parse(p.infoURL)
-	if err != nil || authed.Transport == nil {
+	if err != nil {
 		return client
 	}
 	if origin := urlOrigin(info); origin != "" {
